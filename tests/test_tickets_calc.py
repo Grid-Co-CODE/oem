@@ -67,3 +67,9 @@ def test_gridco_nao_e_vazio_dao_zero():
 
 def test_gridco_sem_indisponibilidade_devolve_none():
     assert indisponibilidade_gridco(None, "Sim") is None
+
+
+def test_fim_antes_do_inicio_devolve_none():
+    # devolvia 16.0, um número plausível, sem sinalizar nada. Neste projeto número plausível e
+    # errado é pior que erro que quebra: ninguém vai conferir.
+    assert indisponibilidade_horas("2026-08-05T10:00:00", "2026-08-01T14:00:00") is None

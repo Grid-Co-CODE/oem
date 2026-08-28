@@ -3,7 +3,7 @@
 A régua é JANELA SOLAR 06:00–18:00: hora fora dela não conta, e dia inteiro vale 12 horas.
 Transcrita da fórmula LET da coluna U da aba Trackers, lida do `.xlsx` vivo em 28/08. Não é
 `fim − início`, e essa diferença é grande: uma parada da noite de sexta à manhã de segunda dá
-12 h nesta régua e 60 h na subtração ingênua.
+24 h nesta régua e 56 h na subtração ingênua.
 
 A aba Trackers NÃO tem esses valores hoje (1.516 linhas encerradas, zero números): a fórmula de lá
 aponta para `[1]!Tracker`, tabela em arquivo externo cujo vínculo não resolve. O gabarito para
@@ -17,10 +17,17 @@ HORAS_DIA_INTEIRO = FIM_SOLAR - INICIO_SOLAR      # 12
 
 
 def _para_dt(v):
-    """Aceita o que a API devolve (ISO, com ou sem T, com ou sem fuso). Lixo vira None.
+    """Aceita hora local ingênua da planilha. Lixo vira None.
 
-    Lixo acontece de verdade: a coluna Inversor da aba tem 'A ser verificado' e
-    'Mapeamento agendado para 04/05' no lugar do valor."""
+    Qualquer offset presente (Z, +00:00, etc) é descartado, não convertido. Esta função espera
+    hora local, o que é o que a planilha entrega.
+
+    AVISO para fase de escrita: o `data_fim` da OS do Fracttal vem em UTC
+    (formato `2026-08-03T11:57:43.74654+00:00`). Passar isso aqui direto daria hora errada — este
+    projeto já teve esse bug: horário de parede em BRT com sufixo "Z" fez 1h30 virar 4h30.
+    Converter para local antes de chamar é responsabilidade de quem chama.
+
+    Lixo da coluna: 'A ser verificado', 'Mapeamento agendado para 04/05', etc. vira None."""
     if v in (None, "", " "):
         return None
     if isinstance(v, datetime):
@@ -50,6 +57,12 @@ def indisponibilidade_horas(ini, fim):
     zero significaria "ficou zero hora parado" — afirmação falsa sobre uma ocorrência aberta."""
     a, b = _para_dt(ini), _para_dt(fim)
     if a is None or b is None:
+        return None
+
+    # Fim anterior ao início é incoerente. Devolve None em vez de número plausível errado,
+    # porque neste projeto número plausível e errado é pior que erro que quebra — ninguém
+    # vai conferir.
+    if b < a:
         return None
 
     h_ini, h_fim = _hora_decimal(a), _hora_decimal(b)
