@@ -16,7 +16,15 @@ from PyQt6.QtWidgets import (QMessageBox, QApplication, QDialog, QVBoxLayout, QH
 from versao import APP_VERSAO
 
 # Repositório PÚBLICO de releases (só o instalador + versao.json; o código-fonte NÃO fica aqui).
-RELEASE_REPO = "Levi-6242/os-creator-releases"
+# Precisa ser PÚBLICO: o app baixa sem credencial nenhuma, e asset de repositório privado
+# exigiria login. Por isso o código-fonte foi para o `oem` (privado) e a release para cá.
+#
+# TROCA DE ENDEREÇO (28/08): saiu da conta pessoal para a organização. Este endereço fica
+# GRAVADO dentro do .exe de cada pessoa, então a ordem importa e não pode inverter: a versão
+# que muda esta linha tem de ser publicada AINDA no endereço antigo, senão quem está numa
+# versão anterior nunca fica sabendo dela. O antigo só pode ser aposentado quando todas as
+# máquinas tiverem passado por aqui — e o conserto, se errar, é reinstalar uma a uma.
+RELEASE_REPO = "Grid-Co-CODE/oem-release"
 _VERSAO_URL = f"https://github.com/{RELEASE_REPO}/releases/latest/download/versao.json"
 
 
