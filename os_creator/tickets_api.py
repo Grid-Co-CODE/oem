@@ -37,16 +37,18 @@ def _paginar(sheet_id, buscar=None):
     return out
 
 
-def listar_linhas(sheet_id):
+def listar_linhas(sheet_id, buscar=None):
     """Todas as linhas da aba, já como dicionários {coluna: valor}.
 
-    A primeira linha devolvida pela API carrega o cabeçalho; é ela que dá os nomes de coluna."""
-    cruas = _paginar(sheet_id)
+    Cada linha devolvida pela API carrega seu próprio array `headers` (metadado idêntico em todas).
+    Não existe linha de cabeçalho especial — os nomes de coluna saem dos headers da primeira linha
+    SEM que ela deixe de ser dado. O [1:] anterior descartava uma ocorrência real em silêncio."""
+    cruas = _paginar(sheet_id, buscar)
     if not cruas:
         return []
     headers = cruas[0].get("headers") or []
     out = []
-    for r in cruas[1:]:
+    for r in cruas:
         d = linha_para_dict(headers, r.get("values") or [])
         d["_row"] = r.get("row_number")
         out.append(d)
