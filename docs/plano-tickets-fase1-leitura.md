@@ -222,7 +222,7 @@ Esperado: FALHA com `ModuleNotFoundError: No module named 'tickets_calc'`
 A régua é JANELA SOLAR 06:00–18:00: hora fora dela não conta, e dia inteiro vale 12 horas.
 Transcrita da fórmula LET da coluna U da aba Trackers, lida do `.xlsx` vivo em 28/08. Não é
 `fim − início`, e essa diferença é grande: uma parada da noite de sexta à manhã de segunda dá
-12 h nesta régua e 60 h na subtração ingênua.
+24 h nesta régua e 56 h na subtração ingênua.
 
 A aba Trackers NÃO tem esses valores hoje (1.516 linhas encerradas, zero números): a fórmula de lá
 aponta para `[1]!Tracker`, tabela em arquivo externo cujo vínculo não resolve. O gabarito para
