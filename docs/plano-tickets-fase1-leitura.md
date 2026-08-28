@@ -622,7 +622,7 @@ def _paginar(sheet_id, buscar=None):
     return out
 
 
-def listar_linhas(sheet_id):
+def listar_linhas(sheet_id, buscar=None):
     """Todas as linhas da aba, já como dicionários {coluna: valor}.
 
     A primeira linha devolvida pela API carrega o cabeçalho; é ela que dá os nomes de coluna."""
