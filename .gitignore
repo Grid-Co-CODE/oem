@@ -1,0 +1,46 @@
+# .gitignore da RAIZ do repositório.
+#
+# Existe porque a migração de 28/08/2026 quase o perdeu: o `git filter-repo` só preserva arquivos
+# DENTRO dos caminhos filtrados (`os_creator/` e `chamado_garantia/`), então o .gitignore da raiz
+# do repositório de origem ficou para trás. O de `os_creator/` veio junto e continuou protegendo o
+# que está lá dentro — mas a raiz e o `chamado_garantia/` ficaram descobertos.
+#
+# Os padrões abaixo se sobrepõem de propósito aos de `os_creator/.gitignore`. Duplicação aqui é
+# barata; um segredo commitado não é.
+
+# ── Credenciais — NUNCA commitar ─────────────────────────────────────────────
+.env
+*.env
+!.env.example
+fracttal_login.txt
+tokens.txt
+tokens_runtime.json
+tokens_runtime.json.tmp
+*_credentials.txt
+*_password.txt
+
+# ── Estado local / cache (recarregável) ──────────────────────────────────────
+assets_cache.json
+*.log
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ── Build do .exe (PyInstaller) — artefatos pesados, regeráveis ──────────────
+build/
+dist/
+*.spec
+# ...menos o do os_creator, que é editado à mão e guarda conhecimento de build que só aparece no
+# .exe. Ver o comentário longo em os_creator/.gitignore — ficou fora do git até 03/08 e quem
+# clonasse produzia um app com a "Inspeção de chamados" quebrada, sem pista do porquê.
+!Criar OS - Fracttal.spec
+
+# ── SO / editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
