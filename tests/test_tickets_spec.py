@@ -1,5 +1,5 @@
 """Declaração das abas e o estado do ticket."""
-from tickets_spec import ABAS, NUCLEO, estado_do_ticket, linha_para_dict
+from tickets_spec import ABAS, NUCLEO, ESTADOS, estado_do_ticket, linha_para_dict
 
 
 def test_as_duas_abas_declaradas_com_o_sheet_id_certo():
@@ -66,3 +66,17 @@ def test_estado_encerrada_exige_fim_preenchido():
 def test_fim_preenchido_encerra_mesmo_sem_os():
     # linha antiga, de antes da integração: tem fim e nunca teve OS
     assert estado_do_ticket("", "", "2026-08-03T11:57:43") == "encerrada"
+
+
+def test_fim_com_espaco_invisivel_nao_encerra():
+    # célula de planilha editada à mão vem com tab ou espaço duplo. Antes isso classificava a
+    # ocorrência como encerrada em silêncio: sumia da lista E da ronda do WhatsApp.
+    assert estado_do_ticket("10847", "Em Processo", "   ") == "com_os"
+    assert estado_do_ticket("10847", "Em Processo", "\t") == "com_os"
+
+
+def test_cada_estado_tem_cor_propria():
+    # com_os e a_fechar nasceram com a mesma cor e renderizariam idênticos na tela, apagando
+    # justamente a distinção que faz a_fechar existir.
+    cores = [c for _, _, c in ESTADOS]
+    assert len(cores) == len(set(cores))

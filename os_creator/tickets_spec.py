@@ -36,7 +36,7 @@ ESTADOS = [
     ("aberta",      "Aberta",         "#e05454"),
     ("com_os",      "OS criada",      "#eb8b57"),
     ("verificando", "Em verificação", "#4a9eff"),
-    ("a_fechar",    "A fechar",       "#eb8b57"),
+    ("a_fechar",    "A fechar",       "#e0a32e"),
     ("encerrada",   "Encerrada",      "#3fb27f"),
 ]
 COR_ESTADO = {k: c for k, _, c in ESTADOS}
@@ -60,7 +60,10 @@ def linha_para_dict(headers, values):
 
 def estado_do_ticket(num_os, status_os, fim):
     """Onde a ocorrência está no ciclo de vida. Ver spec §5."""
-    if fim not in (None, "", " "):
+    if str(fim or "").strip():
+        # normaliza espaços invisíveis: célula de planilha editada à mão vem com tab ou espaço
+        # duplo, e aqui o efeito é uma ocorrência desaparecer sem ninguém notar (sumia da lista
+        # E da ronda do WhatsApp).
         return "encerrada"
     if not str(num_os or "").strip():
         return "aberta"
