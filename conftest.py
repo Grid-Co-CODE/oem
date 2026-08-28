@@ -3,8 +3,10 @@
 Fica na RAIZ de propósito: o pytest insere o diretório de cada conftest.py no sys.path, e daqui
 dá para apontar `os_creator/` sem instalar nada.
 
-APPEND, nunca insert(0), pelo mesmo motivo documentado em os_creator/api.py: a raiz do
-repositório não pode ganhar precedência sobre a pasta do app."""
+É o INVERSO do `api.py`: lá a raiz entra depois de `os_creator/`, então basta anexá-la. Aqui
+o pytest já põe a raiz na frente sozinho, então é o `os_creator/` que precisa do `insert(0)`
+para continuar ganhando. A regra que ambos cumprem é a mesma — `os_creator` vence a raiz —,
+o que muda é de onde cada um parte."""
 import os
 import sys
 
