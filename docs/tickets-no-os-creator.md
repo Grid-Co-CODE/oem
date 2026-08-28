@@ -172,17 +172,60 @@ Excel segue alimentando as demais. Migração uma aba por vez, com o Excel vivo 
 Hoje é fórmula do Excel; o banco guarda só o resultado (política valores-only). Sem o Excel,
 **o app calcula**.
 
-`Indisponibilidade (horas) = Fim da ocorrência − Início da ocorrência`, em horas.
+Fórmulas lidas do `.xlsx` vivo em 28/08 (`9.Pós Operação/3. Análises de Performance/`). **Não é
+`Fim − Início`** — é **janela solar 06:00–18:00**, 12 horas por dia cheio:
 
-`Indisponibilidade da Grid Co. (horas)` — **a regra ainda não está confirmada.** A hipótese é
-"a mesma conta quando `Responsabilidade da Grid Co.? = Sim`, zero caso contrário", mas ela é
-minha suposição, não leitura da fórmula. Há um candidato alternativo óbvio: contar a partir de
-`Início do chamado pela Grid Co.` em vez do início da ocorrência — o que explicaria por que essas
-duas datas existem separadas. **Resolver lendo a fórmula real no `.xlsx` antes de implementar.**
+```
+horaIni, horaFim = hora decimal (h + m/60 + s/3600)
 
-**Portão de aceite:** antes de ligar a escrita, recalcular as horas de **todas as linhas
-encerradas** das duas abas e comparar com o valor que já está lá. Divergência que não seja
-arredondamento **bloqueia** a entrega — é conta que vai para relatório de cliente.
+mesmo dia:
+    total = max(0, clamp(horaFim,6,18) − clamp(horaIni,6,18))
+
+dias distintos:
+    total = max(0, 18 − max(horaIni, 6))          # ponta do primeiro dia
+          + max(0, min(horaFim, 18) − 6)          # ponta do último dia
+          + max(0, fimDia − iniDia − 1) × 12      # dias inteiros
+
+erro (ex.: Fim vazio) → "" (vazio, não zero)
+```
+
+`Indisponibilidade da Grid Co. (horas)` — a regra tem **três** casos, e eu tinha suposto dois:
+
+| Responsabilidade da Grid Co.? | valor |
+|---|---|
+| `Sim` | = Indisponibilidade (horas) |
+| `Parcial` | = Indisponibilidade (horas) **− 6** |
+| qualquer outro / vazio | `0` |
+
+**Bug latente na fórmula atual:** o `− 6` não tem piso. Ocorrência `Parcial` com menos de 6 horas
+solares dá **negativo**. Hoje não acontece — as 173 linhas `Parcial` de Trackers estão todas em
+aberto, sem valor — mas o app precisa decidir. Recomendo `max(0, indisp − 6)` e registrar a
+divergência deliberada em comentário; número negativo de indisponibilidade não significa nada
+num relatório de cliente.
+
+### A aba Trackers não tem esse número hoje
+
+Medido em 28/08, no banco e no `.xlsx`:
+
+| aba | encerradas | com indisponibilidade numérica |
+|---|---|---|
+| Trackers | 1.516 | **0** |
+| Strings indisp | 220 | 232 |
+
+**Causa:** a fórmula de Trackers referencia `[1]!Tracker[[#This Row],…]` — uma tabela em **arquivo
+externo**, cujo vínculo não resolve. O Excel nunca calculou, então o sync levou vazio. A de
+Strings usa a tabela local `Strings_indisponiveis` e funciona.
+
+Duas consequências:
+
+- **Não existe gabarito para validar Trackers.** São 1.516 ocorrências encerradas sem número —
+  qualquer relatório que dependa dele hoje está lendo vazio.
+- **O app calculando é a primeira vez que esse número existe** para trackers. Não há risco de
+  divergir de nada, porque não há nada.
+
+**Portão de aceite (revisado):** recalcular as **232 linhas de Strings** e comparar com o valor
+que já está lá. Divergência que não seja arredondamento **bloqueia** a entrega. Para Trackers,
+validar por amostra conferida à mão — sem gabarito, o teste é aritmético, não comparativo.
 
 ## 11. Concorrência
 
