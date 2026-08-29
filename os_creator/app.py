@@ -129,6 +129,9 @@ _ICO = {
     # prateleira (lucide server) — o catálogo de ativos
     "rack":     '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/>'
                 '<path d="M7 7.5h.01"/><path d="M7 16.5h.01"/>',
+    # ticket (aba Tickets) — MESMO desenho do "ticket" em steps/ui.py::_LUCIDE (ver aviso abaixo).
+    "ticket":   '<path d="M2 9a3 3 0 1 0 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 1 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/>'
+                '<path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>',
 }
 
 # ESTE dicionário é do launcher e é OUTRO — o `steps/ui.py` tem o seu, com nomes diferentes.
@@ -488,6 +491,8 @@ class MainWindow(QMainWindow):
             # Ativos em 1º (Levi, 06/08): consulta é a porta de entrada — do ativo se decide a OS
             ("rack", "Ativos", "Todo o catálogo do Fracttal — busca, histórico e atalhos",
              lambda: self._mostrar_modo("ativos")),
+            ("ticket", "Tickets", "Ocorrências de trackers e strings — leitura",
+             lambda: self._mostrar_modo("tickets")),
             ("bolt", "Performance", "Inversores, Strings, Trackers e ETM",
              lambda: self._mostrar_modo("perf")),
             ("stack", "COS", "Ocorrência de desligamento, religamento e inspeção",
@@ -508,9 +513,10 @@ class MainWindow(QMainWindow):
             card = _CardOS(ic, t, s, cb)
             self._launcher_cards.append(card)
             grid.addWidget(card, i // 3, i % 3)
-        self._card_perf = self._launcher_cards[1]        # o selo "N atribuídas" mora no card de
-        # PERFORMANCE — que passou a ser o SEGUNDO da lista quando o Ativos foi para a frente
-        # (Levi, 06/08). Índice fixo de propósito: se a ordem mudar de novo, mude aqui junto.
+        self._card_perf = self._launcher_cards[2]         # o selo "N atribuídas" mora no card de
+        # PERFORMANCE — que passou a ser o TERCEIRO da lista quando o Tickets entrou entre Ativos
+        # e Performance (Tarefa 7, 29/08). Índice fixo de propósito: se a ordem mudar de novo,
+        # mude aqui junto — era [1] até esta tarefa, quando Performance ainda era o 2º card.
         outer.addLayout(grid); outer.addStretch(1)
         return w
 
@@ -630,6 +636,9 @@ class MainWindow(QMainWindow):
                 inner = AtivosTab(on_voltar=lambda: self.criar_stack.setCurrentIndex(0),
                                   ao_criar_os=self._ativo_para_performance,
                                   ao_abrir_chamado=self._ativo_para_inspecao)
+            elif key == "tickets":                                    # ocorrências (leitura)
+                from steps.tickets import TicketsTab
+                inner = TicketsTab(on_voltar=lambda: self.criar_stack.setCurrentIndex(0))
             else:                                                     # pcm
                 inner = PcmTab(performance=False)
             tornar_todos_pesquisaveis(inner)                          # combos pesquisáveis nos modos inline
