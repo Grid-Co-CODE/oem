@@ -97,36 +97,69 @@ def _numero(s):
     return m.group(0).replace("-", ".") if m else ""
 
 
-def _achar_inversor(nome, usina_codigo, todos):
+def _codigo_bate_usina(code_norm, usina_norm):
+    """O `code` do ativo casa com o código de usina da planilha se `usina_norm` for um dos
+    segmentos do `code` separados por '-', SEM contar o último (o próprio 'INVRx.y').
+
+    Por que segmento inteiro, não `startswith`/`in`: o formato do `code` é inconsistente —
+    'JCD100-INVR2.1' (2 segmentos) convive com '2C-IPX100-INVR1.1' e
+    'THPN-SDN100-INVR1.1' (3 segmentos, prefixo de cliente). Medido no `assets_cache.json`
+    real: 437 dos 1.710 inversores (26%) têm esse prefixo extra — um `startswith(usina + "-")`
+    sozinho perde esses 437 inteiros. E precisa ser o segmento INTEIRO, não substring: senão
+    'IPX10' casaria dentro de 'IPX100-INVR...' (mesma classe do bug do número do inversor,
+    um nível acima)."""
+    segmentos = code_norm.split("-")
+    return usina_norm in segmentos[:-1]
+
+
+def _nomes_de_usina_batem(a, b):
+    """Mesmo padrão de steps/performance.py::_aplicar_sug_pendente para casar usina por nome
+    (igual, ou um contém o outro, normalizado) — usado só quando o casamento por código não
+    achou nada."""
+    return bool(a) and bool(b) and (a == b or a in b or b in a)
+
+
+def _achar_inversor(nome, usina_ticket, todos):
     """Resolve no catálogo o ativo Inversor citado na coluna 'Inversor' da aba Strings.
 
-    Duas armadilhas já vistas neste projeto, as duas resolvidas aqui:
+    Três armadilhas achadas com dado real (medidas em 29/08, rodada de revisão da Tarefa 7):
 
-    1) A coluna 'Usina' da aba Strings traz o CÓDIGO da usina ('JCD100'), não o nome de exibição
-       ('Athon - Jacundá 1 - PA') — medido em 28/08 no `assets_cache.json` real: 'jcd100' não é
-       substring do nome de exibição em NENHUM ativo. Por isso o escopo casa contra `code` do
-       ativo (que carrega o código da usina, ex. 'JCD100-INVR2.1'), não contra `usina`. O casamento
-       é por PREFIXO + separador ('jcd100-'), não por `in`: um `in` ingênuo casaria 'SMP100' dentro
-       de um código 'SMP1000-...' se algum dia existir — mesma classe do bug do item 2, um nível
-       acima (usina em vez de inversor).
-    2) Dentro da usina, número exato primeiro. Conferido no `assets_cache.json` real: 250
+    1) A coluna 'Usina' da aba Strings é MISTA, não é sempre código. Medido nas 233 linhas ao
+       vivo: a maioria traz o CÓDIGO ('JCD100', 'TIM100'), mas 56 (24%) trazem o NOME DE
+       EXIBIÇÃO ('Demerval Lobao', 'Santarém 1', 'Boa Esperança do Sul 1 e 2') — não é regra
+       fixa, é o que quem preencheu a linha digitou. Por isso o casamento tenta `code` primeiro
+       (função `_codigo_bate_usina`) e só cai para `usina` (nome de exibição do catálogo,
+       `_nomes_de_usina_batem`) quando o escopo por código vier vazio — código é mais preciso
+       quando existe, nome é o único caminho quando não.
+    2) Ver `_codigo_bate_usina`: o formato do `code` muda com prefixo de cliente (26% dos
+       inversores). Comparar por SEGMENTO inteiro resolve os dois formatos de uma vez.
+    3) Dentro da usina, número exato primeiro. Conferido no `assets_cache.json` real: 250
        colisões deste tipo em 103 usinas — ex. THPN-TNB100 tem 'Inversor 2.1' E 'Inversor 2.18'
        ao mesmo tempo (e 2.10 a 2.19 inteiros). Um `in` ingênuo casaria a primeira ocorrência da
        lista, sempre errado para 9 dos 10 inversores de cada dezena. Mesmo algoritmo (número
        exato → substring só se os números não colidirem) de
        steps/performance.py::_aplicar_sug_pendente, que existe por causa desse bug real no deep
-       link gridos://."""
+       link gridos://.
+
+    Mesmo com as três, ~33 das 233 linhas (14%) não resolvem — não é bug: é lacuna real do
+    cadastro (ex. MTS200 sem o bloco 2 cadastrado no Fracttal). 'não encontrado no catálogo'
+    ali é a resposta certa, não um erro do casamento."""
     if not nome or not todos:
         return None
     alvo = api._norm_txt(nome)
     alvo_n = _numero(nome)
-    cod = api._norm_txt(usina_codigo)
-    if not cod:
+    un = api._norm_txt(usina_ticket)
+    if not un:
         return None
-    prefixo = cod + "-"
-    candidatos = [a for a in todos
-                  if api._norm_txt(a.get("tipo")) == "inversor"
-                  and api._norm_txt(a.get("code")).startswith(prefixo)]
+
+    candidatos = [a for a in todos if api._norm_txt(a.get("tipo")) == "inversor"
+                  and _codigo_bate_usina(api._norm_txt(a.get("code")), un)]
+    if not candidatos:
+        candidatos = [a for a in todos if api._norm_txt(a.get("tipo")) == "inversor"
+                      and _nomes_de_usina_batem(un, api._norm_txt(a.get("usina")))]
+    if not candidatos:
+        return None
+
     for a in candidatos:
         snome = api._asset_short_name(a)
         if api._norm_txt(snome) == alvo or (alvo_n and alvo_n == _numero(snome)):
@@ -144,13 +177,26 @@ def _achar_inversor(nome, usina_codigo, todos):
 
 def _limpar_layout(layout):
     """Esvazia um layout p/ reconstruir (mesmo padrão de steps/ativos.py::_arvore/_carregar_os):
-    remover e agendar deleteLater dos widgets, senão a reconstrução sobrepõe linhas antigas."""
+    remover e agendar deleteLater dos widgets, senão a reconstrução sobrepõe linhas antigas.
+
+    RECURSIVO: `_pinta_filtros` põe LAYOUTS dentro do layout de estado (cada linha é um
+    QHBoxLayout com chip + contagem), não só widgets soltos como as outras telas. `it.widget()`
+    é None para um item que é layout, então a versão não-recursiva não destruía nada ali — o
+    chip antigo ficava vivo, por baixo do novo, na mesma geometria (medido: 10 repinturas =
+    50 chips vivos, sem teto). Pior: o chip novo tem fundo transparente quando desligado, então
+    o chip antigo 'ligado' (fundo colorido) aparecia por baixo e o filtro nunca mais parecia
+    desligado depois do primeiro clique — `_repintar` roda a cada pausa de 220ms na busca, a
+    cada clique de filtro e a cada troca de aba, então o vazamento era constante."""
     while layout.count():
         it = layout.takeAt(0)
         w = it.widget()
         if w:
             w.setParent(None)
             w.deleteLater()
+            continue
+        sub = it.layout()
+        if sub:
+            _limpar_layout(sub)          # mata os widgets de dentro antes do layout sumir
 
 
 # ── pequenos componentes visuais (mesmo padrão do esboço aprovado) ─────────────────────────
@@ -762,6 +808,15 @@ class TicketsTab(QWidget):
         self._p_row.setText("linha %s" % oc.get("_row", "—"))
         if num_os:
             self._p_estado_topo.setText("·  OS %s está: %s" % (num_os, status_os or "—"))
+            topo_cor = cor
+        elif estado == "encerrada":
+            # mesma razão do 'OS' neutro que _pinta_tabela já aplica na tabela: sem coluna OS
+            # ainda, uma ocorrência encerrada foi fechada por Fim digitado à mão, nada a ver
+            # com falta de atendimento -- 'SEM OS' em vermelho alarmaria por um caso já
+            # resolvido. Medido em 29/08: 801 das 1.327 ocorrências das duas abas (60%) estão
+            # encerradas -- esse era o caso comum, não a exceção, e o revisor pegou porque eu
+            # só tinha testado com uma linha aberta.
+            self._p_estado_topo.setText("·  %s" % tickets_spec.NOME_ESTADO[estado].upper())
             topo_cor = cor
         else:
             self._p_estado_topo.setText("·  SEM OS")
