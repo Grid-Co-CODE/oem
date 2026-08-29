@@ -32,7 +32,7 @@ from workers import ApiWorker, slot_seguro
 # e desenhar todas de uma vez é custo de layout sem ganho — quem quer uma usina específica usa
 # a busca ou o filtro de usina à esquerda.
 _LIMITE_TABELA = 400
-_LIMITE_USINAS_FILTRO = 8
+_LIMITE_USINAS_FILTRO = 12
 
 # ordem dos estados na lista: quem precisa de gente primeiro. `a_fechar` vem junto de `com_os`
 # porque é a mesma espera — a diferença é só de quem depende.
@@ -430,8 +430,10 @@ class TicketsTab(QWidget):
         p.v.addLayout(topo)
 
         self.tab = QTableWidget(0, 7)
+        # a coluna se chama 'Dias', não 'Há': ver o comentário em _pinta_tabela sobre por que
+        # um único rótulo temporal não serve pras duas leituras que a célula carrega.
         self.tab.setHorizontalHeaderLabels(["", "Usina", "Skid / Tracker", "OS", "Causa raiz",
-                                            "Início da ocorrência", "Há"])
+                                            "Início da ocorrência", "Dias"])
         self.tab.verticalHeader().setVisible(False)
         self.tab.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tab.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -629,6 +631,12 @@ class TicketsTab(QWidget):
             self._repintar_ident(self._sel)
 
     # ── eventos (aba / filtros / busca) ─────────────────────────────────────────────────────
+    # os 4 slots daqui até _repintar são ligados direto a clique/timeout do Qt. Provado com
+    # controle de três vias (28/08): slot decorado que levanta exceção SOBREVIVE (loga o
+    # traceback e segue); slot sem decorador que levanta MATA o processo — exit 127, sem
+    # mensagem, sem log, a janela some. Como são o clique mais comum da tela, ficar sem
+    # @slot_seguro aqui é o pior lugar possível para não ter.
+    @slot_seguro
     def _trocar_aba(self, nome):
         if nome == self._aba or nome not in tickets_spec.ABAS:
             return
@@ -643,6 +651,9 @@ class TicketsTab(QWidget):
         self._repintar()             # esvazia lista/tiles já — não deixa a aba anterior pendurada
         self._buscar_ocorrencias()
 
+    # ver o comentário de _trocar_aba: sem @slot_seguro, uma exceção aqui não falha só o
+    # filtro — derruba o app inteiro, sem mensagem.
+    @slot_seguro
     def _chip_estado(self, chave):
         if chave in self._estados_filtro:
             self._estados_filtro.discard(chave)
@@ -650,11 +661,18 @@ class TicketsTab(QWidget):
             self._estados_filtro.add(chave)
         self._repintar()
 
+    # ver o comentário de _trocar_aba: mesma exposição — clique direto do usuário sem rede de
+    # segurança contra exceção.
+    @slot_seguro
     def _clicar_usina(self, usina):
         self._usina_filtro = "" if self._usina_filtro == usina else usina
         self._repintar()
 
     # ── repintura ────────────────────────────────────────────────────────────────────────
+    # ligado direto ao timeout do QTimer da busca (_t_busca) além de ser chamado pelos 3 slots
+    # acima — é o coração da tela. Ver o comentário de _trocar_aba: sem @slot_seguro, uma
+    # exceção aqui é a janela sumindo sem mensagem, não um traceback no log.
+    @slot_seguro
     def _repintar(self):
         termo = api._norm_txt(self._busca.text())
         rotulo_extra, valor_extra = _EXTRA_COL[self._aba]
@@ -688,22 +706,26 @@ class TicketsTab(QWidget):
 
     def _pinta_tiles(self):
         _limpar_layout(self._tiles_box)
-        abertos = [o for o in self._ocs if o["_estado"] != "encerrada"]
-        cont = {k: 0 for k, _, _ in tickets_spec.ESTADOS}
-        for o in self._ocs:
-            cont[o["_estado"]] = cont.get(o["_estado"], 0) + 1
-        # 'Com OS' junta com_os + a_fechar: é a MESMA espera (o técnico já foi, falta fechar o
-        # ciclo) — só a cor na tabela/filtro os distingue. Separar aqui inflaria a faixa com um
-        # estado que hoje (fase 1, sem coluna OS) nunca acontece de verdade.
-        n_com_os = cont.get("com_os", 0) + cont.get("a_fechar", 0)
-        self._tiles_box.addWidget(_Tile(len(abertos), "Em aberto", GREEN, "o conjunto de trabalho"))
-        self._tiles_box.addWidget(_Tile(cont.get("aberta", 0), "Sem OS",
-                                        tickets_spec.COR_ESTADO["aberta"], "parado e ninguém foi olhar"))
-        self._tiles_box.addWidget(_Tile(n_com_os, "Com OS", tickets_spec.COR_ESTADO["com_os"],
-                                        "técnico ainda não fechou"))
-        self._tiles_box.addWidget(_Tile(cont.get("verificando", 0), "Em verificação",
-                                        tickets_spec.COR_ESTADO["verificando"],
-                                        "o técnico fechou — ninguém confirmou"))
+        abertas = [o for o in self._ocs if o["_estado"] != "encerrada"]
+        encerradas = [o for o in self._ocs if o["_estado"] == "encerrada"]
+        # mesma régua do alarme vermelho da coluna 'Dias' na tabela (_pinta_tabela): só conta
+        # pra quem ainda está aberta, senão a régua mediria a DURAÇÃO de um caso já resolvido
+        # como se fosse atraso de hoje.
+        antigas = [o for o in abertas if o.get("_dias") is not None and o["_dias"] > 30]
+
+        # SÓ 3 tiles nesta fase (Levi, revisão de 29/08). Antes eram 4: 'Em aberto' e 'Sem OS'
+        # mostravam O MESMO CONJUNTO com rótulos diferentes — a coluna OS não existe (spec §8),
+        # então toda ocorrência não-encerrada é 'aberta' E 'sem OS' ao mesmo tempo, sempre com
+        # o mesmo número. 'Com OS' e 'Em verificação' mostravam ZERO fixo, e zero em "Em
+        # verificação" lê como "nada pendente de conferência" quando na verdade o conceito
+        # ainda não existe — um zero mentiroso é pior que a métrica ausente. Os dois tiles de OS
+        # voltam na fase 2, quando a coluna existir de verdade; não é esquecimento.
+        self._tiles_box.addWidget(_Tile(len(abertas), "Em aberto", GREEN, "o conjunto de trabalho"))
+        self._tiles_box.addWidget(_Tile(len(encerradas), "Encerradas",
+                                        tickets_spec.COR_ESTADO["encerrada"], "já com Fim registrado"))
+        self._tiles_box.addWidget(_Tile(len(antigas), "Abertas há mais de 30 dias",
+                                        tickets_spec.COR_ESTADO["aberta"],
+                                        "mesmo alarme vermelho da coluna Dias"))
 
     def _pinta_filtros(self):
         _limpar_layout(self._filtro_estado_box)
@@ -722,10 +744,22 @@ class TicketsTab(QWidget):
         for o in self._ocs:
             u = o.get("Usina") or "—"
             cont[u] = cont.get(u, 0) + 1
-        for u, n in sorted(cont.items(), key=lambda x: -x[1])[:_LIMITE_USINAS_FILTRO]:
+        usinas_por_volume = sorted(cont.items(), key=lambda x: -x[1])
+        for u, n in usinas_por_volume[:_LIMITE_USINAS_FILTRO]:
             self._filtro_usina_box.addWidget(
                 _LinhaClicavel(str(u)[:22], n, u == self._usina_filtro,
                               lambda usi=u: self._clicar_usina(usi)))
+        # mesmo tratamento que o rodapé da tabela já dá pro corte de _LIMITE_TABELA: cortar a
+        # lista SEM avisar faz uma usina que ficou de fora parecer que não existe. Medido em
+        # 29/08: Trackers tem 63 usinas e só as top-N cabem aqui — a maioria não aparecia, em
+        # silêncio. O corte é só da LISTA; a busca do cabeçalho filtra sobre `self._ocs`
+        # inteiro, então ela alcança as que não estão desenhadas.
+        resto = len(usinas_por_volume) - _LIMITE_USINAS_FILTRO
+        if resto > 0:
+            txt = ("+ 1 usina não mostrada" if resto == 1 else "+ %d usinas não mostradas" % resto)
+            aviso = _lbl(txt + " — a busca no topo alcança todas", MUTED, 10.5, ital=True)
+            aviso.setWordWrap(True)
+            self._filtro_usina_box.addWidget(aviso)
 
         if self._aba == "Trackers":
             self._nota_ronda.setText(
@@ -738,7 +772,7 @@ class TicketsTab(QWidget):
 
     def _pinta_tabela(self, rotulo_extra, valor_extra):
         self.tab.setHorizontalHeaderLabels(["", "Usina", rotulo_extra, "OS", "Causa raiz",
-                                            "Início da ocorrência", "Há"])
+                                            "Início da ocorrência", "Dias"])
         self.tab.blockSignals(True)
         self.tab.setRowCount(0)
         self.tab.setRowCount(len(self._visiveis))
@@ -752,7 +786,7 @@ class TicketsTab(QWidget):
             causa = oc.get("Causa raiz")
             causa_completa = str(causa).strip() if causa not in (None, "") else "aguardando técnico"
             # trunca a CÉLULA (não o dado): com ResizeToContents, uma causa raiz digitada longa
-            # ('Afundamento de estrutura tracker...') empurra Início/Há para fora da tela e a
+            # ('Afundamento de estrutura tracker...') empurra Início/Dias para fora da tela e a
             # tabela nasce com barra de rolagem horizontal — medido ao abrir com dado real, o
             # esboço não pegou isso porque usava texto mais curto. O texto inteiro continua
             # disponível: tooltip na célula e por extenso no painel da direita.
@@ -770,7 +804,24 @@ class TicketsTab(QWidget):
                 os_txt, os_cor = "sem OS", tickets_spec.COR_ESTADO["aberta"]
 
             dias = oc.get("_dias")
-            ha_txt = "%d d" % dias if dias is not None else "—"
+            # DECISÃO (revisão de 29/08): '_dias' mede coisas diferentes por estado — em
+            # 'aberta' é IDADE (quanto tempo já passou, e ainda está contando); em 'encerrada'
+            # é DURAÇÃO (quanto tempo durou, do Início ao Fim, parado no passado). O cabeçalho
+            # 'Há' prometia idade nos dois casos, e os dois nunca coincidem: a ocorrência
+            # MAB200 mostrava 'Há 11 d' com 221 dias de idade real; SMP100 'Há 5 d' com 150;
+            # TIM100 'Há 4 d' com 181 (casos reais, medidos ao vivo). 60% das linhas são
+            # encerradas, então não é a exceção, é o caso comum.
+            # Mantive as DUAS leituras (não colapsei pra uma só idade) porque o `alarme` logo
+            # abaixo já trata as encerradas como passado resolvido, não pendência — perder a
+            # distinção aqui destruiria essa régua. Em vez disso: cabeçalho virou 'Dias' (vale
+            # nos dois casos, não promete só idade) e cada célula se rotula pelo próprio estado,
+            # então a leitura errada exige ignorar a palavra na própria célula.
+            if dias is None:
+                ha_txt = "—"
+            elif estado == "encerrada":
+                ha_txt = "durou %d d" % dias
+            else:
+                ha_txt = "há %d d" % dias
             alarme = dias is not None and dias > 30 and estado != "encerrada"
             ha_cor = tickets_spec.COR_ESTADO["aberta"] if alarme else TEXT
 

@@ -1,3 +1,4 @@
 Nova aba Tickets: mostra as ocorrências de trackers e de strings que hoje moram na planilha, direto do banco. Por enquanto é só consulta — nada é alterado por aqui
-A lista já vem na ordem do que precisa de atenção: primeiro as OS que estão em verificação, depois as ocorrências sem OS nenhuma, e dentro de cada grupo as mais antigas na frente
-A indisponibilidade passou a ser calculada pelo app, com a mesma régua de janela solar 06:00–18:00 da planilha. Nos trackers esse número não existia — a fórmula da planilha estava quebrada e 1.516 ocorrências encerradas estavam sem valor
+A lista vem ordenada pelo que ainda precisa de atenção: as ocorrências em aberto (sem Fim registrado) aparecem primeiro, as mais antigas na frente; as já encerradas ficam por último
+A indisponibilidade passou a ser calculada pelo próprio app, com a mesma régua de janela solar 06:00–18:00 da planilha; em Trackers esse número não existia (a fórmula de lá estava quebrada), e a conta do app foi conferida linha a linha contra as 217 ocorrências em que a planilha tinha um valor confiável para comparar
+Em Strings, o app agora reconhece o inversor da ocorrência no cadastro do Fracttal, e é de lá que vêm o SKID e a cabine mostrados no painel — a planilha não tem essas colunas nessa aba; quando o inversor não está cadastrado lá, o painel avisa em vez de inventar um valor
