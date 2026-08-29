@@ -142,6 +142,10 @@ _LUCIDE = {
     # chamado de garantia (mesmo desenho do card "Chamados" no app.py)
     "headset":'<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="7" rx="1.5"/>'
               '<rect x="17" y="13" width="4" height="7" rx="1.5"/><path d="M20 18v1a3 3 0 0 1-3 3h-3"/>',
+    # ticket (aba Tickets) — MESMO desenho do "ticket" em app.py::_ICO. Os dois dicionários são
+    # independentes (ver o aviso em app.py); um nome que só exista aqui ou só lá derrubou a v135.
+    "ticket": '<path d="M2 9a3 3 0 1 0 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 1 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/>'
+              '<path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>',
 }
 _SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{c}" '
         'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{p}</svg>')
