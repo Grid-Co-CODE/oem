@@ -19,12 +19,18 @@ from versao import APP_VERSAO
 # Precisa ser PÚBLICO: o app baixa sem credencial nenhuma, e asset de repositório privado
 # exigiria login. Por isso o código-fonte foi para o `oem` (privado) e a release para cá.
 #
-# TROCA DE ENDEREÇO (28/08): saiu da conta pessoal para a organização. Este endereço fica
-# GRAVADO dentro do .exe de cada pessoa, então a ordem importa e não pode inverter: a versão
-# que muda esta linha tem de ser publicada AINDA no endereço antigo, senão quem está numa
-# versão anterior nunca fica sabendo dela. O antigo só pode ser aposentado quando todas as
-# máquinas tiverem passado por aqui — e o conserto, se errar, é reinstalar uma a uma.
-RELEASE_REPO = "Grid-Co-CODE/oem-release"
+# TROCA DE ENDEREÇO — PENDENTE, adiada em 28/08. O destino é `Grid-Co-CODE/oem-release`, que já
+# existe e é público, mas a conta que publica ainda está com acesso só de LEITURA nele (a T.I.
+# libera na segunda). Publicar a mudança antes disso mandaria as máquinas atualizadas olharem
+# para um repositório vazio: elas continuariam funcionando, mas parariam de receber versão nova.
+#
+# Quando a permissão sair, a ordem NÃO pode inverter — este endereço fica gravado dentro do .exe
+# de cada pessoa:
+#   1. publicar o espelho da versão no `oem-release` (o instalador já está em C:/GridcoBuild)
+#   2. só então trocar esta linha e publicar essa versão AINDA pelo endereço antigo
+#   3. aposentar o antigo só quando todas as máquinas tiverem passado por aqui
+# Se errar a ordem, o conserto é reinstalar máquina a máquina — não há comando remoto.
+RELEASE_REPO = "Levi-6242/os-creator-releases"
 _VERSAO_URL = f"https://github.com/{RELEASE_REPO}/releases/latest/download/versao.json"
 
 
