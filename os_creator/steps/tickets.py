@@ -18,14 +18,15 @@ from datetime import datetime
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
-                             QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy)
+                             QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
+                             QComboBox, QAbstractScrollArea)
 
 import api
 import tickets_api
 import tickets_ativo
 import tickets_calc
 import tickets_spec
-from steps.ui import CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
+from steps.ui import BG, CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
 from workers import ApiWorker, slot_seguro
 
 # perto do que a aba Ativos já usa (LIMITE_TABELA=400): Trackers tem 2.781 linhas na planilha,
@@ -206,7 +207,7 @@ def _limpar_layout(layout):
     """Esvazia um layout p/ reconstruir (mesmo padrão de steps/ativos.py::_arvore/_carregar_os):
     remover e agendar deleteLater dos widgets, senão a reconstrução sobrepõe linhas antigas.
 
-    RECURSIVO: `_pinta_filtros` põe LAYOUTS dentro do layout de estado (cada linha é um
+    RECURSIVO: `_pinta_estados` põe LAYOUTS dentro de layouts (a barra segmentada monta cada
     QHBoxLayout com chip + contagem), não só widgets soltos como as outras telas. `it.widget()`
     é None para um item que é layout, então a versão não-recursiva não destruía nada ali — o
     chip antigo ficava vivo, por baixo do novo, na mesma geometria (medido: 10 repinturas =
@@ -277,6 +278,7 @@ def _campo(ph=""):
 
 def _rotulado(rotulo, widget, dica=None, cor_dica=GREEN):
     w = QWidget()
+    w.setStyleSheet("background:%s;" % CARD)      # ver a nota do QScrollArea em _coluna_painel
     v = QVBoxLayout(w)
     v.setContentsMargins(0, 0, 0, 0)
     v.setSpacing(4)
@@ -386,23 +388,30 @@ class _Segmentado(QFrame):
         return b
 
 
-class _LinhaClicavel(QWidget):
-    """Linha de usina no filtro da esquerda: nome + contagem, clicável (mesmo padrão de
-    steps/ativos.py::_LinhaUsina). Clicar de novo na mesma usina limpa o filtro."""
-    def __init__(self, texto, contagem, selecionada, ao_clicar):
-        super().__init__()
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._ao_clicar = ao_clicar
-        h = QHBoxLayout(self)
-        h.setContentsMargins(0, 3, 0, 3)
-        h.setSpacing(8)
-        h.addWidget(_lbl(texto, GREEN if selecionada else MUTED, 12, 700 if selecionada else 400))
-        h.addStretch(1)
-        h.addWidget(_lbl(str(contagem), MUTED, 11))
-
-    def mousePressEvent(self, e):
-        if self._ao_clicar:
-            self._ao_clicar()
+# Barra de rolagem: sem isto o Qt desenha a do Windows, cinza-claro (#EFEFEF), que grita no
+# meio do navy — foi o "plano de fundo mais claro" que o Levi apontou em 30/08 depois de eu
+# ter consertado o escuro. Fina, sem setas, e só a alça visível.
+_QSS_SCROLLBAR = """
+QScrollBar:vertical{background:transparent;width:9px;margin:0;}
+QScrollBar::handle:vertical{background:%s;border-radius:4px;min-height:30px;}
+QScrollBar::handle:vertical:hover{background:%s;}
+QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;border:none;}
+QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}
+QScrollBar:horizontal{background:transparent;height:9px;margin:0;}
+QScrollBar::handle:horizontal{background:%s;border-radius:4px;min-width:30px;}
+QScrollBar::handle:horizontal:hover{background:%s;}
+QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal{width:0;border:none;}
+QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal{background:transparent;}
+QScrollBar::corner{background:transparent;}
+/* A ARMADILHA: dar setStyleSheet num widget liga o fundo estilizado nele. Sem uma regra de cor
+   para o PRÓPRIO widget, o Qt pinta o cinza padrão do sistema (#EFEFEF) — um sexto da tela ficou
+   cinza-claro no meio do navy assim que eu acrescentei o estilo das barras. Toda folha de
+   estilo aplicada num container precisa dizer a cor do container. */
+TicketsTab{background:%s;}
+QAbstractScrollArea{background:%s;}
+QTableWidget{background:%s;}
+QTableWidget QWidget{background:%s;}
+""" % (BORDER, MUTED, BORDER, MUTED, BG, CARD, CARD, CARD)
 
 
 class TicketsTab(QWidget):
@@ -421,6 +430,7 @@ class TicketsTab(QWidget):
         self._ativos_prontos = False
         self._ativos_falhou = False
         self._w = self._wa = None
+        self.setStyleSheet(_QSS_SCROLLBAR)
         self._monta()
         self._carregar()
 
@@ -432,11 +442,36 @@ class TicketsTab(QWidget):
         raiz.addLayout(self._cabecalho())
         self._tiles_box = QHBoxLayout()
         self._tiles_box.setSpacing(12)
+        # sub-layout SÓ dos segmentos: `_pinta_estados` limpa este, não a barra inteira. Antes
+        # o combo morava no mesmo layout e era DESTRUÍDO a cada repintura — ficava órfão,
+        # desalinhado e cortado pelo card de baixo.
+        self._seg_box = QHBoxLayout()
+        self._seg_box.setSpacing(0)
+        self._tiles_box.addLayout(self._seg_box)
+        self._combo_usina = QComboBox()
+        self._combo_usina.setFixedSize(250, 38)     # sem altura fixa ele estica com a barra
+        self._combo_usina.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._combo_usina.setStyleSheet(
+            "QComboBox{background:%s;border:1px solid %s;border-radius:10px;padding:8px 12px;"
+            "color:%s;font-size:12px;font-weight:700;}"
+            "QComboBox::drop-down{border:none;width:22px;}"
+            "QComboBox QAbstractItemView{background:%s;color:%s;border:1px solid %s;"
+            "selection-background-color:%s;selection-color:%s;outline:0;}"
+            % (INPUT, BORDER, TEXT, CARD, TEXT, BORDER, GREEN, GREEN_INK))
+        # ALTURA depois da folha de estilo: o QSS global do app (app.py:42) põe padding nos
+        # campos, e o padding entra na altura. setFixedSize antes do stylesheet não segura —
+        # medido: pedi 38 e o combo nasceu com 58, desalinhado dos chips ao lado.
+        self._combo_usina.setFixedHeight(38)
+        self._combo_usina.currentIndexChanged.connect(self._trocar_usina)
+        self._tiles_box.addWidget(self._combo_usina)
+        self._tiles_box.addStretch(1)
         raiz.addLayout(self._tiles_box)
 
+        # DUAS colunas desde o redesenho de 30/08 (direção "tabela protagonista"): a coluna de
+        # usinas virou um seletor na barra do topo e devolveu a largura para a tabela, que é o
+        # que a pessoa de fato lê. Antes eram três caixas disputando espaço numa tela pequena.
         corpo = QHBoxLayout()
         corpo.setSpacing(16)
-        corpo.addWidget(self._coluna_filtros())
         corpo.addWidget(self._coluna_lista(), 1)
         corpo.addWidget(self._coluna_painel())
         raiz.addLayout(corpo, 1)
@@ -472,6 +507,7 @@ class TicketsTab(QWidget):
         self._busca.setPlaceholderText("usina, skid, tracker/inversor, causa…")
         self._busca.setFixedSize(320, 36)
         self._busca.setStyleSheet("QLineEdit{%s}" % _qss_campo(TEXT))
+        self._busca.setFixedHeight(38)      # mesma razão do combo, ver acima
         self._t_busca = QTimer(self)
         self._t_busca.setSingleShot(True)
         self._t_busca.setInterval(220)
@@ -479,36 +515,6 @@ class TicketsTab(QWidget):
         self._busca.textChanged.connect(lambda *_: self._t_busca.start())
         cab.addWidget(self._busca)
         return cab
-
-    def _coluna_filtros(self):
-        # SÓ usina. O filtro de estado subiu para a barra segmentada do topo (Levi, 30/08): aqui
-        # embaixo ele dividia uma coluna de 220px com a lista de usinas, e o resultado era que
-        # NENHUMA das duas cabia — com 12 usinas + o aviso de corte + a nota da ronda, o Qt
-        # espremia as linhas abaixo da altura mínima e elas se sobrepunham, ilegíveis.
-        p = _Painel(212)
-        p.v.addWidget(_secao("USINA"))
-        # rolagem em vez de corte: a lista nunca mais comprime, e a usina que não coube fica a
-        # um scroll de distância em vez de sumir.
-        sc = QScrollArea()
-        sc.setWidgetResizable(True)
-        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # O seletor filho sozinho NÃO bastou (Levi, 30/08: "o plano de fundo está mais escuro
-        # que os demais"): abaixo de CAUSA RAIZ aparecia a cor de JANELA dentro do card. O
-        # viewport e o widget de conteúdo precisam ser pintados explicitamente — o seletor
-        # descendente não alcança os dois níveis em todos os estilos do Qt.
-        sc.setStyleSheet("QScrollArea{background:transparent;border:none;}"
-                         "QScrollArea > QWidget > QWidget{background:transparent;}")
-        sc.setFrameShape(QFrame.Shape.NoFrame)
-        sc.viewport().setStyleSheet("background:transparent;")
-        sc.viewport().setStyleSheet("background:transparent;")
-        dentro = QWidget()
-        dentro.setStyleSheet("background:transparent;")
-        self._filtro_usina_box = QVBoxLayout(dentro)
-        self._filtro_usina_box.setContentsMargins(0, 0, 6, 0)
-        self._filtro_usina_box.setSpacing(2)
-        sc.setWidget(dentro)
-        p.v.addWidget(sc, 1)
-        return p
 
     def _coluna_lista(self):
         p = _Painel()
@@ -530,26 +536,38 @@ class TicketsTab(QWidget):
         # outline:0 + item:focus (custou tempo antes): sem isso o retângulo de foco da célula
         # clicada desenha uma borda por dentro do item e espreme o texto.
         self.tab.setStyleSheet(
-            "QTableWidget{background:transparent;border:none;color:%s;font-size:12.5px;outline:0;}"
+            # CARD, não `transparent`: viewport transparente cai na cor BASE da paleta do sistema,
+            # que é CLARA (#EFEFEF) — a tabela inteira ficava cinza dentro do navy. Só aparece
+            # dentro da MainWindow, porque é ela quem instala a paleta; a tela isolada não
+            # reproduzia, e foi por isso que passou em dois testes meus.
+            "QTableWidget{background:%s;border:none;color:%s;font-size:12.5px;outline:0;}"
+            "QTableWidget QWidget{background:%s;}"
             "QHeaderView::section{background:transparent;color:%s;border:none;"
             "border-bottom:1px solid %s;padding:8px 4px;font-size:10px;font-weight:800;}"
             "QTableWidget::item{padding:9px 4px;border-bottom:1px solid rgba(42,53,80,0.4);}"
             "QTableWidget::item:focus{border:none;outline:none;}"
             "QTableWidget::item:selected{background:rgba(166,226,46,0.12);color:%s;}"
-            % (TEXT, MUTED, BORDER, TEXT))
+            % (CARD, TEXT, CARD, MUTED, BORDER, TEXT))
         self.tab.itemSelectionChanged.connect(self._sel_tabela)
         self.tab.setColumnWidth(0, 14)
         self.tab.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.tab.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        for i in (0, 2, 3, 4, 5, 6):
-            self.tab.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        # QUEM ESTICA É A CAUSA RAIZ (col. 4), não a usina. Estava ao contrário: a usina esticava
+        # e deixava um vão enorme entre a tarja e o texto, enquanto a causa raiz — que é o texto
+        # LONGO e de largura variável — pedia todo o espaço que precisasse em ResizeToContents e
+        # empurrava o painel da direita para FORA da tela. Medido em 1536px: o layout exigia
+        # 1782px e o painel ficava cortado pela borda.
+        cab = self.tab.horizontalHeader()
+        cab.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        for i in (0, 1, 2, 3, 5, 6):
+            cab.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        self.tab.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
         p.v.addWidget(self.tab, 1)
         self._rodape = _lbl("—", MUTED, 11.5)
         p.v.addWidget(self._rodape)
         return p
 
     def _coluna_painel(self):
-        p = _Painel(452)
+        p = _Painel(400)          # 452 não cabia com a tabela em 1366px de notebook
         self._p_conteudo = QWidget()
         cv = QVBoxLayout(self._p_conteudo)
         cv.setContentsMargins(0, 0, 0, 0)
@@ -557,6 +575,15 @@ class TicketsTab(QWidget):
 
         # o título da seção CARREGA o estado (Levi, 28/08) — em vez de "OCORRÊNCIA" seco e
         # repetir a informação numa caixa abaixo.
+        # O CICLO VIRA UMA FITA no topo (Levi, 30/08: "poderia ficar lá em cima em vez de ocupar
+        # espaço"). Antes era uma linha inteira de bolinhas com rótulo embaixo — uns 40px numa
+        # coluna que já não cabia. Os rótulos não fazem falta: o estado atual já está escrito no
+        # cabeçalho, ao lado de "OCORRÊNCIA".
+        self._ciclo_box = QHBoxLayout()
+        self._ciclo_box.setContentsMargins(0, 0, 0, 0)
+        self._ciclo_box.setSpacing(3)
+        cv.addLayout(self._ciclo_box)
+
         topo = QHBoxLayout()
         topo.addWidget(_secao("OCORRÊNCIA"))
         self._p_estado_topo = _lbl("", tickets_spec.COR_ESTADO["aberta"], 10, 800, esp=1.2)
@@ -564,6 +591,15 @@ class TicketsTab(QWidget):
         topo.addStretch(1)
         self._p_row = _lbl("", MUTED, 10, ital=True)
         topo.addWidget(self._p_row)
+        # o caminho de VOLTA para a visão geral. Sem ele, depois do primeiro clique numa linha a
+        # pessoa nunca mais veria o panorama — a tabela não tem como "desselecionar".
+        b_geral = QPushButton("✕ visão geral")
+        b_geral.setCursor(Qt.CursorShape.PointingHandCursor)
+        b_geral.setStyleSheet("QPushButton{background:transparent;color:%s;border:none;"
+                              "font-size:10px;font-weight:800;padding:0 0 0 10px;}"
+                              "QPushButton:hover{color:%s;}" % (MUTED, GREEN))
+        b_geral.clicked.connect(self._voltar_geral)
+        topo.addWidget(b_geral)
         cv.addLayout(topo)
 
         self._p_usina = _lbl("—", TEXT, 17, 800)
@@ -574,10 +610,6 @@ class TicketsTab(QWidget):
         self._ident_box.setSpacing(14)
         cv.addLayout(self._ident_box)
 
-        self._ciclo_box = QHBoxLayout()
-        self._ciclo_box.setContentsMargins(0, 0, 0, 0)
-        self._ciclo_box.setSpacing(0)
-        cv.addLayout(self._ciclo_box)
 
         self._p_aviso = QFrame()
         avv = QVBoxLayout(self._p_aviso)
@@ -588,14 +620,18 @@ class TicketsTab(QWidget):
         avv.addWidget(self._p_aviso_txt)
         cv.addWidget(self._p_aviso)
 
-        # scroll transparente: o QWidget interno do QScrollArea pinta a cor de janela por padrão
-        # e vira um retângulo mais claro dentro do card — o seletor filho cobre viewport E env.
+        # A COR DO CARD, EXPLÍCITA, em todos os níveis. `transparent` NÃO resolve: com folha de
+        # estilo no QFrame pai, o QWidget interno do QScrollArea acaba pintando a cor de JANELA
+        # (#0B1020), que é mais ESCURA que o card (#121A2B) — é o retângulo escuro dentro do
+        # painel que o Levi apontou três vezes. Pintar a cor certa acaba com a dúvida.
         sc = QScrollArea()
         sc.setWidgetResizable(True)
-        sc.setStyleSheet("QScrollArea{background:transparent;border:none;}"
-                         "QScrollArea > QWidget > QWidget{background:transparent;}")
+        sc.setFrameShape(QFrame.Shape.NoFrame)
+        sc.setStyleSheet("QScrollArea{background:%s;border:none;}"
+                         "QScrollArea > QWidget > QWidget{background:%s;}" % (CARD, CARD))
+        sc.viewport().setStyleSheet("background:%s;" % CARD)
         dentro = QWidget()
-        dentro.setStyleSheet("background:transparent;")
+        dentro.setStyleSheet("background:%s;" % CARD)
         v = QVBoxLayout(dentro)
         v.setContentsMargins(0, 2, 8, 0)
         v.setSpacing(13)
@@ -630,11 +666,97 @@ class TicketsTab(QWidget):
         cv.addWidget(sc, 1)
 
         p.v.addWidget(self._p_conteudo, 1)
-        self._p_hint = _lbl("selecione uma ocorrência à esquerda", MUTED, 12, ital=True)
-        self._p_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._p_hint.setWordWrap(True)
-        p.v.addWidget(self._p_hint, 1)
+
+        # SEGUNDO ESTADO do painel (redesenho de 30/08): sem linha selecionada ele não fica
+        # vazio dizendo "selecione algo" — mostra onde estão as ocorrências e por quais causas.
+        # É a pergunta que a pessoa tem ao ABRIR a tela, antes de saber em que linha clicar.
+        self._p_geral = QWidget()
+        gv = QVBoxLayout(self._p_geral)
+        gv.setContentsMargins(0, 0, 0, 0)
+        gv.setSpacing(12)
+        gv.addWidget(_secao("VISÃO GERAL"))
+        self._g_titulo = _lbl("—", TEXT, 15, 800)
+        self._g_titulo.setWordWrap(True)
+        gv.addWidget(self._g_titulo)
+        self._g_sub = _lbl("", MUTED, 11.5)
+        self._g_sub.setWordWrap(True)
+        gv.addWidget(self._g_sub)
+        gv.addWidget(_regua())
+        gv.addWidget(_secao("ONDE ESTÃO"))
+        self._g_usinas = QVBoxLayout()
+        self._g_usinas.setSpacing(5)
+        gv.addLayout(self._g_usinas)
+        gv.addWidget(_regua())
+        gv.addWidget(_secao("CAUSAS MAIS FREQUENTES"))
+        self._g_causas = QVBoxLayout()
+        self._g_causas.setSpacing(5)
+        gv.addLayout(self._g_causas)
+        gv.addStretch(1)
+        p.v.addWidget(self._p_geral, 1)
         return p
+
+    def _barra_geral(self, rot, qtd, total, cor):
+        """Linha da visão geral: nome, barrinha proporcional e contagem. A barra existe porque
+        uma lista de números sem escala não responde 'onde está concentrado' num relance."""
+        w = QWidget()
+        w.setStyleSheet("background:%s;" % CARD)
+        h = QHBoxLayout(w)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(9)
+        nome = _lbl(str(rot)[:26], TEXT, 11.5)
+        nome.setFixedWidth(150)
+        h.addWidget(nome)
+        trilho = QFrame()
+        trilho.setFixedHeight(5)
+        trilho.setStyleSheet("background:%s;border:none;border-radius:3px;" % INPUT)
+        tv = QHBoxLayout(trilho)
+        tv.setContentsMargins(0, 0, 0, 0)
+        cheio = QFrame()
+        cheio.setStyleSheet("background:%s;border:none;border-radius:3px;" % cor)
+        tv.addWidget(cheio, max(1, int(100 * qtd / max(total, 1))))
+        tv.addStretch(max(1, 100 - int(100 * qtd / max(total, 1))))
+        h.addWidget(trilho, 1)
+        n = _lbl(str(qtd), MUTED, 11)
+        n.setFixedWidth(34)
+        n.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        h.addWidget(n)
+        return w
+
+    def _pinta_geral(self):
+        """Preenche a visão geral com o que está FILTRADO agora, não com o universo — assim ela
+        responde à busca e ao seletor de usina em vez de mostrar sempre o mesmo."""
+        _limpar_layout(self._g_usinas)
+        _limpar_layout(self._g_causas)
+        todas = getattr(self, "_filtradas", self._visiveis)
+        base = [o for o in todas if o["_estado"] != "encerrada"] or todas
+        usinas, causas = {}, {}
+        for o in base:
+            u = str(o.get("Usina") or "—")
+            usinas[u] = usinas.get(u, 0) + 1
+            c = str(o.get("Causa raiz") or "").strip() or "sem causa registrada"
+            causas[c] = causas.get(c, 0) + 1
+        abertas = [o for o in todas if o["_estado"] != "encerrada"]
+        antigas = sum(1 for o in abertas if (o.get("_dias") or 0) > 30)
+        sem_os = sum(1 for o in abertas if not str(o.get("OS") or "").strip())
+        self._g_titulo.setText("%s %s em %d %s"
+                               % (f"{len(abertas):,}".replace(",", "."),
+                                  "ocorrência aberta" if len(abertas) == 1 else "ocorrências abertas",
+                                  len(usinas), "usina" if len(usinas) == 1 else "usinas"))
+        # "N sem OS" só informa quando N difere do total: nesta fase a coluna OS não existe
+        # (spec §8), então TODA aberta está sem OS e repetir o número seria ruído.
+        partes = []
+        if sem_os and sem_os != len(abertas):
+            partes.append("%d sem OS vinculada" % sem_os)
+        partes.append("%d %s há mais de 30 dias"
+                      % (antigas, "aberta" if antigas == 1 else "abertas"))
+        self._g_sub.setText(" · ".join(partes))
+        topo = max((n for _, n in usinas.items()), default=1)
+        for u, q in sorted(usinas.items(), key=lambda x: -x[1])[:7]:
+            self._g_usinas.addWidget(self._barra_geral(u, q, topo,
+                                                       tickets_spec.COR_ESTADO["aberta"]))
+        topo_c = max((n for _, n in causas.items()), default=1)
+        for c, q in sorted(causas.items(), key=lambda x: -x[1])[:6]:
+            self._g_causas.addWidget(self._barra_geral(c, q, topo_c, MUTED))
 
     # ── dados: duas cargas independentes (ocorrências guiam a tela; catálogo só enriquece o
     # painel — se ele falhar ou demorar, a lista principal continua útil) ──────────────────
@@ -754,8 +876,14 @@ class TicketsTab(QWidget):
     # ver o comentário de _trocar_aba: mesma exposição — clique direto do usuário sem rede de
     # segurança contra exceção.
     @slot_seguro
-    def _clicar_usina(self, usina):
-        self._usina_filtro = "" if self._usina_filtro == usina else usina
+    @slot_seguro
+    def _voltar_geral(self):
+        self.tab.clearSelection()
+        self._selecionar(None)
+
+    @slot_seguro
+    def _trocar_usina(self, *_):
+        self._usina_filtro = self._combo_usina.currentData() or ""
         self._repintar()
 
     # ── repintura ────────────────────────────────────────────────────────────────────────
@@ -786,19 +914,21 @@ class TicketsTab(QWidget):
 
         filtradas = ordenar_ocorrencias([o for o in self._ocs if _passa(o)])
         total = len(filtradas)
+        # a TABELA corta em 400 por desempenho, mas a visão geral conta o filtro INTEIRO —
+        # senão ela diria "400 ocorrências" para sempre, que é o teto da tabela e não o dado.
+        self._filtradas = filtradas
         self._visiveis = filtradas[:_LIMITE_TABELA]
 
         self._pinta_estados()
-        self._pinta_filtros()
         self._pinta_tabela(rotulo_extra, valor_extra)
         extra = total - _LIMITE_TABELA
         self._rodape.setText("%s ocorrências" % f"{total:,}".replace(",", ".")
                              + (" · mostrando as %d primeiras, refine a busca" % _LIMITE_TABELA
                                 if extra > 0 else ""))
-        if self._visiveis:
-            self.tab.selectRow(0)          # dispara _sel_tabela → popula o painel
-        else:
-            self._selecionar(None)
+        # NÃO auto-seleciona mais (redesenho de 30/08): a visão geral é o primeiro estado do
+        # painel, e ela responde "onde estão as abertas" antes de a pessoa saber em que clicar.
+        self.tab.clearSelection()
+        self._selecionar(None)
 
     def _pinta_estados(self):
         """A barra segmentada do topo: filtro de estado E contagem, num controle só.
@@ -807,7 +937,7 @@ class TicketsTab(QWidget):
         da esquerda, uma pilha de pílulas para filtrar por estado. Os números eram os mesmos e a
         pilha comia a altura que a lista de usinas precisava (Levi, 30/08). Fundidos aqui, logo
         depois dos botões de Trackers/Strings, que é onde ele pediu."""
-        _limpar_layout(self._tiles_box)
+        _limpar_layout(self._seg_box)
         itens = []
         for k, rotulo, cor in tickets_spec.ESTADOS:
             qtd = sum(1 for o in self._ocs if o["_estado"] == k)
@@ -822,29 +952,24 @@ class TicketsTab(QWidget):
                       if o["_estado"] != "encerrada" and (o.get("_dias") or 0) > 30)
         itens.append(("+30d", "Abertas há +30 dias", tickets_spec.COR_ESTADO["aberta"],
                       antigas, "+30d" in self._estados_filtro))
-        self._tiles_box.addWidget(_Segmentado(itens, self._chip_estado))
-        self._tiles_box.addStretch(1)
+        self._seg_box.addWidget(_Segmentado(itens, self._chip_estado))
+        self._pinta_seletor_usina()
 
-    def _pinta_filtros(self):
-        _limpar_layout(self._filtro_usina_box)
+    def _pinta_seletor_usina(self):
+        """A usina saiu da coluna e virou seletor aqui: 63 opções não cabiam numa lista fixa, e
+        a coluna que as segurava comia a largura da tabela."""
         cont = {}
         for o in self._ocs:
-            u = o.get("Usina") or "—"
+            u = str(o.get("Usina") or "—")
             cont[u] = cont.get(u, 0) + 1
-        usinas_por_volume = sorted(cont.items(), key=lambda x: -x[1])
-        # TODAS as usinas: a coluna rola desde 30/08, então não há mais motivo para cortar.
-        # O corte antigo (12) existia porque a lista dividia altura com o filtro de estado e
-        # nem cabia — e cortar sem avisar fazia uma usina que ficou de fora parecer inexistente.
-        for u, n in usinas_por_volume:
-            self._filtro_usina_box.addWidget(
-                _LinhaClicavel(str(u)[:22], n, u == self._usina_filtro,
-                              lambda usi=u: self._clicar_usina(usi)))
-        # mesmo tratamento que o rodapé da tabela já dá pro corte de _LIMITE_TABELA: cortar a
-        # lista SEM avisar faz uma usina que ficou de fora parecer que não existe. Medido em
-        # 29/08: Trackers tem 63 usinas e só as top-N cabem aqui — a maioria não aparecia, em
-        # silêncio. O corte é só da LISTA; a busca do cabeçalho filtra sobre `self._ocs`
-        # inteiro, então ela alcança as que não estão desenhadas.
-
+        self._combo_usina.blockSignals(True)
+        self._combo_usina.clear()
+        self._combo_usina.addItem("Todas as %d usinas" % len(cont), "")
+        for u, qtd in sorted(cont.items(), key=lambda x: -x[1]):
+            self._combo_usina.addItem("%s   %d" % (u[:28], qtd), u)
+        i = self._combo_usina.findData(self._usina_filtro)
+        self._combo_usina.setCurrentIndex(i if i >= 0 else 0)
+        self._combo_usina.blockSignals(False)
 
     def _pinta_tabela(self, rotulo_extra, valor_extra):
         self.tab.setHorizontalHeaderLabels(["", "Usina", rotulo_extra, "OS", "Causa raiz",
@@ -930,10 +1055,11 @@ class TicketsTab(QWidget):
         self._sel = oc
         if oc is None:
             self._p_conteudo.setVisible(False)
-            self._p_hint.setVisible(True)
+            self._pinta_geral()
+            self._p_geral.setVisible(True)
             return
         self._p_conteudo.setVisible(True)
-        self._p_hint.setVisible(False)
+        self._p_geral.setVisible(False)
 
         estado = oc["_estado"]
         cor = tickets_spec.COR_ESTADO.get(estado, MUTED)
@@ -1018,6 +1144,7 @@ class TicketsTab(QWidget):
             c.addWidget(_lbl(rot, MUTED, 9, 800, esp=1.1))
             c.addWidget(_lbl(val, cor_v, 12.5, 400 if ital else 700, ital=ital))
             w = QWidget()
+            w.setStyleSheet("background:%s;" % CARD)
             w.setLayout(c)
             self._ident_box.addWidget(w)
         self._ident_box.addStretch(1)
@@ -1030,27 +1157,14 @@ class TicketsTab(QWidget):
         chaves = [k for k, _, _ in tickets_spec.ESTADOS]
         idx_atual = chaves.index(estado) if estado in chaves else 0
         for i, (k, nome, cor) in enumerate(tickets_spec.ESTADOS):
-            passou, agora = i < idx_atual, i == idx_atual
-            c = cor if (passou or agora) else BORDER
-            col = QVBoxLayout()
-            col.setSpacing(4)
-            col.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            ponto = QLabel("●" if (passou or agora) else "○")
-            ponto.setStyleSheet("color:%s;font-size:%spx;background:transparent;border:none;"
-                                % (c, 14 if agora else 10))
-            ponto.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            col.addWidget(ponto)
-            col.addWidget(_lbl(nome, c if agora else MUTED, 8.5, 800 if agora else 600))
-            w = QWidget()
-            w.setLayout(col)
-            self._ciclo_box.addWidget(w)
-            if i < len(tickets_spec.ESTADOS) - 1:
-                tr = QFrame()
-                tr.setFixedHeight(2)
-                tr.setStyleSheet("background:%s;border:none;margin-bottom:13px;"
-                                 % (cor if passou else BORDER))
-                self._ciclo_box.addWidget(tr, 1)
-
+            seg = QFrame()
+            seg.setFixedHeight(4)
+            # até a etapa atual, colorido; daí em diante, o cinza da borda. A leitura é de
+            # progresso, e o nome do estado já vem escrito logo abaixo, no cabeçalho.
+            seg.setStyleSheet("background:%s;border:none;border-radius:2px;"
+                              % (cor if i <= idx_atual else BORDER))
+            seg.setToolTip(nome)
+            self._ciclo_box.addWidget(seg, 1)
     def reiniciar(self):
         """Entrar de novo = filtros limpos (mesmo padrão de AtivosTab). Os dados já carregados
         continuam — reabrir a aba não bate na API de novo."""
