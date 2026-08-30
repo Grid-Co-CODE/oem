@@ -32,7 +32,6 @@ from workers import ApiWorker, slot_seguro
 # e desenhar todas de uma vez é custo de layout sem ganho — quem quer uma usina específica usa
 # a busca ou o filtro de usina à esquerda.
 _LIMITE_TABELA = 400
-_LIMITE_USINAS_FILTRO = 12
 
 # ordem dos estados na lista: quem precisa de gente primeiro. `a_fechar` vem junto de `com_os`
 # porque é a mesma espera — a diferença é só de quem depende.
@@ -833,7 +832,10 @@ class TicketsTab(QWidget):
             u = o.get("Usina") or "—"
             cont[u] = cont.get(u, 0) + 1
         usinas_por_volume = sorted(cont.items(), key=lambda x: -x[1])
-        for u, n in usinas_por_volume[:_LIMITE_USINAS_FILTRO]:
+        # TODAS as usinas: a coluna rola desde 30/08, então não há mais motivo para cortar.
+        # O corte antigo (12) existia porque a lista dividia altura com o filtro de estado e
+        # nem cabia — e cortar sem avisar fazia uma usina que ficou de fora parecer inexistente.
+        for u, n in usinas_por_volume:
             self._filtro_usina_box.addWidget(
                 _LinhaClicavel(str(u)[:22], n, u == self._usina_filtro,
                               lambda usi=u: self._clicar_usina(usi)))
@@ -842,21 +844,7 @@ class TicketsTab(QWidget):
         # 29/08: Trackers tem 63 usinas e só as top-N cabem aqui — a maioria não aparecia, em
         # silêncio. O corte é só da LISTA; a busca do cabeçalho filtra sobre `self._ocs`
         # inteiro, então ela alcança as que não estão desenhadas.
-        resto = len(usinas_por_volume) - _LIMITE_USINAS_FILTRO
-        if resto > 0:
-            txt = ("+ 1 usina não mostrada" if resto == 1 else "+ %d usinas não mostradas" % resto)
-            aviso = _lbl(txt + " — a busca no topo alcança todas", MUTED, 10.5, ital=True)
-            aviso.setWordWrap(True)
-            self._filtro_usina_box.addWidget(aviso)
 
-        if self._aba == "Trackers":
-            self._nota_ronda.setText(
-                "A ronda do WhatsApp lê Status=Parado com Fim vazio, direto da planilha. Esta "
-                "tela ainda não grava nada (fase 1) — o vínculo com a OS chega numa fase futura.")
-        else:
-            self._nota_ronda.setText(
-                "Aba só de leitura nesta fase: nada aqui é gravado. A coluna OS e a escrita "
-                "chegam numa fase futura (spec §8).")
 
     def _pinta_tabela(self, rotulo_extra, valor_extra):
         self.tab.setHorizontalHeaderLabels(["", "Usina", rotulo_extra, "OS", "Causa raiz",
