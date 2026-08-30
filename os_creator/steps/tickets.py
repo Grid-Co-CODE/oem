@@ -172,6 +172,34 @@ def _achar_inversor(nome, usina_ticket, todos):
             if alvo_n and sn and alvo_n != sn:
                 continue
             return a
+
+    # ÚLTIMO RECURSO — o catálogo manda, o número do ticket vira ÍNDICE (Levi, 30/08:
+    # "o que os tickets pedem é só abrir o leque de opções de acordo com o Fracttal").
+    #
+    # Caso real: o MTS200 tem 40 inversores cadastrados, bloco 1 numerado 1.1..1.20 e bloco 2
+    # numerado 2.21..2.40 — em sequência global, em vez de reiniciar em 1 como todas as outras
+    # usinas fazem. Os tickets pedem 2.2..2.19 e nenhum casa, então 33 ocorrências ficavam sem
+    # SKID nem cabine. Aqui o "2.5" do ticket passa a significar "o 5º inversor do bloco 2 no
+    # catálogo", que no MTS200 é o 2.25.
+    #
+    # NÃO É SILENCIOSO de propósito: o painel mostra o nome do ativo que foi resolvido, então o
+    # analista vê "Inversor 2.25" para um ticket que dizia 2.5 e percebe o descompasso. E só
+    # entra depois que o número exato falhou — usina bem cadastrada nunca passa por aqui.
+    #
+    # ATENÇÃO A QUEM FOR MEXER: se um dia alguém renumerar o bloco 2 do MTS200 no Fracttal para
+    # 2.1..2.20, o casamento exato volta a funcionar e este trecho para de ser exercitado
+    # sozinho. Ele não precisa ser removido, mas deixa de ser necessário.
+    partes = str(alvo_n).split(".")
+    if len(partes) == 2 and all(x.isdigit() for x in partes):
+        bloco, indice = partes[0], int(partes[1])
+        do_bloco = []
+        for a in candidatos:
+            n = str(_numero(api._asset_short_name(a))).split(".")
+            if len(n) == 2 and n[0] == bloco and n[1].isdigit():
+                do_bloco.append((int(n[1]), a))
+        do_bloco.sort()
+        if 1 <= indice <= len(do_bloco):
+            return do_bloco[indice - 1][1]
     return None
 
 
@@ -310,6 +338,55 @@ class _Tile(QFrame):
             v.addWidget(d)
 
 
+class _Segmentado(QFrame):
+    """Barra de segmentos: um bloco só, com divisórias finas, em vez de N pílulas soltas.
+
+    Levi, 30/08: "esse filtro de estado é feio demais, esse cabeçalho arredondado é feio demais".
+    As pílulas (`border-radius:999px`) empilhadas na coluna da esquerda gastavam altura, cada uma
+    com contorno próprio, e o conjunto lia como uma lista de botões em vez de um controle. Aqui é
+    um controle: o segmento ativo se marca por preenchimento suave mais um filete no topo, não
+    por contorno, e a contagem viaja junto do rótulo — o que dispensou a faixa de tiles que ficava
+    logo acima repetindo os mesmos números."""
+
+    def __init__(self, itens, ao_clicar):
+        # itens: [(chave, rótulo, cor, contagem, ligado)]
+        super().__init__()
+        self.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:10px;}"
+                           % (INPUT, BORDER))
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(0)
+        for i, (chave, rotulo, cor, n, ligado) in enumerate(itens):
+            if i:
+                div = QFrame()
+                div.setFixedWidth(1)
+                div.setStyleSheet("background:%s;border:none;" % BORDER)
+                h.addWidget(div)
+            h.addWidget(self._segmento(chave, rotulo, cor, n, ligado, ao_clicar,
+                                       primeiro=(i == 0), ultimo=(i == len(itens) - 1)))
+
+    def _segmento(self, chave, rotulo, cor, n, ligado, ao_clicar, primeiro, ultimo):
+        b = QPushButton()
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setCheckable(True)
+        b.setChecked(ligado)
+        b.setText("%s   %s" % (rotulo, n))
+        # cantos só nas pontas, para o conjunto ler como UM bloco
+        e = "10px" if primeiro else "0"
+        d = "10px" if ultimo else "0"
+        b.setStyleSheet(
+            "QPushButton{color:%s;background:transparent;border:none;"
+            "border-top:2px solid transparent;"
+            "border-top-left-radius:%s;border-bottom-left-radius:%s;"
+            "border-top-right-radius:%s;border-bottom-right-radius:%s;"
+            "padding:9px 16px;font-size:12px;font-weight:700;text-align:center;}"
+            "QPushButton:hover{color:%s;}"
+            "QPushButton:checked{color:%s;background:%s;border-top:2px solid %s;}"
+            % (MUTED, e, e, d, d, TEXT, cor, _rgba(cor, 0.13), cor))
+        b.clicked.connect(lambda _c=False, k=chave: ao_clicar(k))
+        return b
+
+
 class _LinhaClicavel(QWidget):
     """Linha de usina no filtro da esquerda: nome + contagem, clicável (mesmo padrão de
     steps/ativos.py::_LinhaUsina). Clicar de novo na mesma usina limpa o filtro."""
@@ -405,21 +482,33 @@ class TicketsTab(QWidget):
         return cab
 
     def _coluna_filtros(self):
-        p = _Painel(220)
-        p.v.addWidget(_secao("ESTADO"))
-        self._filtro_estado_box = QVBoxLayout()
-        self._filtro_estado_box.setSpacing(6)
-        p.v.addLayout(self._filtro_estado_box)
-        p.v.addWidget(_regua())
+        # SÓ usina. O filtro de estado subiu para a barra segmentada do topo (Levi, 30/08): aqui
+        # embaixo ele dividia uma coluna de 220px com a lista de usinas, e o resultado era que
+        # NENHUMA das duas cabia — com 12 usinas + o aviso de corte + a nota da ronda, o Qt
+        # espremia as linhas abaixo da altura mínima e elas se sobrepunham, ilegíveis.
+        p = _Painel(212)
         p.v.addWidget(_secao("USINA"))
-        self._filtro_usina_box = QVBoxLayout()
+        # rolagem em vez de corte: a lista nunca mais comprime, e a usina que não coube fica a
+        # um scroll de distância em vez de sumir.
+        sc = QScrollArea()
+        sc.setWidgetResizable(True)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # O seletor filho sozinho NÃO bastou (Levi, 30/08: "o plano de fundo está mais escuro
+        # que os demais"): abaixo de CAUSA RAIZ aparecia a cor de JANELA dentro do card. O
+        # viewport e o widget de conteúdo precisam ser pintados explicitamente — o seletor
+        # descendente não alcança os dois níveis em todos os estilos do Qt.
+        sc.setStyleSheet("QScrollArea{background:transparent;border:none;}"
+                         "QScrollArea > QWidget > QWidget{background:transparent;}")
+        sc.setFrameShape(QFrame.Shape.NoFrame)
+        sc.viewport().setStyleSheet("background:transparent;")
+        sc.viewport().setStyleSheet("background:transparent;")
+        dentro = QWidget()
+        dentro.setStyleSheet("background:transparent;")
+        self._filtro_usina_box = QVBoxLayout(dentro)
+        self._filtro_usina_box.setContentsMargins(0, 0, 6, 0)
         self._filtro_usina_box.setSpacing(2)
-        p.v.addLayout(self._filtro_usina_box)
-        p.v.addStretch(1)
-        p.v.addWidget(_regua())
-        self._nota_ronda = _lbl("", MUTED, 10, ital=True)
-        self._nota_ronda.setWordWrap(True)
-        p.v.addWidget(self._nota_ronda)
+        sc.setWidget(dentro)
+        p.v.addWidget(sc, 1)
         return p
 
     def _coluna_lista(self):
@@ -451,6 +540,7 @@ class TicketsTab(QWidget):
             % (TEXT, MUTED, BORDER, TEXT))
         self.tab.itemSelectionChanged.connect(self._sel_tabela)
         self.tab.setColumnWidth(0, 14)
+        self.tab.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.tab.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         for i in (0, 2, 3, 4, 5, 6):
             self.tab.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
@@ -506,6 +596,7 @@ class TicketsTab(QWidget):
         sc.setStyleSheet("QScrollArea{background:transparent;border:none;}"
                          "QScrollArea > QWidget > QWidget{background:transparent;}")
         dentro = QWidget()
+        dentro.setStyleSheet("background:transparent;")
         v = QVBoxLayout(dentro)
         v.setContentsMargins(0, 2, 8, 0)
         v.setSpacing(13)
@@ -678,7 +769,13 @@ class TicketsTab(QWidget):
         rotulo_extra, valor_extra = _EXTRA_COL[self._aba]
 
         def _passa(oc):
-            if self._estados_filtro and oc["_estado"] not in self._estados_filtro:
+            # "+30d" não é estado: é o recorte de aberta há mais de 30 dias, o mesmo alarme
+            # vermelho da coluna Dias, oferecido como filtro na barra do topo.
+            if "+30d" in self._estados_filtro:
+                if oc["_estado"] == "encerrada" or (oc.get("_dias") or 0) <= 30:
+                    return False
+            estados_reais = self._estados_filtro - {"+30d"}
+            if estados_reais and oc["_estado"] not in estados_reais:
                 return False
             if self._usina_filtro and oc.get("Usina") != self._usina_filtro:
                 return False
@@ -692,7 +789,7 @@ class TicketsTab(QWidget):
         total = len(filtradas)
         self._visiveis = filtradas[:_LIMITE_TABELA]
 
-        self._pinta_tiles()
+        self._pinta_estados()
         self._pinta_filtros()
         self._pinta_tabela(rotulo_extra, valor_extra)
         extra = total - _LIMITE_TABELA
@@ -704,41 +801,32 @@ class TicketsTab(QWidget):
         else:
             self._selecionar(None)
 
-    def _pinta_tiles(self):
-        _limpar_layout(self._tiles_box)
-        abertas = [o for o in self._ocs if o["_estado"] != "encerrada"]
-        encerradas = [o for o in self._ocs if o["_estado"] == "encerrada"]
-        # mesma régua do alarme vermelho da coluna 'Dias' na tabela (_pinta_tabela): só conta
-        # pra quem ainda está aberta, senão a régua mediria a DURAÇÃO de um caso já resolvido
-        # como se fosse atraso de hoje.
-        antigas = [o for o in abertas if o.get("_dias") is not None and o["_dias"] > 30]
+    def _pinta_estados(self):
+        """A barra segmentada do topo: filtro de estado E contagem, num controle só.
 
-        # SÓ 3 tiles nesta fase (Levi, revisão de 29/08). Antes eram 4: 'Em aberto' e 'Sem OS'
-        # mostravam O MESMO CONJUNTO com rótulos diferentes — a coluna OS não existe (spec §8),
-        # então toda ocorrência não-encerrada é 'aberta' E 'sem OS' ao mesmo tempo, sempre com
-        # o mesmo número. 'Com OS' e 'Em verificação' mostravam ZERO fixo, e zero em "Em
-        # verificação" lê como "nada pendente de conferência" quando na verdade o conceito
-        # ainda não existe — um zero mentiroso é pior que a métrica ausente. Os dois tiles de OS
-        # voltam na fase 2, quando a coluna existir de verdade; não é esquecimento.
-        self._tiles_box.addWidget(_Tile(len(abertas), "Em aberto", GREEN, "o conjunto de trabalho"))
-        self._tiles_box.addWidget(_Tile(len(encerradas), "Encerradas",
-                                        tickets_spec.COR_ESTADO["encerrada"], "já com Fim registrado"))
-        self._tiles_box.addWidget(_Tile(len(antigas), "Abertas há mais de 30 dias",
-                                        tickets_spec.COR_ESTADO["aberta"],
-                                        "mesmo alarme vermelho da coluna Dias"))
+        Antes eram DUAS coisas dizendo o mesmo: uma faixa de tiles com os números e, na coluna
+        da esquerda, uma pilha de pílulas para filtrar por estado. Os números eram os mesmos e a
+        pilha comia a altura que a lista de usinas precisava (Levi, 30/08). Fundidos aqui, logo
+        depois dos botões de Trackers/Strings, que é onde ele pediu."""
+        _limpar_layout(self._tiles_box)
+        itens = []
+        for k, rotulo, cor in tickets_spec.ESTADOS:
+            qtd = sum(1 for o in self._ocs if o["_estado"] == k)
+            # nesta fase os 3 estados do meio dependem da coluna OS, que não existe (spec §8):
+            # dariam zero fixo para sempre. Zero em "Em verificação" lê como "nada pendente de
+            # conferência", que é mentira — o conceito é que ainda não existe. Some até a fase 2.
+            if qtd == 0 and k in ("com_os", "verificando", "a_fechar"):
+                continue
+            itens.append((k, rotulo, cor, qtd, k in self._estados_filtro))
+        # o alarme que a coluna Dias já pinta de vermelho, disponível como filtro
+        antigas = sum(1 for o in self._ocs
+                      if o["_estado"] != "encerrada" and (o.get("_dias") or 0) > 30)
+        itens.append(("+30d", "Abertas há +30 dias", tickets_spec.COR_ESTADO["aberta"],
+                      antigas, "+30d" in self._estados_filtro))
+        self._tiles_box.addWidget(_Segmentado(itens, self._chip_estado))
+        self._tiles_box.addStretch(1)
 
     def _pinta_filtros(self):
-        _limpar_layout(self._filtro_estado_box)
-        for k, nome, cor in tickets_spec.ESTADOS:
-            n = sum(1 for o in self._ocs if o["_estado"] == k)
-            linha = QHBoxLayout()
-            linha.setSpacing(8)
-            linha.addWidget(_Chip(nome, k in self._estados_filtro, cor,
-                                  ao_clicar=lambda ch=k: self._chip_estado(ch)))
-            linha.addStretch(1)
-            linha.addWidget(_lbl(str(n), MUTED, 11.5))
-            self._filtro_estado_box.addLayout(linha)
-
         _limpar_layout(self._filtro_usina_box)
         cont = {}
         for o in self._ocs:
@@ -831,6 +919,13 @@ class TicketsTab(QWidget):
             for c, (v, cr) in enumerate(zip(vals, cores), start=1):
                 it = QTableWidgetItem(str(v))
                 it.setForeground(_cor(cr))
+                # tudo centralizado menos a Causa raiz (Levi, 30/08): ela é a única coluna de
+                # texto corrido e de largura variável — centralizar faria cada linha começar
+                # num ponto diferente, e o olho perde a coluna ao descer a lista.
+                if c != 4:
+                    it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                else:
+                    it.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 if c == 4 and causa_txt != causa_completa:      # causa raiz truncada: o resto no hover
                     it.setToolTip(causa_completa)
                 self.tab.setItem(r, c, it)
