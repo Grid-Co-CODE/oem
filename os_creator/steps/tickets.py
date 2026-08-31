@@ -802,10 +802,13 @@ class TicketsTab(QWidget):
         self._b_salvar = QPushButton("Salvar")
         self._b_salvar.setCursor(Qt.CursorShape.PointingHandCursor)
         self._b_salvar.setFixedHeight(_ALTURA_BARRA)
+        # min-height E max-height, os dois: com `min-height:0` o layout do painel espremia o
+        # botão para 16px quando a coluna ficava apertada (medido em 31/08).
         self._b_salvar.setStyleSheet(
             "QPushButton{background:%s;color:%s;border:none;border-radius:9px;"
-            "padding:0px 18px;min-height:0px;font-size:12px;font-weight:800;}"
-            "QPushButton:disabled{background:%s;color:%s;}" % (GREEN, GREEN_INK, INPUT, MUTED))
+            "padding:0px 18px;min-height:%dpx;max-height:%dpx;font-size:12px;font-weight:800;}"
+            "QPushButton:disabled{background:%s;color:%s;}"
+            % (GREEN, GREEN_INK, _ALTURA_BARRA, _ALTURA_BARRA, INPUT, MUTED))
         self._b_salvar.clicked.connect(self._salvar)
         acao.addWidget(self._b_salvar)
         v.addLayout(acao)
@@ -1143,7 +1146,14 @@ class TicketsTab(QWidget):
             oc.update(self._digitado())
             self._sujo = False
             self._recalcular(oc)
-            self._aviso_edicao("salvo", GREEN)
+            # "salvo" seco seria meia verdade enquanto o pipeline ainda sobe esta aba: gravou
+            # sim, e um sync pode desfazer. Quem digitou tem de saber disso na hora — é a
+            # diferença entre um dado que voltou atrás e um dado que sumiu sem explicação.
+            if sheet_id in tickets_escrita.SHEETS_QUE_O_SYNC_SOBRESCREVE:
+                self._aviso_edicao("salvo — a planilha do OneDrive ainda pode desfazer no "
+                                   "próximo sync", tickets_spec.COR_ESTADO["verificando"])
+            else:
+                self._aviso_edicao("salvo", GREEN)
             self._repintar()
 
     def _recalcular(self, oc):

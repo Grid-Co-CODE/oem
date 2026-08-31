@@ -4,11 +4,14 @@ SEPARADO da leitura (`tickets_api.py`) de propósito. A leitura é aberta e roda
 escrita exige credencial e só acontece por ação explícita. Deixar as duas no mesmo módulo faria
 um `import` inocente carregar o token.
 
-ONDE ISTO PODE ESCREVER — e por quê a restrição existe. Enquanto o pipeline de coleta subir o
-`Tickets de Performance.xlsx` com `replace=true`, tudo que gravarmos numa aba que ele alimenta é
-apagado no sync seguinte, em silêncio. Por isso `SHEETS_LIBERADAS` começa apontando para a aba de
-TESTE: a produção só entra depois do corte no pipeline, e o corte só acontece depois de avisar
-quem edita a planilha (Levi Maia, Gabriela Dias, Roger Lélis e Ana Patrícia).
+ONDE ISTO PODE ESCREVER. Enquanto o pipeline de coleta subir o `Tickets de Performance.xlsx` com
+`replace=true`, o que gravarmos numa aba que ele alimenta pode ser apagado no sync seguinte. A
+lista `SHEETS_LIBERADAS` era só a aba de teste por causa disso.
+
+**Levi liberou a produção em 31/08**, sabendo do risco: "deixe gravando por hora mesmo que suba
+com o sync". Ele pretende matar o sync ou criar a cópia no banco. Enquanto isso, quem grava é
+avisado NA TELA de que a planilha ainda pode sobrescrever — o combinado é conviver com o sync,
+não fingir que ele não existe.
 
 Gravar numa aba fora dessa lista levanta erro em vez de tentar. É trava de código, não lembrete.
 """
@@ -21,9 +24,16 @@ BASE = "https://app.gridco.com.br/db_performace"
 TIMEOUT = 30
 
 # sheet_id → apelido. Só o que estiver aqui aceita escrita.
-#   374 = zz_teste_claude_apagar / FASE2_Trackers  (23 colunas de Trackers + "Nº OS")
-# Produção (123 Trackers, 128 Strings) entra AQUI quando o pipeline parar de subir essas abas.
-SHEETS_LIBERADAS = {374: "teste/FASE2_Trackers"}
+SHEETS_LIBERADAS = {
+    374: "teste/FASE2_Trackers",          # zz_teste_claude_apagar, descartável
+    123: "tickets_performance/Trackers",       # liberada pelo Levi em 31/08
+    128: "tickets_performance/Strings indisp",  # idem
+}
+
+# As abas que o pipeline AINDA sobrescreve. Não bloqueiam a escrita — avisam. A tela usa isto
+# para dizer, depois de gravar, que a planilha do OneDrive pode desfazer no próximo sync.
+# Esvaziar este conjunto é o que acontece quando o corte (ou a cópia no banco) chegar.
+SHEETS_QUE_O_SYNC_SOBRESCREVE = {123, 128}
 
 COL_OS = "Nº OS"          # a coluna nova da fase 2; não existe nas abas de produção ainda
 
@@ -39,25 +49,73 @@ class ConflitoDeEdicao(RuntimeError):
         super().__init__("a linha mudou desde que a tela carregou: %s" % ", ".join(campos))
 
 
-def _token() -> str:
-    """Lê o GRIDCO_SQL_TOKEN do tokens.txt da raiz do repositório, ou do ambiente.
+SERVICO_COFRE = "CriarOS-Fracttal"          # mesmo serviço que o app já usa para o JWT
+ARQ_TOKEN = "gridco_sql_token.txt"          # em %APPDATA%/CriarOS-Fracttal
 
-    O arquivo é o mesmo que a T.I. edita; nunca vai para o git. Sem token, a escrita nem tenta —
-    a API devolveria 401 e o erro chegaria à pessoa como falha genérica de rede."""
+
+def _pasta_usuario() -> str:
+    base = (os.environ.get("APPDATA") or os.environ.get("XDG_DATA_HOME")
+            or os.path.expanduser("~"))
+    return os.path.join(base, SERVICO_COFRE)
+
+
+def guardar_token(valor: str) -> str:
+    """Guarda o token da máquina. Cofre do SO quando existir; senão, arquivo na pasta do
+    usuário. Devolve onde guardou, para a tela poder dizer."""
+    valor = (valor or "").strip()
+    try:
+        import keyring
+        keyring.set_password(SERVICO_COFRE, "gridco_sql_token", valor)
+        return "cofre do Windows"
+    except Exception:
+        pass
+    pasta = _pasta_usuario()
+    os.makedirs(pasta, exist_ok=True)
+    caminho = os.path.join(pasta, ARQ_TOKEN)
+    with io.open(caminho, "w", encoding="utf-8") as f:
+        f.write(valor + "\n")
+    return caminho
+
+
+def _token() -> str:
+    """O GRIDCO_SQL_TOKEN desta máquina.
+
+    NÃO vai embutido no .exe, de propósito: esse token dá escrita no banco INTEIRO — os três
+    workbooks, não só os tickets — e um segredo dentro de um binário distribuído para várias
+    pessoas é um segredo que vaza. Então a ordem é: ambiente (dev) → cofre do SO → arquivo na
+    pasta do usuário → tokens.txt do repositório (só existe na máquina de desenvolvimento).
+
+    Sem token a escrita nem tenta: a API responderia 401 e a pessoa leria "falha de rede"."""
     v = os.environ.get("GRIDCO_SQL_TOKEN", "").strip()
     if v:
         return v
+    try:
+        import keyring
+        v = (keyring.get_password(SERVICO_COFRE, "gridco_sql_token") or "").strip()
+        if v:
+            return v
+    except Exception:
+        pass
     aqui = os.path.dirname(os.path.abspath(__file__))
-    for cand in (os.path.join(aqui, "tokens.txt"),
-                 os.path.join(os.path.dirname(aqui), "tokens.txt"),
-                 os.path.join(os.path.dirname(os.path.dirname(aqui)), "tokens.txt")):
+    caminhos = [os.path.join(_pasta_usuario(), ARQ_TOKEN),
+                os.path.join(aqui, "tokens.txt"),
+                os.path.join(os.path.dirname(aqui), "tokens.txt"),
+                os.path.join(os.path.dirname(os.path.dirname(aqui)), "tokens.txt")]
+    for cand in caminhos:
         try:
             with io.open(cand, encoding="utf-8", errors="replace") as f:
-                for linha in f:
-                    if linha.strip().upper().startswith("GRIDCO_SQL_TOKEN"):
-                        return linha.split("=", 1)[1].strip().strip('"').strip("'")
+                conteudo = f.read()
         except OSError:
             continue
+        # o arquivo da pasta do usuário guarda só o token; o tokens.txt é CHAVE=valor
+        if cand.endswith(ARQ_TOKEN):
+            v = conteudo.strip()
+            if v:
+                return v
+            continue
+        for linha in conteudo.splitlines():
+            if linha.strip().upper().startswith("GRIDCO_SQL_TOKEN"):
+                return linha.split("=", 1)[1].strip().strip('"').strip("'")
     return ""
 
 
@@ -65,8 +123,9 @@ def _cabecalho():
     tok = _token()
     if not tok:
         raise EscritaBloqueada(
-            "GRIDCO_SQL_TOKEN não encontrado — a escrita precisa dele. "
-            "Ele fica no tokens.txt da raiz do repositório.")
+            "esta máquina não tem a credencial de escrita do banco — sem ela dá para ler os "
+            "tickets, mas não para gravar. Peça o GRIDCO_SQL_TOKEN ao Levi e guarde-o em %s."
+            % os.path.join(_pasta_usuario(), ARQ_TOKEN))
     return {"Authorization": "Bearer " + tok, "Content-Type": "application/json"}
 
 
@@ -89,19 +148,57 @@ def para_valores(dados: dict, headers: list) -> list:
     return out
 
 
-def ler_linha(sheet_id: int, row_number: int, buscar=None) -> dict:
-    """A linha como {coluna: valor}, direto do banco. É a releitura que antecede o salvar."""
-    if buscar is not None:
-        return buscar(sheet_id, row_number)
-    r = requests.get("%s/api/sheets/%s/rows/%s" % (BASE, sheet_id, row_number), timeout=TIMEOUT)
+_PRIMEIRA = {}          # sheet_id → row_number da primeira linha (a aba não começa na 1)
+
+
+def _pagina(sheet_id: int, offset: int, limit: int) -> list:
+    r = requests.get("%s/api/sheets/%s/rows" % (BASE, sheet_id),
+                     params={"offset": offset, "limit": limit}, timeout=TIMEOUT)
     r.raise_for_status()
     d = r.json()
-    if isinstance(d, list):
-        d = d[0] if d else {}
-    headers = d.get("headers") or []
-    valores = d.get("values") or []
+    return (d.get("rows") if isinstance(d, dict) else d) or []
+
+
+def _linha_para_dict(r: dict) -> dict:
+    headers = r.get("headers") or []
+    valores = r.get("values") or []
     return {c: (valores[i] if i < len(valores) else None)
             for i, c in enumerate(headers) if str(c or "").strip()}
+
+
+def ler_linha(sheet_id: int, row_number: int, buscar=None) -> dict:
+    """A linha como {coluna: valor}, direto do banco. É a releitura que antecede o salvar.
+
+    A API NÃO TEM GET de linha única: em `/rows/{row_number}` existem só PUT e DELETE, e um GET
+    ali responde 404. A versão anterior chamava exatamente essa rota — passava nos testes (que
+    injetam a leitura de propósito, para não bater na rede) e teria quebrado no primeiro salvar
+    de verdade. Achado em 31/08 provando a gravação contra a aba real antes de liberar.
+
+    O caminho que sobra é a coleção paginada. Como ela devolve em ordem de `row_number`, o
+    atalho é calcular o offset — mas o palpite é SEMPRE conferido contra o row_number que
+    voltou: aba com linha apagada tem buraco na numeração, e aceitar o palpite de olhos
+    fechados leria a linha do vizinho, que aqui significa comparar a edição de outra
+    ocorrência. Errando o palpite, varre."""
+    if buscar is not None:
+        return buscar(sheet_id, row_number)
+    if sheet_id not in _PRIMEIRA:
+        cabeca = _pagina(sheet_id, 0, 1)
+        if not cabeca:
+            return {}
+        _PRIMEIRA[sheet_id] = cabeca[0].get("row_number") or 1
+    palpite = max(0, int(row_number) - int(_PRIMEIRA[sheet_id]))
+    achado = _pagina(sheet_id, palpite, 1)
+    if achado and achado[0].get("row_number") == row_number:
+        return _linha_para_dict(achado[0])
+    offset = 0
+    while True:
+        pag = _pagina(sheet_id, offset, 1000)     # o teto de `limit` da API é 1000
+        if not pag:
+            return {}
+        for r in pag:
+            if r.get("row_number") == row_number:
+                return _linha_para_dict(r)
+        offset += len(pag)
 
 
 def gravar_linha(sheet_id: int, row_number: int, dados: dict, headers: list,
