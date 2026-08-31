@@ -16,7 +16,8 @@ import re
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer, QDate, QTime
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QLineEdit,
+from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                             QFrame, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
                              QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget,
@@ -262,6 +263,34 @@ def _rgba(hexa, a):
     return "rgba(%d,%d,%d,%.2f)" % (r, g, b, a)
 
 
+def _abrir_popup(pop, ancora):
+    """Mostra o popup colado na âncora e SEMPRE dentro da tela.
+
+    Os dois jeitos de errar isto apareceram na verificação de 31/08. O calendário do 'Fim da
+    ocorrência' nasce abaixo do campo, que fica no pé do painel: metade dele — inclusive os
+    botões usar/limpar — caía fora do monitor. E o histórico de comentários abria a partir de um
+    botão que estava ROLADO PARA FORA da área visível, então ia para uma coordenada fora da
+    tela: o popup existia, não levantava erro nenhum e ninguém via.
+
+    Não cabendo abaixo, abre acima; não cabendo dos dois lados, encosta na borda."""
+    pop.adjustSize()
+    tela = QApplication.primaryScreen().availableGeometry()
+    canto = ancora.mapToGlobal(ancora.rect().bottomLeft())
+    x = min(max(tela.left() + 8, canto.x()), max(tela.left() + 8, tela.right() - pop.width() - 8))
+    y = canto.y() + 2
+    if y + pop.height() > tela.bottom() - 8:
+        acima = ancora.mapToGlobal(ancora.rect().topLeft()).y() - pop.height() - 2
+        if acima >= tela.top() + 8:
+            y = acima
+    # TRAVA FINAL, e é ela que garante o resultado: abrir "acima" só resolve quando a âncora
+    # está na tela. O botão de histórico vive DENTRO da área de rolagem do painel e pode estar
+    # rolado para fora da vista — aí tanto o abaixo quanto o acima caem fora do monitor.
+    # Medido em 31/08: sem esta linha o popup nascia 46px além da borda de baixo.
+    y = max(tela.top() + 8, min(y, tela.bottom() - pop.height() - 8))
+    pop.move(x, y)
+    pop.show()
+
+
 def _menu(dono):
     """QMenu no tema da tela. O padrão do Qt vem CLARO — no navy vira um retângulo branco no
     meio da tela. A folha precisa ser repetida em cada submenu: estilo de QMenu não desce
@@ -411,9 +440,7 @@ class _CampoData(QLineEdit):
         b_ok.clicked.connect(lambda *_: usar())
         b_limpar.clicked.connect(lambda *_: limpar())
         cal.activated.connect(lambda *_: usar())          # duplo clique no dia já resolve
-        pop.adjustSize()
-        pop.move(self.mapToGlobal(self.rect().bottomLeft()))
-        pop.show()
+        _abrir_popup(pop, self)
 
 
 # ── comentários datados (Levi, 31/08) ──────────────────────────────────────────────────────
@@ -1365,7 +1392,11 @@ class TicketsTab(QWidget):
                 return
             aviso.setText("%d encontrada(s) — clique para vincular" % len(achadas))
             for o in achadas:
-                b = QPushButton("OS %s   %s" % (o.get("folio"), (o.get("descricao") or "")[:42]))
+                # a descrição deste RPC costuma ser o próprio número; o que ajuda a escolher
+                # é a data e quem está com ela.
+                detalhe = "  ·  ".join(x for x in (o.get("data"), o.get("responsavel"),
+                                                   (o.get("descricao") or "")[:30]) if x)
+                b = QPushButton("OS %s      %s" % (o.get("folio"), detalhe))
                 b.setCursor(Qt.CursorShape.PointingHandCursor)
                 b.setStyleSheet("QPushButton{background:%s;color:%s;border:1px solid %s;"
                                 "border-radius:8px;padding:6px 10px;font-size:11.5px;"
@@ -1378,8 +1409,7 @@ class TicketsTab(QWidget):
 
         busca.returnPressed.connect(procurar)
         pop.setMinimumHeight(150)
-        pop.move(self._p_aviso.mapToGlobal(self._p_aviso.rect().bottomLeft()))
-        pop.show()
+        _abrir_popup(pop, self._p_aviso)
         busca.setFocus()
 
     @slot_seguro
@@ -1426,8 +1456,7 @@ class TicketsTab(QWidget):
         v.addWidget(sc)
         pop.setFixedWidth(380)
         pop.setFixedHeight(min(420, 90 + 62 * len(hist)))
-        pop.move(self._b_hist.mapToGlobal(self._b_hist.rect().bottomLeft()))
-        pop.show()
+        _abrir_popup(pop, self._b_hist)
 
     @slot_seguro
     def _marcar_sujo(self, *_):

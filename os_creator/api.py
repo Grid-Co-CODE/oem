@@ -1843,7 +1843,13 @@ def buscar_os_pai(termo="", limit=50) -> list:
         # 'criada' entra porque a aba Tickets precisa da data de criação da OS para preencher
         # 'Início do chamado pela Grid Co.' (Levi, 31/08: é a data em que a Grid notificou).
         # Vem no mesmo payload — buscar por OS depois seria uma chamada por resultado.
-        out.append({"id": idp, "folio": str(folio), "descricao": desc,
+        # 'description' deste RPC vem sendo o PRÓPRIO número (medido: OS 11658 -> "11658"),
+        # então a lista mostraria o número duas vezes. O que identifica de verdade é quem está
+        # com a OS e a data do serviço.
+        out.append({"id": idp, "folio": str(folio),
+                    "descricao": "" if desc.strip() == str(folio).strip() else desc,
+                    "responsavel": str(w.get("personnel_description") or "").strip(),
+                    "data": fmt_data_br(w.get("date_maintenance"), com_hora=False),
                     "criada": str(w.get("creation_date") or "")[:19]})
     return out
 
