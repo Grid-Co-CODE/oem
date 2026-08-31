@@ -38,9 +38,20 @@ TIMEOUT = _esc.TIMEOUT
 WORKBOOK = "tickets_performance"
 NOME_ABA = "Edicoes do app"          # sem acento: é nome de aba, e o .xlsx não a conhece
 
-# 'quando' em ISO para ordenar como texto; os cinco últimos são os campos que a tela edita.
+# 'quando' em ISO para ordenar como texto; o resto são os campos que a tela edita.
 CAMPOS = ["Causa raiz", "Responsabilidade da Grid Co.?", "Início da ocorrência",
-          "Fim da ocorrência", "Comentários gerais"]
+          "Início do chamado pela Grid Co.", "Fim da ocorrência", "Comentários gerais", "OS"]
+
+# Campos que NÃO existem como coluna na planilha e por isso vivem só aqui. Duas consequências:
+# eles nunca são "restaurados" (não há valor no banco para o sync desfazer, então anunciar seria
+# ruído em toda abertura), e a gravação na aba real simplesmente os ignora — `para_valores` só
+# escreve o que está no cabeçalho.
+#
+# 'OS' é o caso: a planilha não tem coluna de OS (conferido nas duas abas em 31/08) e criar uma
+# não adiantaria enquanto o pipeline subir o .xlsx — o sync encolhe a aba de volta. Então o
+# vínculo com a OS mora no diário até o corte.
+CAMPOS_SEM_COLUNA = {"OS"}
+
 COLUNAS = ["quando", "quem", "aba", "linha", "impressao"] + CAMPOS
 
 _SHEET_ID = {}          # nome da aba → sheet_id, resolvido uma vez por execução
@@ -155,7 +166,8 @@ def aplicar(aba: str, ocorrencias: list, registros: list) -> dict:
             novo = reg.get(c)
             if _norm(novo) != _norm(oc.get(c)):
                 oc[c] = "" if novo is None else novo
-                repostos.append(c)
+                if c not in CAMPOS_SEM_COLUNA:
+                    repostos.append(c)
         if repostos:
             oc["_restaurado"] = repostos
             aplicados += 1

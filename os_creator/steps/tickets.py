@@ -15,11 +15,12 @@ acontecem em dado real hoje. Não é bug — é a tela pronta para a fase 2 sem 
 import re
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QDate, QTime
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
-                             QComboBox, QAbstractScrollArea, QMenu)
+                             QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget,
+                             QTimeEdit)
 
 import api
 import tickets_api
@@ -311,6 +312,154 @@ def _campo(ph="", editavel=False):
     else:
         e.setStyleSheet("QLineEdit{%s}" % _qss_campo())
     return e
+
+
+class _CampoData(QLineEdit):
+    """Campo de data com calendário — e que continua sendo um campo de texto.
+
+    Herda de QLineEdit de propósito, em vez de virar um QDateTimeEdit: o QDateTimeEdit NÃO SABE
+    ficar vazio, e vazio aqui tem significado — 'Fim da ocorrência' em branco é o que define a
+    ocorrência como aberta. Ele também obrigaria a digitar no formato dele. Assim o texto livre
+    continua valendo (inclusive as grafias antigas da planilha) e o calendário é um atalho."""
+
+    def __init__(self, ph=""):
+        super().__init__()
+        if ph:
+            self.setPlaceholderText(ph)
+        self.setStyleSheet("QLineEdit{%s min-height:%dpx;max-height:%dpx;padding-right:26px;}"
+                           "QLineEdit:focus{border-color:%s;}"
+                           % (_qss_campo(TEXT), _ALTURA_QSS, _ALTURA_QSS, GREEN))
+        self._b = QPushButton("▾", self)
+        self._b.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._b.setFixedSize(22, _ALTURA_QSS - 6)
+        self._b.setStyleSheet("QPushButton{background:transparent;border:none;color:%s;"
+                              "font-size:12px;font-weight:800;padding:0px;}"
+                              "QPushButton:hover{color:%s;}" % (MUTED, GREEN))
+        self._b.clicked.connect(self._abrir)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._b.move(self.width() - self._b.width() - 4, (self.height() - self._b.height()) // 2)
+
+    @slot_seguro
+    def _abrir(self, *_):
+        pop = QFrame(self, Qt.WindowType.Popup)
+        pop.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:11px;}"
+                          % (CARD, BORDER))
+        v = QVBoxLayout(pop)
+        v.setContentsMargins(10, 10, 10, 10)
+        v.setSpacing(8)
+        cal = QCalendarWidget()
+        cal.setGridVisible(False)
+        cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+        cal.setStyleSheet(
+            "QCalendarWidget QWidget{background:%s;color:%s;}"
+            "QCalendarWidget QAbstractItemView{background:%s;color:%s;selection-background-color:%s;"
+            "selection-color:%s;outline:0;}"
+            "QCalendarWidget QAbstractItemView:disabled{color:%s;}"
+            "QCalendarWidget QToolButton{background:transparent;color:%s;border:none;"
+            "font-size:12px;font-weight:700;padding:4px 8px;}"
+            "QCalendarWidget QToolButton:hover{color:%s;}"
+            "QCalendarWidget QMenu{background:%s;color:%s;}"
+            "QCalendarWidget QSpinBox{background:%s;color:%s;border:1px solid %s;}"
+            % (CARD, TEXT, CARD, TEXT, GREEN, GREEN_INK, MUTED, TEXT, GREEN, CARD, TEXT,
+               INPUT, TEXT, BORDER))
+        atual = tickets_calc._para_dt(self.text())
+        if atual is not None:
+            cal.setSelectedDate(QDate(atual.year, atual.month, atual.day))
+        v.addWidget(cal)
+
+        linha = QHBoxLayout()
+        linha.setSpacing(8)
+        linha.addWidget(_lbl("hora", MUTED, 10.5, 700))
+        hora = QTimeEdit()
+        hora.setDisplayFormat("HH:mm")
+        hora.setTime(QTime(atual.hour, atual.minute) if atual is not None else QTime(0, 0))
+        hora.setStyleSheet("QTimeEdit{background:%s;border:1px solid %s;border-radius:8px;"
+                           "color:%s;font-size:12px;padding:2px 6px;min-height:0px;}"
+                           % (INPUT, BORDER, TEXT))
+        linha.addWidget(hora)
+        linha.addStretch(1)
+        b_limpar = QPushButton("limpar")
+        b_limpar.setCursor(Qt.CursorShape.PointingHandCursor)
+        b_limpar.setStyleSheet("QPushButton{background:transparent;border:none;color:%s;"
+                               "font-size:11px;font-weight:700;}"
+                               "QPushButton:hover{color:%s;}" % (MUTED, GREEN))
+        b_ok = QPushButton("usar")
+        b_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        b_ok.setStyleSheet("QPushButton{background:%s;color:%s;border:none;border-radius:8px;"
+                           "padding:5px 14px;font-size:11px;font-weight:800;}"
+                           % (GREEN, GREEN_INK))
+        linha.addWidget(b_limpar)
+        linha.addWidget(b_ok)
+        v.addLayout(linha)
+
+        def usar():
+            d, h = cal.selectedDate(), hora.time()
+            self.setText("%02d/%02d/%04d %02d:%02d" % (d.day(), d.month(), d.year(),
+                                                       h.hour(), h.minute()))
+            # setText NÃO dispara textEdited (só a digitação dispara), e sem isto o Salvar
+            # continuaria apagado depois de escolher a data no calendário.
+            self.textEdited.emit(self.text())
+            pop.close()
+
+        def limpar():
+            self.setText("")
+            self.textEdited.emit("")
+            pop.close()
+
+        b_ok.clicked.connect(lambda *_: usar())
+        b_limpar.clicked.connect(lambda *_: limpar())
+        cal.activated.connect(lambda *_: usar())          # duplo clique no dia já resolve
+        pop.adjustSize()
+        pop.move(self.mapToGlobal(self.rect().bottomLeft()))
+        pop.show()
+
+
+# ── comentários datados (Levi, 31/08) ──────────────────────────────────────────────────────
+# A coluna 'Comentários gerais' vira um LOG: uma linha por comentário, com data e autor. O que
+# já estava lá entra como bloco único e SEM autor — não dá para inventar quem escreveu.
+_COMENTARIO = re.compile(r"^(\d{2}/\d{2}/\d{4} \d{2}:\d{2})\s+—\s+([^:]{1,40}):\s*(.*)$")
+
+
+def comentarios_de(texto):
+    """[(quando, quem, texto)]. Entrada antiga vem como (None, None, bloco inteiro)."""
+    linhas = str(texto or "").replace("\r", "").split("\n")
+    entradas, antigo = [], []
+    for l in linhas:
+        m = _COMENTARIO.match(l.strip())
+        if m:
+            entradas.append((m.group(1), m.group(2).strip(), m.group(3).strip()))
+        elif l.strip() and not entradas:
+            antigo.append(l.strip())          # antes do primeiro marcador: histórico sem autor
+        elif l.strip():
+            # continuação de um comentário de várias linhas
+            q, w, t = entradas[-1]
+            entradas[-1] = (q, w, (t + "\n" + l.strip()).strip())
+    if antigo:
+        entradas.insert(0, (None, None, "\n".join(antigo)))
+    return entradas
+
+
+def para_iso(texto):
+    """'20/08/2026 14:03' → '2026-08-20 14:03:00'. Devolve o texto cru se não for data.
+
+    A coluna guarda ISO (conferido no dado real), mas a tela mostra e aceita dd/mm/aaaa. Gravar
+    do jeito que foi digitado deixaria a mesma coluna com dois formatos — o nosso parser aguenta,
+    quem lê a planilha e quem ordena por data, não."""
+    d = tickets_calc._para_dt(texto)
+    return d.strftime("%Y-%m-%d %H:%M:%S") if d is not None else str(texto or "").strip()
+
+
+def acrescentar_comentario(texto_atual, novo, quem, agora=None):
+    """Devolve a coluna com o comentário novo no fim, datado e assinado."""
+    novo = (novo or "").strip()
+    if not novo:
+        return texto_atual or ""
+    carimbo = (agora or datetime.now()).strftime("%d/%m/%Y %H:%M")
+    linha = "%s — %s: %s" % (carimbo, quem, novo)
+    atual = str(texto_atual or "").rstrip()
+    return (atual + "\n" + linha) if atual else linha
 
 
 def _combo(opcoes):
@@ -660,7 +809,11 @@ class TicketsTab(QWidget):
         self.tab.verticalHeader().setVisible(False)
         self.tab.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tab.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tab.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        # duplo clique (ou F2) abre a edição, e só na coluna da Causa raiz — ver a nota em
+        # _pinta_tabela. Clique simples continua só selecionando.
+        self.tab.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked
+                                 | QAbstractItemView.EditTrigger.EditKeyPressed)
+        self.tab.itemChanged.connect(self._causa_editada)
         self.tab.setShowGrid(False)
         # outline:0 + item:focus (custou tempo antes): sem isso o retângulo de foco da célula
         # clicada desenha uma borda por dentro do item e espreme o texto.
@@ -760,6 +913,12 @@ class TicketsTab(QWidget):
         self._p_aviso_txt = _lbl("", MUTED, 11)
         self._p_aviso_txt.setWordWrap(True)
         avv.addWidget(self._p_aviso_txt)
+        # O AVISO É CLICÁVEL quando não há OS (Levi, 31/08): a mensagem dizia que faltava
+        # vincular e não oferecia caminho nenhum para fazer isso. Agora ela é o caminho.
+        self._p_aviso_acao = _lbl("", GREEN, 10.5, 800)
+        avv.addWidget(self._p_aviso_acao)
+        self._p_aviso.mousePressEvent = lambda e: (self._vincular_os()
+                                                   if self._pode_vincular() else None)
         cv.addWidget(self._p_aviso)
 
         # A COR DO CARD, EXPLÍCITA, em todos os níveis. `transparent` NÃO resolve: com folha de
@@ -792,9 +951,9 @@ class TicketsTab(QWidget):
 
         v.addWidget(_regua())
         v.addWidget(_secao("PRAZOS"))
-        self._p_ini = _campo(ph="dd/mm/aaaa hh:mm", editavel=True)
+        self._p_ini = _CampoData(ph="dd/mm/aaaa hh:mm")
         v.addWidget(_rotulado("Início da ocorrência", self._p_ini, dica="data e hora"))
-        self._p_fim = _campo(ph="em aberto", editavel=True)
+        self._p_fim = _CampoData(ph="em aberto")
         v.addWidget(_rotulado("Fim da ocorrência", self._p_fim))
         # este NÃO abre: é calculado pela janela solar a partir das duas datas acima. Campo
         # calculado que aceita digitação vira número que ninguém sabe de onde veio.
@@ -802,9 +961,25 @@ class TicketsTab(QWidget):
         v.addWidget(_rotulado("Indisponibilidade", self._p_indisp, dica="calculado, 06–18h"))
 
         v.addWidget(_regua())
-        v.addWidget(_secao("COMENTÁRIOS"))
+        # COMENTÁRIOS vira um log (Levi, 31/08): o campo nasce VAZIO, para escrever o próximo, e
+        # o que já foi dito fica atrás do botão de histórico. Antes o campo trazia tudo junto e
+        # editar um comentário antigo era o caminho natural — o que apaga o registro de alguém.
+        topo_c = QHBoxLayout()
+        topo_c.setSpacing(8)
+        topo_c.addWidget(_secao("COMENTÁRIOS"))
+        self._b_hist = QPushButton("histórico")
+        self._b_hist.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._b_hist.setStyleSheet("QPushButton{background:transparent;border:none;color:%s;"
+                                   "font-size:10px;font-weight:800;padding:0px;}"
+                                   "QPushButton:hover{color:%s;}"
+                                   "QPushButton:disabled{color:%s;}" % (GREEN, TEXT, BORDER))
+        self._b_hist.clicked.connect(self._ver_comentarios)
+        topo_c.addWidget(self._b_hist)
+        topo_c.addStretch(1)
+        v.addLayout(topo_c)
         self._p_coment = QTextEdit()
         self._p_coment.setFixedHeight(56)
+        self._p_coment.setPlaceholderText("escreva um comentário novo…")
         self._p_coment.setStyleSheet("QTextEdit{%s}QTextEdit:focus{border-color:%s;}"
                                      % (_qss_campo(TEXT), GREEN))
         v.addWidget(self._p_coment)
@@ -1088,8 +1263,11 @@ class TicketsTab(QWidget):
             self._ordem = None               # terceiro clique: volta ao padrão
         self._repintar()
 
+    # `*_` obrigatório: `clicked` do Qt manda um bool. Sem ele o slot levanta TypeError, o
+    # @slot_seguro engole (é para isso que ele existe) e o botão fica MUDO — foi o que o Levi
+    # viu em 31/08 no "✕ visão geral". Um slot ligado a clicked SEMPRE aceita o argumento.
     @slot_seguro
-    def _voltar_geral(self):
+    def _voltar_geral(self, *_):
         self.tab.clearSelection()
         self._selecionar(None)
 
@@ -1099,7 +1277,157 @@ class TicketsTab(QWidget):
     # sync, em silêncio. Por isso a trava é de CÓDIGO (tickets_escrita.SHEETS_LIBERADAS) e o
     # erro diz o motivo, em vez de o Salvar falhar com uma mensagem genérica de rede.
     _CAMPOS_EDITAVEIS = ("Causa raiz", "Responsabilidade da Grid Co.?",
-                         "Início da ocorrência", "Fim da ocorrência", "Comentários gerais")
+                         "Início da ocorrência", "Início do chamado pela Grid Co.",
+                         "Fim da ocorrência", "Comentários gerais")
+
+    def _pode_vincular(self):
+        """Só faz sentido oferecer vínculo em ocorrência SEM OS e ainda aberta. Encerrada já
+        acabou; com OS, o caminho é o próprio número no cabeçalho."""
+        oc = self._sel or {}
+        return bool(oc) and not str(oc.get("OS") or "").strip() and oc.get("_estado") != "encerrada"
+
+    @slot_seguro
+    def _vincular_os(self, *_):
+        """Escolher a OS do Fracttal e prendê-la à ocorrência (Levi, 31/08: "quero ao clicar na
+        mensagem conseguir escolher").
+
+        O número fica no DIÁRIO, não na planilha: as duas abas não têm coluna de OS, e criar uma
+        não resolveria enquanto o pipeline subir o .xlsx — o sync encolhe a aba de volta.
+
+        Junto vai o 'Início do chamado pela Grid Co.' com a data de CRIAÇÃO da OS. Essa coluna
+        existe na planilha e é o que o Levi chama de "data que a Grid notificou": a notificação é
+        a abertura da OS, então preencher à mão seria redigitar o que o Fracttal já sabe. Só
+        preenche se estiver vazia — data já registrada por alguém não é sobrescrita."""
+        if self._sel is None:
+            return
+        pop = QFrame(self, Qt.WindowType.Popup)
+        pop.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:12px;}"
+                          % (CARD, BORDER))
+        pop.setFixedWidth(400)
+        v = QVBoxLayout(pop)
+        v.setContentsMargins(14, 12, 14, 12)
+        v.setSpacing(9)
+        v.addWidget(_secao("VINCULAR OS"))
+        busca = QLineEdit()
+        busca.setPlaceholderText("número da OS")
+        busca.setStyleSheet("QLineEdit{%s min-height:%dpx;max-height:%dpx;}"
+                            "QLineEdit:focus{border-color:%s;}"
+                            % (_qss_campo(TEXT), _ALTURA_QSS, _ALTURA_QSS, GREEN))
+        v.addWidget(busca)
+        aviso = _lbl("digite o número e tecle Enter", MUTED, 10.5)
+        aviso.setWordWrap(True)
+        v.addWidget(aviso)
+        lista = QVBoxLayout()
+        lista.setSpacing(4)
+        v.addLayout(lista)
+        v.addStretch(1)
+
+        def escolher(os_achada):
+            oc = self._sel
+            folio = str(os_achada.get("folio") or "").strip()
+            oc["OS"] = folio
+            # a data vem de OUTRA consulta de propósito: o RPC da busca devolve 7 campos e
+            # NENHUM é a data de criação — o que ele traz é `date_maintenance`, a data do
+            # serviço. Medido em 31/08 na OS 9208: criada em 09/07, serviço em 04/07. Cinco
+            # dias de diferença numa coluna que existe para dizer QUANDO A GRID AVISOU.
+            criada = ""
+            try:
+                w = api.os_por_folio(folio) or {}
+                criada = para_iso(api.fmt_data_br(w.get("creation_date")))
+            except Exception as e:                   # noqa: BLE001 — a OS já foi vinculada
+                print("[tickets] sem data de criação da OS %s (%s)" % (folio, str(e)[:80]))
+            if criada and not str(oc.get("Início do chamado pela Grid Co.") or "").strip():
+                oc["Início do chamado pela Grid Co."] = criada
+            oc["_estado"] = tickets_spec.estado_do_ticket(oc.get("OS"), oc.get("Status da OS"),
+                                                          oc.get("Fim da ocorrência"))
+            pop.close()
+            self._sujo = True
+            self._selecionar(oc)      # repinta o painel com a OS já no cabeçalho
+            self._sujo = True         # _selecionar zera; a escolha ainda não foi gravada
+            self._pinta_edicao()
+            self._repintar()
+
+        def procurar():
+            termo = busca.text().strip()
+            if not termo:
+                return
+            _limpar_layout(lista)
+            aviso.setText("procurando…")
+            # síncrono e curto de propósito: é um popup modal-ish, com um filtro por número, e
+            # um worker aqui traria o risco de a resposta chegar com o popup já fechado.
+            try:
+                achadas = api.buscar_os_pai(termo, limit=12)
+            except Exception as e:                       # noqa: BLE001
+                aviso.setText("não consegui procurar: %s" % str(e)[:90])
+                return
+            if not achadas:
+                aviso.setText("nenhuma OS com esse número")
+                return
+            aviso.setText("%d encontrada(s) — clique para vincular" % len(achadas))
+            for o in achadas:
+                b = QPushButton("OS %s   %s" % (o.get("folio"), (o.get("descricao") or "")[:42]))
+                b.setCursor(Qt.CursorShape.PointingHandCursor)
+                b.setStyleSheet("QPushButton{background:%s;color:%s;border:1px solid %s;"
+                                "border-radius:8px;padding:6px 10px;font-size:11.5px;"
+                                "text-align:left;}"
+                                "QPushButton:hover{border-color:%s;color:%s;}"
+                                % (INPUT, TEXT, BORDER, GREEN, GREEN))
+                b.clicked.connect(lambda _c=False, x=o: escolher(x))
+                lista.addWidget(b)
+            pop.adjustSize()
+
+        busca.returnPressed.connect(procurar)
+        pop.setMinimumHeight(150)
+        pop.move(self._p_aviso.mapToGlobal(self._p_aviso.rect().bottomLeft()))
+        pop.show()
+        busca.setFocus()
+
+    @slot_seguro
+    def _ver_comentarios(self, *_):
+        """O histórico da ocorrência, um por linha. Entrada anterior a 31/08 aparece sem autor —
+        a coluna era texto corrido e não dá para inventar quem escreveu."""
+        hist = comentarios_de((self._sel or {}).get("Comentários gerais"))
+        if not hist:
+            return
+        pop = QFrame(self, Qt.WindowType.Popup)
+        pop.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:11px;}"
+                          % (CARD, BORDER))
+        v = QVBoxLayout(pop)
+        v.setContentsMargins(14, 12, 14, 12)
+        v.setSpacing(9)
+        v.addWidget(_secao("HISTÓRICO DE COMENTÁRIOS"))
+        sc = QScrollArea()
+        sc.setWidgetResizable(True)
+        sc.setFrameShape(QFrame.Shape.NoFrame)
+        sc.setStyleSheet("QScrollArea{background:%s;border:none;}"
+                         "QScrollArea > QWidget > QWidget{background:%s;}" % (CARD, CARD))
+        sc.viewport().setStyleSheet("background:%s;" % CARD)
+        dentro = QWidget()
+        dentro.setStyleSheet("background:%s;" % CARD)
+        dv = QVBoxLayout(dentro)
+        dv.setContentsMargins(0, 0, 8, 0)
+        dv.setSpacing(11)
+        for quando, autor, texto in hist:
+            bloco = QVBoxLayout()
+            bloco.setSpacing(2)
+            if quando:
+                bloco.addWidget(_lbl("%s  ·  %s" % (quando, autor), GREEN, 10, 800))
+            else:
+                bloco.addWidget(_lbl("antes do histórico datado", MUTED, 10, 800, ital=True))
+            t = _lbl(texto, TEXT, 12)
+            t.setWordWrap(True)
+            bloco.addWidget(t)
+            w = QWidget()
+            w.setStyleSheet("background:%s;" % CARD)
+            w.setLayout(bloco)
+            dv.addWidget(w)
+        dv.addStretch(1)
+        sc.setWidget(dentro)
+        v.addWidget(sc)
+        pop.setFixedWidth(380)
+        pop.setFixedHeight(min(420, 90 + 62 * len(hist)))
+        pop.move(self._b_hist.mapToGlobal(self._b_hist.rect().bottomLeft()))
+        pop.show()
 
     @slot_seguro
     def _marcar_sujo(self, *_):
@@ -1124,12 +1452,24 @@ class TicketsTab(QWidget):
             self._p_estado_edicao.setText("")
 
     def _digitado(self):
-        """O que está nos campos agora, na grafia das colunas da planilha."""
+        """O que está nos campos agora, na grafia das colunas da planilha.
+
+        Comentário é ACRÉSCIMO, não substituição: o campo traz só o texto novo, e aqui ele vira
+        mais uma linha datada e assinada no fim da coluna. Mandar o campo direto apagaria todo o
+        histórico a cada salvamento."""
         return {"Causa raiz": self._p_causa.text().strip(),
                 "Responsabilidade da Grid Co.?": self._p_resp.currentText().strip(),
-                "Início da ocorrência": self._p_ini.text().strip(),
-                "Fim da ocorrência": self._p_fim.text().strip(),
-                "Comentários gerais": self._p_coment.toPlainText().strip()}
+                "Início da ocorrência": para_iso(self._p_ini.text()),
+                "Fim da ocorrência": para_iso(self._p_fim.text()),
+                "Comentários gerais": acrescentar_comentario(
+                    (self._sel or {}).get("Comentários gerais"),
+                    self._p_coment.toPlainText(), tickets_diario.quem()),
+                # estes dois não têm campo na tela: vêm do vínculo com a OS. Precisam entrar
+                # aqui mesmo assim — é o que o diário grava, e o que o PUT manda para a coluna
+                # 'Início do chamado', que existe na planilha ('OS' não existe e é ignorada).
+                "OS": str((self._sel or {}).get("OS") or "").strip(),
+                "Início do chamado pela Grid Co.":
+                    para_iso((self._sel or {}).get("Início do chamado pela Grid Co."))}
 
     def _aviso_edicao(self, texto, cor):
         self._p_estado_edicao.setText(texto)
@@ -1374,10 +1714,45 @@ class TicketsTab(QWidget):
                     it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 else:
                     it.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                if c == 4 and causa_txt != causa_completa:      # causa raiz truncada: o resto no hover
-                    it.setToolTip(causa_completa)
+                if c == 4:
+                    # EDITÁVEL NA PRÓPRIA TABELA (Levi, 31/08). Só esta coluna: as outras ou são
+                    # calculadas ou vêm da planilha. E o texto INTEIRO vai para a edição, não o
+                    # truncado — senão salvar de dentro da tabela cortaria a causa raiz em 40
+                    # caracteres sem ninguém pedir.
+                    it.setFlags(it.flags() | Qt.ItemFlag.ItemIsEditable)
+                    it.setData(Qt.ItemDataRole.EditRole,
+                               "" if causa in (None, "") else str(causa))
+                    if causa_txt != causa_completa:            # o resto no hover
+                        it.setToolTip(causa_completa)
+                else:
+                    it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.tab.setItem(r, c, it)
         self.tab.blockSignals(False)
+
+    @slot_seguro
+    def _causa_editada(self, item):
+        """Causa raiz digitada direto na tabela: grava na hora.
+
+        Deixar pendente de um clique em Salvar no painel seria pior que não ter a edição — a
+        pessoa digitaria numa linha, clicaria na próxima e perderia o que escreveu sem aviso.
+        `_pinta_tabela` roda com os sinais bloqueados, então aqui só chega edição de gente."""
+        if item is None or item.column() != 4:
+            return
+        r = item.row()
+        if not (0 <= r < len(self._visiveis)):
+            return
+        oc = self._visiveis[r]
+        novo = item.text().strip()
+        if novo == "aguardando técnico":          # o texto de placeholder da célula vazia
+            novo = ""
+        if novo == str(oc.get("Causa raiz") or "").strip():
+            return
+        self.tab.selectRow(r)
+        self._selecionar(oc)
+        self._p_causa.setText(novo)
+        self._sujo = True
+        self._pinta_edicao()
+        self._salvar()
 
     # ── seleção ──────────────────────────────────────────────────────────────────────────
     @slot_seguro
@@ -1428,6 +1803,10 @@ class TicketsTab(QWidget):
         self._p_aviso.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:11px;}"
                                     % (_rgba(cor, 0.10), _rgba(cor, 0.45)))
         self._p_aviso_txt.setText(_TXT_AVISO.get(estado, ""))
+        pode = self._pode_vincular()
+        self._p_aviso_acao.setText("clique para escolher a OS  ›" if pode else "")
+        self._p_aviso.setCursor(Qt.CursorShape.PointingHandCursor if pode
+                                else Qt.CursorShape.ArrowCursor)
 
         # `_populando` cala os sinais de edição: setText/setPlainText disparam os mesmos sinais
         # que a digitação, e sem a trava toda linha clicada nasceria "com alterações não salvas".
@@ -1448,8 +1827,11 @@ class TicketsTab(QWidget):
             horas = oc.get("_horas")
             self._p_indisp.setText("%.1f h" % horas if horas is not None else "—")
 
-            coment = oc.get("Comentários gerais")
-            self._p_coment.setPlainText(str(coment) if coment not in (None, "") else "")
+            # o campo é para o comentário NOVO; o que já existe fica no histórico
+            self._p_coment.setPlainText("")
+            hist = comentarios_de(oc.get("Comentários gerais"))
+            self._b_hist.setEnabled(bool(hist))
+            self._b_hist.setText("histórico  %d" % len(hist) if hist else "sem histórico")
         finally:
             self._populando = False
         self._sujo = False

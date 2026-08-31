@@ -1840,7 +1840,11 @@ def buscar_os_pai(termo="", limit=50) -> list:
         folio = w.get("wo_folio") or w.get("folio") or ""
         desc = str(w.get("description") or w.get("tasks_description")
                    or w.get("items_description") or "").split("{")[0].strip()[:80]
-        out.append({"id": idp, "folio": str(folio), "descricao": desc})
+        # 'criada' entra porque a aba Tickets precisa da data de criação da OS para preencher
+        # 'Início do chamado pela Grid Co.' (Levi, 31/08: é a data em que a Grid notificou).
+        # Vem no mesmo payload — buscar por OS depois seria uma chamada por resultado.
+        out.append({"id": idp, "folio": str(folio), "descricao": desc,
+                    "criada": str(w.get("creation_date") or "")[:19]})
     return out
 
 
@@ -3714,8 +3718,13 @@ def concluir_os_checado(id_work_order) -> dict:
 RPC_WO_DETAILS = "tasks.work_order_details_new"   # cabeçalho da WO (labels, etc.)
 
 
-def _wo_id_por_folio(folio):
-    """Resolve o nº da OS (wo_folio) → id_work_order, varrendo a lista por status. None se não achar."""
+def os_por_folio(folio) -> dict:
+    """A OS inteira pelo NÚMERO, varrendo a lista por status. None se não achar.
+
+    Existe separado do `buscar_os_pai` porque aquele usa outro RPC, que devolve só 7 campos e
+    NÃO traz `creation_date` — traz `date_maintenance`, que é a data do serviço e não a da
+    abertura. Para a aba Tickets a diferença importa: 'Início do chamado pela Grid Co.' é quando
+    a Grid avisou, ou seja, quando a OS foi CRIADA (Levi, 31/08)."""
     folio = str(folio).strip()
     if not folio:
         return None
@@ -3729,8 +3738,14 @@ def _wo_id_por_folio(folio):
             continue
         for w in (res.get("data") or []):
             if str(w.get("wo_folio")).strip() == folio:
-                return w.get("id")
+                return w
     return None
+
+
+def _wo_id_por_folio(folio):
+    """Resolve o nº da OS (wo_folio) → id_work_order. None se não achar."""
+    w = os_por_folio(folio)
+    return w.get("id") if w else None
 
 
 def get_os_para_clonar(id_work_order) -> dict:

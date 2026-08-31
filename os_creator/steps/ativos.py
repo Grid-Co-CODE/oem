@@ -352,8 +352,12 @@ class AtivosTab(QWidget):
         quando = _dt.datetime.fromtimestamp(info["ts"]).strftime("%d/%m %H:%M")
         return "  ·  lista de %s%s" % (quando, "  (desatualizada)" if info.get("expirado") else "")
 
+    # `*_` porque `clicked` manda um bool E o slot é decorado: o wrapper do @slot_seguro aceita
+    # qualquer argumento, repassa o bool, e a função sem parâmetro levanta TypeError — que o
+    # próprio wrapper engole. O sintoma não é erro, é o botão não fazer NADA. (Slot sem
+    # decorador não tem esse problema: aí o PyQt vê a assinatura e corta o argumento sozinho.)
     @slot_seguro
-    def _atualizar_catalogo(self):
+    def _atualizar_catalogo(self, *_):
         """Recarrega do Fracttal ignorando o cache. Em worker: são ~100 páginas de 200 ativos e
         travaria a interface."""
         self.b_reload.setEnabled(False); self.b_reload.setText("atualizando…")
