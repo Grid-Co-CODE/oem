@@ -206,6 +206,32 @@ as duas abas somem.
 | `["Trackers", "Strings indisp"]` | 13 abas, as duas fora, e 18 mil fórmulas a menos para limpar |
 | nome que não existe | avisa alto e não remove nada — falha barulhenta, não silenciosa |
 
+### O que ficou valendo em 31/08: o diário, não o corte
+
+O Levi decidiu **conviver com o sync por enquanto** ("deixe gravando por hora mesmo que suba com
+o sync") e perguntou se dava para criar uma cópia no banco. Dá — e é melhor que o corte para
+esta fase, porque não muda o fluxo de ninguém.
+
+| caminho | o que faz | custo |
+|---|---|---|
+| corte no pipeline | a aba sai do upload | o Excel de Gabriela, Roger e Ana deixa de valer |
+| cópia integral | duplica as 2.796 linhas, app lê só a cópia | ocorrência nova do Excel some; reconciliar traz a sobrescrita de volta, nos dois sentidos |
+| **diário (escolhido)** | guarda só o que o app gravou, e aplica por cima na leitura | nenhum — o Excel segue igual |
+
+`tickets_diario.py`, aba **"Edicoes do app"** (`sheet_id` 387) no próprio `tickets_performance`.
+Uma linha por salvamento: `quando`, `quem`, `aba`, `linha`, `impressao` e os cinco campos que a
+tela edita. Na leitura, o app põe o diário por cima do que veio do banco — se o sync desfez, ele
+repõe, e **diz na tela quais campos repôs**.
+
+**O row_number não é chave confiável.** Linha apagada no meio do Excel desloca todas as de baixo,
+e o diário passaria a repor a causa raiz de um tracker na ocorrência de outro. Por isso cada
+registro carrega uma **impressão** (usina + ativo) e só é aplicado quando ela bate; não batendo,
+vira órfão e não encosta em nada. A impressão **não usa data** — as duas datas são editáveis, e
+corrigir o Início faria o registro deixar de casar com a ocorrência que o gerou.
+
+Quando o sync morrer, o diário não vira lixo: continua sendo o histórico de quem mudou o quê,
+que a seção 12 já pedia.
+
 ## 10. Indisponibilidade: quem calcula
 
 Hoje é fórmula do Excel; o banco guarda só o resultado (política valores-only). Sem o Excel,
