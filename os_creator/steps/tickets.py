@@ -229,7 +229,58 @@ def ativo_da_ocorrencia(aba, oc, todos):
         return None
     if aba == "Strings":
         return _achar_inversor(oc.get("Inversor"), oc.get("Usina"), todos)
-    return None
+    return _achar_tracker(oc, todos)
+
+
+_SUFIXO_TRACKER = re.compile(r"^(.*)\.(\d{3})$")
+
+
+def _indice_trackers(usina, todos):
+    """{nome sem o sufixo → ativo} dos trackers de uma usina.
+
+    O nome do ativo é "Tracker <identificação>.<sufixo>" — 'Tracker 129.100' no TIM100,
+    'Tracker 1.2.101' em Boa Esperança. O sufixo de três dígitos é da nomenclatura do cadastro e
+    NÃO faz parte da identificação (Levi, 31/08: "é normal o .101 ou .100 no fim"), por isso ele
+    sai antes da comparação. A chave entra com e sem zero à esquerda: o cadastro escreve
+    'Tracker 01' e a planilha escreve '1'."""
+    m = {}
+    for a in _ativos_da_usina(usina, todos):
+        if "tracker" not in api._norm_txt(a.get("tipo")):
+            continue
+        casa = _SUFIXO_TRACKER.match(str(api._asset_short_name(a) or "").strip())
+        if not casa:
+            continue
+        miolo = casa.group(1).strip()
+        m.setdefault(api._norm_txt(miolo), a)
+        m.setdefault(api._norm_txt(re.sub(r"(?<=\s)0+(?=\d)", "", miolo)), a)
+    return m
+
+
+def _achar_tracker(oc, todos):
+    """O ativo do tracker no catálogo, ou None.
+
+    Casa 540 das 1.094 ocorrências (medido em 31/08). As que sobram não são falha da régua: são
+    usinas sem tracker cadastrado (56), ticket com texto no lugar do número ('A ser verificado',
+    15) e número que simplesmente não existe no cadastro daquela usina (483) — Boa Esperança, por
+    exemplo, só tem o skid 1 cadastrado. Essas ficam para o vínculo manual, pelo card de ativos."""
+    num = str(oc.get("Nº do tracker / Identificação") or "").strip()
+    if not num:
+        return None
+    usina = oc.get("Usina")
+    if usina not in _CACHE_TRK:
+        _CACHE_TRK[usina] = _indice_trackers(usina, todos)
+    m = _CACHE_TRK[usina]
+    if not m:
+        return None
+    skid = str(oc.get("Nº do SKID") or "").strip().lstrip("0")
+    sem_zero = num.lstrip("0") or num
+    cands = ["tracker %s" % sem_zero, "tracker %s" % num]
+    if skid and "." not in num:
+        cands.append("tracker %s.%s" % (skid, sem_zero))
+    return next((m[c] for c in cands if c in m), None)
+
+
+_CACHE_TRK = {}      # usina → índice de trackers; o catálogo não muda durante a sessão
 
 
 def _achar_inversor(nome, usina_ticket, todos):
