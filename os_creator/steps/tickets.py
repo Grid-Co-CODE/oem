@@ -263,7 +263,9 @@ def _qss_campo(cor_texto=MUTED):
     # Nesta fase TODO campo é somente-leitura — a cor do texto (MUTED, o padrão aqui) é o único
     # sinal disso, nunca o fundo (senão o campo para de parecer um campo). A busca do cabeçalho
     # é a exceção: é o único campo que a pessoa de fato usa, e passa cor_texto=TEXT.
-    return ("background:%s;border:1px solid %s;border-radius:9px;padding:7px 10px;"
+    # min-height:0 — sem isso o Qt impõe uma altura mínima de conteúdo (42px medidos) que
+    # nem setFixedHeight vence, e o campo fica com o dobro da altura pedida.
+    return ("background:%s;border:1px solid %s;border-radius:9px;padding:0px 10px;min-height:0px;"
             "color:%s;font-size:12.5px;" % (INPUT, BORDER, cor_texto))
 
 
@@ -339,6 +341,14 @@ class _Tile(QFrame):
             v.addWidget(d)
 
 
+# altura dos controles da barra do topo. Levi, 31/08: "reduza o tamanho em 50%%". Precisa ser
+# FIXA em cada um: o QSS global do app (app.py:50) poe padding:9px em QPushButton e
+# padding:7px nos campos, e isso entra na altura mesmo quando o estilo local pede menos.
+_ALTURA_BARRA = 29      # com min-height:0 nos campos, este é o valor QUE APARECE na tela
+                        # (Levi, 31/08: metade dos 58 anteriores). Sem o min-height:0 o Qt
+                        # impunha 42 e nem a altura fixa vencia.
+
+
 class _Segmentado(QFrame):
     """Barra de segmentos: um bloco só, com divisórias finas, em vez de N pílulas soltas.
 
@@ -380,10 +390,11 @@ class _Segmentado(QFrame):
             "border-top:2px solid transparent;"
             "border-top-left-radius:%s;border-bottom-left-radius:%s;"
             "border-top-right-radius:%s;border-bottom-right-radius:%s;"
-            "padding:9px 16px;font-size:12px;font-weight:700;text-align:center;}"
+            "padding:0px 16px;font-size:12px;font-weight:700;text-align:center;}"
             "QPushButton:hover{color:%s;}"
             "QPushButton:checked{color:%s;background:%s;border-top:2px solid %s;}"
             % (MUTED, e, e, d, d, TEXT, cor, _rgba(cor, 0.13), cor))
+        b.setFixedHeight(_ALTURA_BARRA)
         b.clicked.connect(lambda _c=False, k=chave: ao_clicar(k))
         return b
 
@@ -456,7 +467,8 @@ class TicketsTab(QWidget):
         self._combo_usina.setFixedSize(250, 38)     # sem altura fixa ele estica com a barra
         self._combo_usina.setCursor(Qt.CursorShape.PointingHandCursor)
         self._combo_usina.setStyleSheet(
-            "QComboBox{background:%s;border:1px solid %s;border-radius:10px;padding:8px 12px;"
+            "QComboBox{background:%s;border:1px solid %s;border-radius:10px;padding:0px 12px;"
+            "min-height:0px;"
             "color:%s;font-size:12px;font-weight:700;}"
             "QComboBox::drop-down{border:none;width:22px;}"
             "QComboBox QAbstractItemView{background:%s;color:%s;border:1px solid %s;"
@@ -465,7 +477,7 @@ class TicketsTab(QWidget):
         # ALTURA depois da folha de estilo: o QSS global do app (app.py:42) põe padding nos
         # campos, e o padding entra na altura. setFixedSize antes do stylesheet não segura —
         # medido: pedi 38 e o combo nasceu com 58, desalinhado dos chips ao lado.
-        self._combo_usina.setFixedHeight(38)
+        self._combo_usina.setFixedHeight(_ALTURA_BARRA)
         self._combo_usina.currentIndexChanged.connect(self._trocar_usina)
         self._tiles_box.addWidget(self._combo_usina)
         self._tiles_box.addStretch(1)
@@ -509,9 +521,15 @@ class TicketsTab(QWidget):
         cab.addStretch(1)
         self._busca = QLineEdit()
         self._busca.setPlaceholderText("usina, skid, tracker/inversor, causa…")
-        self._busca.setFixedSize(320, 36)
-        self._busca.setStyleSheet("QLineEdit{%s}" % _qss_campo(TEXT))
-        self._busca.setFixedHeight(38)      # mesma razão do combo, ver acima
+        # max-height na própria folha de estilo: o mínimo de conteúdo do QLineEdit sobrevive a
+        # setFixedHeight e a setMinimumHeight(0) — só o QSS o vence (medido: 42 nos dois casos).
+        self._busca.setStyleSheet("QLineEdit{%s min-height:0px;max-height:%dpx;}"
+                                  % (_qss_campo(TEXT), _ALTURA_BARRA))
+        self._busca.setFixedWidth(320)
+        # zerar o mínimo ANTES da altura fixa: o QLineEdit guarda um mínimo de conteúdo próprio,
+        # e setFixedHeight sozinho não desce abaixo dele (medido: pedia 29 e ficava em 42).
+        self._busca.setMinimumHeight(0)
+        self._busca.setFixedHeight(_ALTURA_BARRA)   # mesma razão do combo, ver acima
         self._t_busca = QTimer(self)
         self._t_busca.setSingleShot(True)
         self._t_busca.setInterval(220)
@@ -546,12 +564,16 @@ class TicketsTab(QWidget):
             # reproduzia, e foi por isso que passou em dois testes meus.
             "QTableWidget{background:%s;border:none;color:%s;font-size:12.5px;outline:0;}"
             "QTableWidget QWidget{background:%s;}"
-            "QHeaderView::section{background:transparent;color:%s;border:none;"
-            "border-bottom:1px solid %s;padding:8px 4px;font-size:10px;font-weight:800;}"
+            # cabeçalho QUADRADO e sem fio lateral (Levi, 31/08): só o fio de baixo, para dar
+            # a impressão de divisão sem desenhar uma caixa. O QHeaderView precisa da regra
+            # própria — estilizar só ::section deixa o canto arredondado do widget aparecendo.
+            "QHeaderView{background:%s;border:none;border-radius:0;}"
+            "QHeaderView::section{background:%s;color:%s;border:none;border-radius:0;"
+            "border-bottom:1px solid %s;padding:5px 4px;font-size:10px;font-weight:800;}"
             "QTableWidget::item{padding:9px 4px;border-bottom:1px solid rgba(42,53,80,0.4);}"
             "QTableWidget::item:focus{border:none;outline:none;}"
             "QTableWidget::item:selected{background:rgba(166,226,46,0.12);color:%s;}"
-            % (CARD, TEXT, CARD, MUTED, BORDER, TEXT))
+            % (CARD, TEXT, CARD, CARD, CARD, MUTED, BORDER, TEXT))
         self.tab.itemSelectionChanged.connect(self._sel_tabela)
         self.tab.horizontalHeader().setSectionsClickable(True)
         self.tab.horizontalHeader().sectionClicked.connect(self._ordenar_por)
@@ -677,6 +699,10 @@ class TicketsTab(QWidget):
         # vazio dizendo "selecione algo" — mostra onde estão as ocorrências e por quais causas.
         # É a pergunta que a pessoa tem ao ABRIR a tela, antes de saber em que linha clicar.
         self._p_geral = QWidget()
+        # a cor do CARD, explicita — sem isto o QWidget pinta a cor de JANELA, mais escura, e
+        # vira um retangulo escuro dentro do painel. Ja consertado antes; a linha se perdeu
+        # quando refiz este bloco no redesenho de 30/08.
+        self._p_geral.setStyleSheet("background:%s;" % CARD)
         gv = QVBoxLayout(self._p_geral)
         gv.setContentsMargins(0, 0, 0, 0)
         gv.setSpacing(12)
