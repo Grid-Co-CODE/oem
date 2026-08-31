@@ -512,22 +512,19 @@ class VariasOSsDialog(QWidget):
         return None
 
     # ── tipo / categoria / ação ──
-    @slot_seguro
-    def _on_tipo(self, i):
-        insp = (self._seg_tipo.index() == 1)
-        # Inspeção começa na categoria C (comunicação) e nasce ABERTA p/ o técnico; Religamento na A, concluída.
-        if insp:
-            self._seg_cat.set_index(2)
-        elif self._seg_cat.index() == 2:
-            self._seg_cat.set_index(0)
+    # O tipo de OS e a categoria são A MESMA decisão vista de dois ângulos: "Inspeção e
+    # Normalização" existe para a categoria C — falha de comunicação não tem religamento, o
+    # técnico vai inspecionar — e "Religamento da UFV" para A e B. Por isso os dois se
+    # acompanham. Os `_aplicar_*` abaixo aplicam os efeitos SEM tocar no outro controle: é o
+    # que deixa a sincronia valer nos dois sentidos sem um chamar o outro para sempre.
+    def _aplicar_tipo(self, insp):
         if hasattr(self, "_fin"):
+            # Inspeção nasce ABERTA para o técnico; Religamento nasce concluída.
             self._fin.chk.setChecked(not insp)
         if hasattr(self, "chk_falha"):        # "ativo falhou" SEMPRE marcado (editável)
-            self.chk_falha.setChecked(True)   # Inspeção também nasce c/ o bloco marcado — técnico ajusta depois
-        self._preview()
+            self.chk_falha.setChecked(True)   # Inspeção também — o técnico ajusta depois
 
-    @slot_seguro
-    def _on_cat(self, i):
+    def _aplicar_cat(self, i):
         self._cat = [cs.CAT_A, cs.CAT_B, cs.CAT_C][i]
         self._page_a.setVisible(i == 0)      # mostra só a página da categoria ativa (card encolhe)
         self._page_b.setVisible(i == 1)
@@ -537,7 +534,29 @@ class VariasOSsDialog(QWidget):
         # default de ação por categoria (A=Remoto · B/C=Local) — o operador PODE trocar
         self._seg_acao.set_index(0 if i == 0 else 1, emit=False)
         if hasattr(self, "chk_falha") and self.chk_falha.isChecked():
-            self._sugerir_falha()                 # re-sugere a falha p/ a nova categoria (era o bug: ficava a antiga)
+            self._sugerir_falha()                 # re-sugere a falha p/ a nova categoria
+
+    @slot_seguro
+    def _on_tipo(self, i):
+        insp = (self._seg_tipo.index() == 1)
+        alvo = 2 if insp else (0 if self._seg_cat.index() == 2 else self._seg_cat.index())
+        if self._seg_cat.index() != alvo:
+            self._seg_cat.set_index(alvo, emit=False)
+            self._aplicar_cat(alvo)
+        self._aplicar_tipo(insp)
+        self._preview()
+
+    @slot_seguro
+    def _on_cat(self, i):
+        self._aplicar_cat(i)
+        # ESTE ERA O BUG (operador do COS, 31/08): escolher "C · Comunicação" deixava o tipo
+        # como estivesse, e o padrão da tela é "Religamento da UFV" — então a OS saía como
+        # religamento de uma ocorrência que, por definição, não tem religamento nenhum. A
+        # sincronia existia só no sentido tipo → categoria; agora vale nos dois.
+        alvo = 1 if cs.TIPO_DA_CAT[self._cat] == cs.TIPO_INSPECAO else 0
+        if self._seg_tipo.index() != alvo:
+            self._seg_tipo.set_index(alvo, emit=False)
+            self._aplicar_tipo(alvo == 1)
         self._preview()
 
     @slot_seguro

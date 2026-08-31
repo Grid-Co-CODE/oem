@@ -69,6 +69,13 @@ ACAO_LOCAL    = "Religamento Local"
 ACAO_INSPECAO = "Inspeção Local"
 ACAO_DEFAULT_CAT = {CAT_A: ACAO_REMOTO, CAT_B: ACAO_LOCAL, CAT_C: ACAO_INSPECAO}
 
+# Que TIPO de OS cada categoria abre. Não é preferência de tela: falha de comunicação não tem
+# religamento nenhum — o técnico vai até lá inspecionar. O operador do COS reportou em 31/08 que
+# escolher a categoria C abria religamento, porque a tela só sincronizava tipo → categoria e
+# deixava o tipo no padrão. A regra mora aqui para valer nos dois sentidos e para ser testável
+# fora da interface.
+TIPO_DA_CAT = {CAT_A: TIPO_RELIGAMENTO, CAT_B: TIPO_RELIGAMENTO, CAT_C: TIPO_INSPECAO}
+
 # Onde atuou (A).
 ONDE = ["Disjuntor Geral", "Disjuntor Cabine", "Inversor"]
 

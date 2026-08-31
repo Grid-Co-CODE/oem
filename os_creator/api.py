@@ -2857,6 +2857,84 @@ _PERF_PLANOS = (
     "verificacao de tracker parado",
 )
 
+# ── Subtarefas que o APP acrescenta ao plano na hora de criar a OS ───────────────────────────
+# Sugestão da equipe, trazida pelo Levi em 31/08: "muitas vezes o técnico não comenta, aí não
+# fica claro se o tracker voltou ou não, e qual era a causa raiz — se motor, TCU ou outro ponto".
+# O plano do Fracttal ([Grid Co.] - Verificação de Tracker Parado) pergunta se o tracker ESTÁ
+# parado e os números de série, mas não pergunta como a atividade TERMINOU. Sem isso, quem lê a
+# OS depois não sabe dizer se o problema foi resolvido.
+#
+# Ficam AQUI, e não no plano do Fracttal, porque o plano é editado por outra área e vale para
+# quem cria OS por fora do app também — mexer nele seria uma mudança de configuração
+# compartilhada. Aqui é reversível e só afeta o que sai desta ferramenta.
+#
+# Tipos: 2 = BOOLEAN (Sim/Não), 1 = TEXT. Nenhuma exige anexo (`attachments_required`), ao
+# contrário das do plano: exigir foto para responder "voltou a operar?" travaria o fechamento.
+SUBTAREFAS_EXTRA = {
+    "verificacao de tracker parado": [
+        ("O tracker voltou a operar ao final da atividade?", 2),
+        ("Qual foi a causa raiz? (motor, TCU ou outro ponto)", 1),
+    ],
+}
+_TIPO_ITEM_DESC = {1: "TEXT", 2: "BOOLEAN", 3: "NUMBER", 4: "CHECK", 7: "DROPDOWN"}
+
+
+def com_subtarefas_extra(plan: dict) -> dict:
+    """O plano com as subtarefas do app acrescentadas no fim. Devolve uma CÓPIA — o plano fica
+    em cache por id_task e mutá-lo somaria as extras de novo a cada OS do lote.
+
+    Cada item novo é clonado da FORMA de um item que veio do plano, trocando só o que muda. É
+    de propósito: a estrutura do form item tem 20 campos (id_company, id_group_task, iterations,
+    dropdown_options…) e montar um dicionário do zero seria adivinhar quais o RPC exige."""
+    subs = list(plan.get("subtasks") or [])
+    if not subs:
+        return plan                        # sem modelo para clonar, não invento estrutura
+    extras = []
+    desc_plano = _norm_txt(plan.get("description"))
+    for frase, itens in SUBTAREFAS_EXTRA.items():
+        if frase not in desc_plano:
+            continue
+        for texto, tipo in itens:
+            if any(_norm_txt(s.get("description")) == _norm_txt(texto) for s in subs):
+                continue                   # o plano já pergunta isso — não duplica
+            novo = dict(subs[0])
+            novo.update({"id": str(uuid.uuid4()), "description": texto,
+                         "id_task_form_item_type": tipo,
+                         "task_form_item_type_description": _TIPO_ITEM_DESC.get(tipo),
+                         "order_number": len(subs) + len(extras) + 1,
+                         "is_required": True, "attachments_required": False,
+                         "is_configured": True, "is_changed": False,
+                         "id_unit": None, "unit_description": None, "units_code": None,
+                         "dropdown_options": None})
+            extras.append(novo)
+    if not extras:
+        return plan
+    # A MARCA FICA NO PLANO, não no item: o que vai para o RPC é `plan["subtasks"]`, e uma chave
+    # a mais dentro do item seria um campo desconhecido no payload — justamente o que clonar a
+    # forma existia para evitar.
+    return {**plan, "subtasks": subs + extras, _MARCA_EXTRA: len(extras)}
+
+
+_MARCA_EXTRA = "_n_subtarefas_do_app"
+
+
+def sem_subtarefas_extra(plan: dict) -> dict:
+    """O plano de volta ao que veio do Fracttal, sem as subtarefas que o app acrescentou.
+
+    É a REDE DE SEGURANÇA da criação: se o RPC recusar a OS com as perguntas novas, ela sai sem
+    elas em vez de não sair. A OS de tracker é rotina diária — perdê-la por causa de uma
+    melhoria seria trocar um incômodo por uma parada."""
+    n = int(plan.get(_MARCA_EXTRA) or 0)
+    if not n:
+        return plan
+    sobra = {k: v for k, v in plan.items() if k != _MARCA_EXTRA}
+    sobra["subtasks"] = list(plan.get("subtasks") or [])[:-n]
+    return sobra
+
+
+def tem_subtarefas_extra(plan: dict) -> bool:
+    return bool(plan.get(_MARCA_EXTRA))
+
 
 def _norm_txt(s) -> str:
     import unicodedata
@@ -3217,15 +3295,33 @@ def create_performance_os(itens: list, id_responsible=None, responsible_name: st
         try:
             k = it.get("plano_id_task")
             if k not in cache:
-                cache[k] = get_plan_details(k, it.get("plano_id_item"))
+                # as subtarefas extras entram UMA vez, junto do cache — ver com_subtarefas_extra
+                cache[k] = com_subtarefas_extra(get_plan_details(k, it.get("plano_id_item")))
             plan = cache[k]
             nome = (it.get("titulo") or "").strip() or \
                 perf_os_nome(a, it.get("base") or plano_base_nome(plan.get("description")))
             ip = _resolve_pai(it.get("os_pai")) or id_parent   # OS pai do ativo (senão o global, se houver)
-            res = create_planned_os(a, plan, id_responsible=id_responsible, responsible_name=responsible_name,
-                                    event_date=event_date, id_parent=ip, descricao=nome,
-                                    note=it.get("note") or "", linkar_plano=it.get("linkar", True),
-                                    prog_date=prog_date)
+            def _criar(p):
+                return create_planned_os(a, p, id_responsible=id_responsible,
+                                         responsible_name=responsible_name,
+                                         event_date=event_date, id_parent=ip, descricao=nome,
+                                         note=it.get("note") or "",
+                                         linkar_plano=it.get("linkar", True), prog_date=prog_date)
+            aviso_extra = ""
+            try:
+                res = _criar(plan)
+            except FracttalError:
+                # REDE DE SEGURANÇA das subtarefas que o app acrescenta: se o RPC recusar por
+                # causa delas, a OS sai sem elas em vez de não sair. E o cache perde as extras,
+                # para o resto do lote não repetir a tentativa que já falhou.
+                if not tem_subtarefas_extra(plan):
+                    raise
+                cache[k] = plan = sem_subtarefas_extra(plan)
+                res = _criar(plan)
+                aviso_extra = ("as perguntas de fim de atividade não entraram — o Fracttal "
+                               "recusou; a OS foi criada com as subtarefas do plano.")
+            if aviso_extra:
+                res["aviso"] = (str(res.get("aviso") or "") + " " + aviso_extra).strip()
             if lbls and res.get("id_work_order"):
                 try:
                     apply_labels(res["id_work_order"], lbls)
@@ -5031,7 +5127,8 @@ def create_performance_os_agrupada(itens: list, id_responsible=None, responsible
         try:
             k = it.get("plano_id_task")
             if k not in cache:
-                cache[k] = get_plan_details(k, it.get("plano_id_item"))
+                # as subtarefas extras entram UMA vez, junto do cache — ver com_subtarefas_extra
+                cache[k] = com_subtarefas_extra(get_plan_details(k, it.get("plano_id_item")))
             plan = cache[k]
             nome = (it.get("titulo") or "").strip() or \
                 perf_os_nome(a, it.get("base") or plano_base_nome(plan.get("description")))
