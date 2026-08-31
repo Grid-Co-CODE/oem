@@ -132,8 +132,9 @@ def _cabecalho():
 def _confere_liberada(sheet_id):
     if sheet_id not in SHEETS_LIBERADAS:
         raise EscritaBloqueada(
-            "aba %s não está liberada para escrita: o pipeline ainda sobrescreve essa aba a "
-            "partir do .xlsx, e o que gravássemos sumiria no próximo sync." % sheet_id)
+            "aba %s não está na lista de escrita do app. A lista é curta de propósito: este "
+            "token grava no banco inteiro, e um id errado aqui altera a planilha de outra "
+            "área sem ninguém perceber." % sheet_id)
 
 
 def para_valores(dados: dict, headers: list) -> list:

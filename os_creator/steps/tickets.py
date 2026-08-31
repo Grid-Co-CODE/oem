@@ -25,6 +25,7 @@ import api
 import tickets_api
 import tickets_ativo
 import tickets_calc
+import tickets_diario
 import tickets_escrita
 import tickets_spec
 from steps.ui import BG, CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
@@ -455,6 +456,21 @@ QAbstractScrollArea{background:%s;}
 QTableWidget{background:%s;}
 QTableWidget QWidget{background:%s;}
 """ % (BORDER, MUTED, BORDER, MUTED, BG, CARD, CARD, CARD)
+
+
+def _carregar_aba(sheet_id):
+    """As ocorrências E o diário, na mesma thread do worker.
+
+    O diário é opcional de propósito: aba ainda não criada, token ausente, API fora do ar — nada
+    disso pode impedir a tela de ABRIR. Sem ele a tela mostra o que o banco tem, que é o
+    comportamento de antes; com ele, mostra também o que o app gravou e o sync desfez."""
+    linhas = tickets_api.listar_linhas(sheet_id)
+    try:
+        diario = tickets_diario.ler()
+    except Exception as e:                       # noqa: BLE001 — ver a docstring
+        print("[tickets] diário indisponível (%s: %s)" % (type(e).__name__, str(e)[:120]))
+        diario = []
+    return linhas, diario
 
 
 class TicketsTab(QWidget):
@@ -932,8 +948,8 @@ class TicketsTab(QWidget):
         # resposta chegar, uma resposta atrasada da aba ANTERIOR não pode sobrescrever a atual.
         aba_pedida = self._aba
         sheet_id = tickets_spec.ABAS[self._aba]["sheet_id"]
-        self._w = ApiWorker(tickets_api.listar_linhas, sheet_id)
-        self._w.ok.connect(lambda linhas, a=aba_pedida: self._ocs_chegaram(linhas, a))
+        self._w = ApiWorker(_carregar_aba, sheet_id)
+        self._w.ok.connect(lambda par, a=aba_pedida: self._ocs_chegaram(par, a))
         self._w.erro.connect(self._falhou)
         self._w.start()
 
@@ -963,10 +979,11 @@ class TicketsTab(QWidget):
         self._repintar()          # zera tiles/filtros/tabela em vez de deixá-los como estavam
 
     @slot_seguro
-    def _ocs_chegaram(self, linhas, aba_pedida):
+    def _ocs_chegaram(self, par, aba_pedida):
         self._w = None
         if aba_pedida != self._aba:
             return           # resposta de uma troca de aba já abandonada — descarta
+        linhas, diario = par
         ocs = []
         for row in (linhas or []):
             # 'Em conformidade' não é ocorrência: é o check periódico dizendo que o tracker está
@@ -985,6 +1002,16 @@ class TicketsTab(QWidget):
             row["_dias"] = _dias_desde(ini, fim)
             row["_horas"] = tickets_calc.indisponibilidade_horas(ini, fim)
             ocs.append(row)
+        # o DIÁRIO por cima do que veio do banco: se o sync desfez uma edição do app, aqui ela
+        # volta. Ver tickets_diario — a aba dele não existe no .xlsx, então o sync não a alcança.
+        self._placar_diario = tickets_diario.aplicar(aba_pedida, ocs, diario)
+        for row in ocs:
+            if row.get("_restaurado"):
+                ini, fim = row.get("Início da ocorrência"), row.get("Fim da ocorrência")
+                row["_estado"] = tickets_spec.estado_do_ticket(row.get("OS"),
+                                                               row.get("Status da OS"), fim)
+                row["_dias"] = _dias_desde(ini, fim)
+                row["_horas"] = tickets_calc.indisponibilidade_horas(ini, fim)
         self._ocs = ocs
         self._estados_filtro.clear()
         self._usina_filtro = ""
@@ -1084,10 +1111,15 @@ class TicketsTab(QWidget):
     def _pinta_edicao(self):
         self._b_salvar.setEnabled(self._sujo and self._sel is not None)
         if self._sujo:
-            self._p_estado_edicao.setText("alterações não salvas")
-            self._p_estado_edicao.setStyleSheet(
-                "color:%s;font-size:10.5px;background:transparent;border:none;"
-                % tickets_spec.COR_ESTADO["aberta"])
+            self._aviso_edicao("alterações não salvas", tickets_spec.COR_ESTADO["aberta"])
+            return
+        # o diário repôs algo que o sync tinha desfeito: isso PRECISA aparecer. Corrigir em
+        # silêncio é a mesma classe de erro que ele existe para evitar — a pessoa tem de saber
+        # que o que está na tela não é o que o banco devolveu.
+        repostos = (self._sel or {}).get("_restaurado")
+        if repostos:
+            self._aviso_edicao("%s: reposto pelo app (o sync da planilha tinha desfeito)"
+                               % ", ".join(repostos), tickets_spec.COR_ESTADO["verificando"])
         else:
             self._p_estado_edicao.setText("")
 
@@ -1143,15 +1175,30 @@ class TicketsTab(QWidget):
                                tickets_spec.COR_ESTADO["aberta"])
             self._b_salvar.setEnabled(True)
         else:
-            oc.update(self._digitado())
+            digitado = self._digitado()
+            oc.update(digitado)
             self._sujo = False
             self._recalcular(oc)
-            # "salvo" seco seria meia verdade enquanto o pipeline ainda sobe esta aba: gravou
-            # sim, e um sync pode desfazer. Quem digitou tem de saber disso na hora — é a
-            # diferença entre um dado que voltou atrás e um dado que sumiu sem explicação.
-            if sheet_id in tickets_escrita.SHEETS_QUE_O_SYNC_SOBRESCREVE:
-                self._aviso_edicao("salvo — a planilha do OneDrive ainda pode desfazer no "
-                                   "próximo sync", tickets_spec.COR_ESTADO["verificando"])
+            # O DIÁRIO, depois da gravação e nunca antes: registrar o que não entrou no banco
+            # faria a tela repor, na abertura seguinte, um valor que ninguém chegou a salvar.
+            # Falhar aqui não desfaz nada — a linha real já está gravada, só o seguro contra o
+            # sync é que não ficou. Por isso a mensagem muda em vez de virar erro.
+            protegido = True
+            try:
+                tickets_diario.registrar(self._aba, oc, digitado)
+            except Exception as e:               # noqa: BLE001
+                protegido = False
+                print("[tickets] não registrei no diário (%s: %s)"
+                      % (type(e).__name__, str(e)[:140]))
+            if protegido:
+                self._aviso_edicao("salvo", GREEN)
+            elif sheet_id in tickets_escrita.SHEETS_QUE_O_SYNC_SOBRESCREVE:
+                # sem o diário, "salvo" seco seria meia verdade: gravou sim, e o sync desta aba
+                # pode desfazer. É a diferença entre um dado que voltou atrás e um dado que
+                # sumiu sem explicação.
+                self._aviso_edicao("salvo — mas fora do diário: a planilha do OneDrive pode "
+                                   "desfazer no próximo sync",
+                                   tickets_spec.COR_ESTADO["verificando"])
             else:
                 self._aviso_edicao("salvo", GREEN)
             self._repintar()
