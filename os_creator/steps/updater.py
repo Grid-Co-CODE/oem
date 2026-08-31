@@ -19,18 +19,17 @@ from versao import APP_VERSAO
 # Precisa ser PÚBLICO: o app baixa sem credencial nenhuma, e asset de repositório privado
 # exigiria login. Por isso o código-fonte foi para o `oem` (privado) e a release para cá.
 #
-# TROCA DE ENDEREÇO — PENDENTE, adiada em 28/08. O destino é `Grid-Co-CODE/oem-release`, que já
-# existe e é público, mas a conta que publica ainda está com acesso só de LEITURA nele (a T.I.
-# libera na segunda). Publicar a mudança antes disso mandaria as máquinas atualizadas olharem
-# para um repositório vazio: elas continuariam funcionando, mas parariam de receber versão nova.
-#
-# Quando a permissão sair, a ordem NÃO pode inverter — este endereço fica gravado dentro do .exe
-# de cada pessoa:
-#   1. publicar o espelho da versão no `oem-release` (o instalador já está em C:/GridcoBuild)
-#   2. só então trocar esta linha e publicar essa versão AINDA pelo endereço antigo
-#   3. aposentar o antigo só quando todas as máquinas tiverem passado por aqui
-# Se errar a ordem, o conserto é reinstalar máquina a máquina — não há comando remoto.
-RELEASE_REPO = "Levi-6242/os-creator-releases"
+# TROCA DE ENDEREÇO — feita em 31/08, na ordem que este comentário exigia (a T.I. liberou a
+# escrita no `oem-release` neste dia). O que já aconteceu:
+#   1. o espelho da v2026.08.31.166 foi publicado no `oem-release` ANTES desta linha mudar, e os
+#      dois canais foram conferidos servindo o MESMO instalador (189.973.325 bytes)
+#   2. esta linha passou a apontar para lá — e a versão que carrega a mudança é publicada nos
+#      DOIS repositórios, porque quem ainda está na 166 só enxerga o endereço antigo
+#   3. FALTA aposentar o antigo. Só quando ninguém mais estiver numa versão anterior à 167: a
+#      partir daí o `release.py` publica só aqui (ver REPOS lá).
+# A ordem existe porque este endereço fica gravado dentro do .exe de cada pessoa — errar aqui se
+# conserta reinstalando máquina a máquina, não há comando remoto.
+RELEASE_REPO = "Grid-Co-CODE/oem-release"
 _VERSAO_URL = f"https://github.com/{RELEASE_REPO}/releases/latest/download/versao.json"
 
 
