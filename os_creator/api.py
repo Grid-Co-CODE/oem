@@ -4919,6 +4919,61 @@ def ultimas_os_do_ativo(id_item, limite: int = 10, com_tipo: bool = True) -> lis
     return out
 
 
+def os_dos_ativos(ids_itens, limite: int = 400) -> list:
+    """Todas as OS de um CONJUNTO de ativos, mais recente primeiro, já com tipo de tarefa e as
+    duas datas (aberta / fechada).
+
+    → [{'folio','id','descricao','ativo','usina','status','tipo_tarefa','aberta','fechada'}]
+
+    Serve à lupa da aba Tickets, onde se procura a OS de um ativo — ou da usina inteira — para
+    vincular a uma ocorrência.
+
+    UMA CHAMADA para o conjunto todo: sondado em 31/08, o filtro aceita `operator: "in"` numa
+    lista de `id_item` (um ativo devolveu total=179; seis, 201). Consultar ativo por ativo, que
+    era o caminho óbvio, custaria uma requisição por inversor — numa usina com 60 ativos, 60.
+
+    O filtro por NOME de usina não existe no servidor: `like` em items_log_descriptions e em
+    items_description são IGNORADOS (devolveram o total inteiro, 12.511, nos dois casos). Por
+    isso o escopo "usina" é resolvido no cliente, montando a lista de ids do catálogo.
+
+    Tipo de tarefa e data de fim não vêm na listagem — são do nível TAREFA e chegam pelo
+    `_meta_tarefa_por_os`, que agrupa de 130 em 130 e roda em paralelo."""
+    ids = [i for i in dict.fromkeys(ids_itens or []) if i]
+    if not ids:
+        return []
+    filtro = [{"operator": "in", "property": "id_item", "value": ids}]
+    linhas, start, page = [], 0, 1
+    while len(linhas) < limite and page <= 20:
+        try:
+            r = _rpc_call(RPC_WO_LIST, {"page": page, "limit": 100, "start": start,
+                                        "append": True, "filter": filtro,
+                                        "sort": [{"property": "id", "direction": "desc"}]})
+        except FracttalError:
+            break
+        data = (r.get("data") or []) if isinstance(r, dict) else []
+        if not data:
+            break
+        linhas.extend(data)
+        start += len(data)
+        page += 1
+        if len(data) < 100:
+            break
+    out = []
+    for w in linhas[:limite]:
+        d = _shape_wo_row(w)
+        out.append({"folio": d.get("folio"), "id": d.get("id"), "descricao": d.get("descricao"),
+                    "ativo": d.get("ativo"), "usina": d.get("usina"), "status": d.get("status"),
+                    "tipo_tarefa": "", "aberta": d.get("data"), "fechada": d.get("data_fim")})
+    if out:
+        meta = _meta_tarefa_por_os([d["id"] for d in out])
+        for d in out:
+            m = meta.get(d["id"]) or {}
+            d["tipo_tarefa"] = m.get("tipo_tarefa", "")
+            # a data de fim da LISTAGEM costuma vir vazia; a da tarefa é a que existe de fato
+            d["fechada"] = d["fechada"] or m.get("data_fim") or ""
+    return out
+
+
 def codigos_os_recentes(dias: int = 30) -> list:
     """Codes dos ativos com OS CRIADA nos últimos `dias` — qualquer criador, qualquer status.
     → lista ordenada de codes (p/ a aba Ativos tingir quem teve OS recente).

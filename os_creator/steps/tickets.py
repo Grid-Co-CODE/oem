@@ -30,6 +30,7 @@ import tickets_calc
 import tickets_diario
 import tickets_escrita
 import tickets_spec
+from steps import lupa_os
 from steps.ui import BG, CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
 from workers import ApiWorker, slot_seguro
 
@@ -122,6 +123,22 @@ def _nomes_de_usina_batem(a, b):
     (igual, ou um contém o outro, normalizado) — usado só quando o casamento por código não
     achou nada."""
     return bool(a) and bool(b) and (a == b or a in b or b in a)
+
+
+def _ativos_da_usina(usina_ticket, todos):
+    """Todos os ativos do catálogo que pertencem à usina citada no ticket.
+
+    Mesmo casamento em dois passos do `_achar_inversor`, e pela mesma razão: a coluna 'Usina' é
+    MISTA — a maioria traz o código ('TIM100'), 24% trazem o nome de exibição ('Demerval Lobao').
+    Tenta o código, que é preciso quando existe, e só cai para o nome quando o escopo por código
+    vier vazio."""
+    un = api._norm_txt(usina_ticket)
+    if not un or not todos:
+        return []
+    por_codigo = [a for a in todos if _codigo_bate_usina(api._norm_txt(a.get("code")), un)]
+    if por_codigo:
+        return por_codigo
+    return [a for a in todos if _nomes_de_usina_batem(un, api._norm_txt(a.get("usina")))]
 
 
 def _achar_inversor(nome, usina_ticket, todos):
@@ -857,10 +874,20 @@ class TicketsTab(QWidget):
             "QHeaderView{background:%s;border:none;border-radius:0;}"
             "QHeaderView::section{background:%s;color:%s;border:none;border-radius:0;"
             "border-bottom:1px solid %s;padding:5px 4px;font-size:10px;font-weight:800;}"
+            # O EDITOR DA CÉLULA (Levi, 31/08): ao dar duplo clique na causa raiz, a caixa de
+            # digitar nascia mais alta que a linha e escorregava para baixo, invadindo a linha
+            # seguinte. O culpado é o QSS global do app, que põe padding e altura mínima em todo
+            # QLineEdit — o delegate dimensiona o editor pelo retângulo da célula, mas o mínimo
+            # do widget vence e o excedente transborda.
+            # A altura é FIXA e menor que a linha: só `min-height:0` fazia o editor encolher até
+            # a altura do texto (11px medidos) e cortar as letras de baixo. 18px de conteúdo mais
+            # as duas bordas cabem com folga na linha de 30px, e o delegate centraliza.
+            "QTableWidget QLineEdit{background:%s;color:%s;border:1px solid %s;border-radius:5px;"
+            "padding:0px 5px;margin:0px;min-height:18px;max-height:18px;font-size:12.5px;}"
             "QTableWidget::item{padding:9px 4px;border-bottom:1px solid rgba(42,53,80,0.4);}"
             "QTableWidget::item:focus{border:none;outline:none;}"
             "QTableWidget::item:selected{background:rgba(166,226,46,0.12);color:%s;}"
-            % (CARD, TEXT, CARD, CARD, CARD, MUTED, BORDER, TEXT))
+            % (CARD, TEXT, CARD, CARD, CARD, MUTED, BORDER, INPUT, TEXT, GREEN, TEXT))
         self.tab.itemSelectionChanged.connect(self._sel_tabela)
         self.tab.horizontalHeader().setSectionsClickable(True)
         self.tab.horizontalHeader().sectionClicked.connect(self._ordenar_por)
@@ -1335,13 +1362,28 @@ class TicketsTab(QWidget):
         v.setContentsMargins(14, 12, 14, 12)
         v.setSpacing(9)
         v.addWidget(_secao("VINCULAR OS"))
+        linha_busca = QHBoxLayout()
+        linha_busca.setSpacing(8)
         busca = QLineEdit()
         busca.setPlaceholderText("número da OS")
         busca.setStyleSheet("QLineEdit{%s min-height:%dpx;max-height:%dpx;}"
                             "QLineEdit:focus{border-color:%s;}"
                             % (_qss_campo(TEXT), _ALTURA_QSS, _ALTURA_QSS, GREEN))
-        v.addWidget(busca)
-        aviso = _lbl("digite o número e tecle Enter", MUTED, 10.5)
+        linha_busca.addWidget(busca, 1)
+        # A LUPA (Levi, 31/08): quem não sabe o número precisa de um jeito de PROCURAR, e o
+        # campo acima só serve para quem já sabe. Abre o card grande sobre o app.
+        b_lupa = QPushButton("⌕")
+        b_lupa.setCursor(Qt.CursorShape.PointingHandCursor)
+        b_lupa.setToolTip("procurar as OS deste ativo ou da usina")
+        b_lupa.setFixedWidth(38)
+        b_lupa.setFixedHeight(_ALTURA_BARRA)
+        b_lupa.setStyleSheet("QPushButton{background:%s;color:%s;border:none;border-radius:9px;"
+                             "font-size:16px;font-weight:800;min-height:0px;}"
+                             % (GREEN, GREEN_INK))
+        b_lupa.clicked.connect(lambda *_: (pop.close(), self._abrir_lupa()))
+        linha_busca.addWidget(b_lupa)
+        v.addLayout(linha_busca)
+        aviso = _lbl("digite o número e tecle Enter, ou use a lupa para procurar", MUTED, 10.5)
         aviso.setWordWrap(True)
         v.addWidget(aviso)
         lista = QVBoxLayout()
@@ -1408,9 +1450,45 @@ class TicketsTab(QWidget):
             pop.adjustSize()
 
         busca.returnPressed.connect(procurar)
-        pop.setMinimumHeight(150)
+        # sem altura mínima: com ela o card nascia com um vão vazio embaixo da dica, antes de
+        # existir resultado nenhum (Levi, 31/08). Ele cresce sozinho quando a lista aparece.
         _abrir_popup(pop, self._p_aviso)
         busca.setFocus()
+
+    @slot_seguro
+    def _abrir_lupa(self, *_):
+        """O card grande com as OS do ativo — e da usina inteira, se a pessoa quiser.
+
+        O ativo do Fracttal sai do mesmo caminho que o painel usa para mostrar SKID/Cabine: em
+        Strings, o inversor resolvido no catálogo; em Trackers não há ativo cadastrado por
+        tracker, então lá a lupa já abre na usina."""
+        oc = self._sel
+        if oc is None:
+            return
+        usina = str(oc.get("Usina") or "")
+        ativo = {}
+        if self._aba == "Strings" and self._ativos_prontos and not self._ativos_falhou:
+            ativo = _achar_inversor(oc.get("Inversor"), usina, self._todos_ativos) or {}
+        dlg = lupa_os.LupaOS(self, ativo, usina,
+                             _ativos_da_usina(usina, self._todos_ativos), self._os_escolhida)
+        dlg.exec()
+
+    def _os_escolhida(self, os_):
+        """A lupa devolveu uma OS. Reaproveita o mesmo caminho do vínculo por número — inclusive
+        o 'Início do chamado pela Grid Co.', que sai da data de criação da OS."""
+        oc = self._sel
+        if oc is None:
+            return
+        oc["OS"] = str(os_.get("folio") or "").strip()
+        criada = para_iso(api.fmt_data_br(os_.get("aberta")))
+        if criada and not str(oc.get("Início do chamado pela Grid Co.") or "").strip():
+            oc["Início do chamado pela Grid Co."] = criada
+        oc["_estado"] = tickets_spec.estado_do_ticket(oc.get("OS"), oc.get("Status da OS"),
+                                                      oc.get("Fim da ocorrência"))
+        self._selecionar(oc)
+        self._sujo = True
+        self._pinta_edicao()
+        self._repintar()
 
     @slot_seguro
     def _ver_comentarios(self, *_):
