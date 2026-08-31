@@ -424,6 +424,10 @@ class TicketsTab(QWidget):
         self._aba = "Trackers"
         self._ocs, self._sel = [], None
         self._visiveis = []
+        # (coluna, descendente). None = a ordem padrão de `ordenar_ocorrencias`: o que precisa de
+        # atenção primeiro. Clicar num cabeçalho troca; clicar de novo inverte; o terceiro clique
+        # devolve o padrão, para ninguém ficar preso numa ordem que não quis.
+        self._ordem = None
         self._estados_filtro = set()      # vazio = todos os estados
         self._usina_filtro = ""
         self._todos_ativos, self._por_id = [], {}
@@ -549,6 +553,8 @@ class TicketsTab(QWidget):
             "QTableWidget::item:selected{background:rgba(166,226,46,0.12);color:%s;}"
             % (CARD, TEXT, CARD, MUTED, BORDER, TEXT))
         self.tab.itemSelectionChanged.connect(self._sel_tabela)
+        self.tab.horizontalHeader().setSectionsClickable(True)
+        self.tab.horizontalHeader().sectionClicked.connect(self._ordenar_por)
         self.tab.setColumnWidth(0, 14)
         self.tab.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         # QUEM ESTICA É A CAUSA RAIZ (col. 4), não a usina. Estava ao contrário: a usina esticava
@@ -873,9 +879,33 @@ class TicketsTab(QWidget):
             self._estados_filtro.add(chave)
         self._repintar()
 
-    # ver o comentário de _trocar_aba: mesma exposição — clique direto do usuário sem rede de
-    # segurança contra exceção.
+    # colunas ordenáveis: índice na tabela → função que extrai a chave. A tarja (0) fica de
+    # fora por não ter conteúdo, e a OS (3) porque é constante enquanto a coluna não existir.
+    # A chave é uma TUPLA (tem_valor, valor). Assim a linha SEM dado vai para o fim nos DOIS
+    # sentidos, em vez de virar "a mais recente" ao inverter — e são muitas: 251 das 513
+    # ocorrências abertas de trackers não têm data de início (limitação conhecida, 30/08).
+    _ORDENAVEL = {
+        1: lambda o: (1, api._norm_txt(o.get("Usina") or "")),
+        4: lambda o: (1 if str(o.get("Causa raiz") or "").strip() else 0,
+                      api._norm_txt(o.get("Causa raiz") or "")),
+        5: lambda o: ((1, d) if (d := tickets_calc._para_dt(o.get("Início da ocorrência")))
+                      else (0, datetime.min)),
+        6: lambda o: ((1, o["_dias"]) if o.get("_dias") is not None else (0, -1)),
+    }
+
     @slot_seguro
+    def _ordenar_por(self, col):
+        if col not in self._ORDENAVEL:
+            return
+        padrao_desc = col in (5, 6)          # data e dias começam do maior para o menor
+        if self._ordem is None or self._ordem[0] != col:
+            self._ordem = (col, padrao_desc)
+        elif self._ordem[1] == padrao_desc:
+            self._ordem = (col, not padrao_desc)
+        else:
+            self._ordem = None               # terceiro clique: volta ao padrão
+        self._repintar()
+
     @slot_seguro
     def _voltar_geral(self):
         self.tab.clearSelection()
@@ -912,7 +942,15 @@ class TicketsTab(QWidget):
             texto = api._norm_txt(" ".join(str(c) for c in campos if c not in (None, "")))
             return termo in texto
 
-        filtradas = ordenar_ocorrencias([o for o in self._ocs if _passa(o)])
+        passou = [o for o in self._ocs if _passa(o)]
+        if self._ordem is None:
+            filtradas = ordenar_ocorrencias(passou)
+        else:
+            col, desc = self._ordem
+            chave = self._ORDENAVEL[col]
+            # ordena o VALOR no sentido pedido, mas mantém quem não tem dado sempre por último
+            filtradas = sorted(passou, key=lambda o: chave(o)[1], reverse=desc)
+            filtradas.sort(key=lambda o: -chave(o)[0])
         total = len(filtradas)
         # a TABELA corta em 400 por desempenho, mas a visão geral conta o filtro INTEIRO —
         # senão ela diria "400 ocorrências" para sempre, que é o teto da tabela e não o dado.
@@ -972,8 +1010,11 @@ class TicketsTab(QWidget):
         self._combo_usina.blockSignals(False)
 
     def _pinta_tabela(self, rotulo_extra, valor_extra):
-        self.tab.setHorizontalHeaderLabels(["", "Usina", rotulo_extra, "OS", "Causa raiz",
-                                            "Início da ocorrência", "Dias"])
+        rot = ["", "Usina", rotulo_extra, "OS", "Causa raiz", "Início da ocorrência", "Dias"]
+        if self._ordem is not None:          # a seta diz por onde está ordenado, e em que sentido
+            col, desc = self._ordem
+            rot[col] = rot[col] + ("  ▼" if desc else "  ▲")
+        self.tab.setHorizontalHeaderLabels(rot)
         self.tab.blockSignals(True)
         self.tab.setRowCount(0)
         self.tab.setRowCount(len(self._visiveis))

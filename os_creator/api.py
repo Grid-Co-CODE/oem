@@ -3785,6 +3785,13 @@ def get_os_para_clonar(id_work_order) -> dict:
         tarefas.append({
             "code": code, "asset": asset,
             "tipo": tipo if tipo in TASK_TYPE_MAIN else "Corretiva",
+            # As DUAS classificações, pelo NOME (Levi, 30/08 — a OS clonada nascia sem elas).
+            # Vêm como texto porque é o texto que o RPC devolve de forma confiável: os campos
+            # `id_task_type`/`id_task_type_2` chegam NULOS ao ler a OS de origem. Quem converte
+            # nome→id é o `_classif_ids` na hora de criar, resolvendo no catálogo vivo — id fixo
+            # quebraria, já que a lista é editável dentro do Fracttal.
+            "classif_1": str(t.get("tasks_types_description") or "").strip(),
+            "classif_2": str(t.get("tasks_types_2_description") or "").strip(),
             "descricao": str(t.get("tasks_description") or "").strip(),
             "ativo_nome": (str(t.get("items_description") or "").split("{")[0]).strip()[:60] or code,
             "subtarefas": subt, "notas": "\n".join(notas_t),
@@ -3895,8 +3902,20 @@ def clonar_os(tarefas: list, id_responsible, responsible_name: str = "",
     id_tasks, erros = [], []
     for t in val:
         try:
+            # a classificação da OS de origem, resolvida no catálogo vivo. Sem isto a OS
+            # clonada nascia com Tipo mas SEM Classificação 1 e 2 — e ninguém percebia até
+            # abrir a OS no Fracttal (caso das 10893/10895, 27/08).
+            _cl = _classif_ids(t.get("classif_1") or "", t.get("classif_2") or "")
+            _tipo = {}
+            if _cl.get("id_task_type") is not None:
+                _tipo["id_c1"] = _cl["id_task_type"]
+                _tipo["desc_c1"] = _cl.get("tasks_types_description") or ""
+            if _cl.get("id_task_type_2") is not None:
+                _tipo["id_c2"] = _cl["id_task_type_2"]
+                _tipo["desc_c2"] = _cl.get("tasks_types_2_description") or ""
             os_ = create_os_rpc(t["asset"], t.get("descricao") or "", t.get("tipo") or "Corretiva",
                                 t.get("subtarefas") or [], requested_by=responsible_name,
+                                tipo=_tipo or None,
                                 note=(note or t.get("notas") or ""),
                                 event_date=(t.get("event_date") or scheduled_date),
                                 id_parent=id_parent)
