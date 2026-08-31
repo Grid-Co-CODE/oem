@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QL
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
                              QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget,
-                             QStyledItemDelegate,
+                             QStyledItemDelegate, QStyleOptionViewItem,
                              QTimeEdit)
 
 import api
@@ -40,6 +40,12 @@ from workers import ApiWorker, slot_seguro
 # e desenhar todas de uma vez é custo de layout sem ganho — quem quer uma usina específica usa
 # a busca ou o filtro de usina à esquerda.
 _LIMITE_TABELA = 400
+
+# Cores escolhidas pelo Levi em 31/08 para a tabela.
+_REALCE = "#A27D3F"      # a linha clicada, inteira
+_GRADE = "#3D61A6"       # as linhas da grade
+_TINTA_REALCE = "#141824"  # o texto sobre o dourado; ver _pintar_selecao
+_COR_ORIGINAL = 260        # papel do item onde a cor "de verdade" da célula fica guardada
 
 # ordem dos estados na lista: quem precisa de gente primeiro. `a_fechar` vem junto de `com_os`
 # porque é a mesma espera — a diferença é só de quem depende.
@@ -88,7 +94,7 @@ _EXTRA_COL = {
 
 # a ordem das colunas da tabela; as extras entram depois da Usina
 _FIXAS_ANTES = ["", "Usina"]
-_FIXAS_DEPOIS = ["OS", "Causa raiz", "Início da ocorrência", "Dias"]
+_FIXAS_DEPOIS = ["OS", "Causa raiz", "Início da ocorrência", "Período"]
 
 
 def colunas_da_aba(aba):
@@ -551,6 +557,8 @@ def _combo(opcoes):
 
 
 def _rotulado(rotulo, widget, dica=None, cor_dica=GREEN):
+    """Rótulo do campo. A dica entra no MESMO texto, separada por travessão e no mesmo cinza
+    (Levi, 31/08): pintada e solta ao lado, ela competia com o rótulo em vez de completá-lo."""
     w = QWidget()
     w.setStyleSheet("background:%s;" % CARD)      # ver a nota do QScrollArea em _coluna_painel
     v = QVBoxLayout(w)
@@ -558,9 +566,7 @@ def _rotulado(rotulo, widget, dica=None, cor_dica=GREEN):
     v.setSpacing(4)
     t = QHBoxLayout()
     t.setSpacing(7)
-    t.addWidget(_lbl(rotulo, MUTED, 10.5, 700))
-    if dica:
-        t.addWidget(_lbl(dica, cor_dica, 9.5, 800))
+    t.addWidget(_lbl("%s - %s" % (rotulo, dica) if dica else rotulo, MUTED, 10.5, 700))
     t.addStretch(1)
     v.addLayout(t)
     v.addWidget(widget)
@@ -606,9 +612,18 @@ class _RealceDaLinha(QStyledItemDelegate):
         super().__init__(dono)
         self._dono = dono
 
+    def updateEditorGeometry(self, editor, option, index):
+        """O editor OCUPA A CÉLULA INTEIRA (Levi, 31/08: "pega só metade para baixo da linha").
+        Sozinho, o Qt dá ao editor o tamanho que ele pede e o encosta embaixo; aqui a geometria
+        é imposta depois, então nem a altura mínima do QLineEdit nem o padding do QSS global
+        conseguem encolhê-lo."""
+        editor.setGeometry(option.rect.adjusted(2, 2, -2, -2))
+
     def paint(self, painter, option, index):
-        if index.row() == getattr(self._dono, "_linha_sel", -1):
-            painter.fillRect(option.rect, QColor(166, 226, 46, 38))    # verde Grid, 15%
+        if index.row() != getattr(self._dono, "_linha_sel", -1):
+            super().paint(painter, option, index)
+            return
+        painter.fillRect(option.rect, QColor(_REALCE))
         super().paint(painter, option, index)
 
 
@@ -676,6 +691,11 @@ class _Segmentado(QFrame):
         # cheia aqui o controle fecharia em 33 e ficaria 2px mais alto que a busca e que os
         # campos do painel — justamente o alinhamento que o Levi pediu.
         b.setFixedHeight(_ALTURA_QSS)
+        # O BOTÃO PRECISA CABER O QUE ESTÁ DENTRO DELE (Levi, 31/08: "ficaram comprimidos"). Com
+        # os rótulos dentro de um layout, o sizeHint do QPushButton continua sendo o do seu
+        # TEXTO — que está vazio —, então o Qt achava que 30px bastavam e os nomes saíam
+        # cortados ("Aberta" virou "Al"). A largura mínima vem do layout, que é quem sabe.
+        b.setMinimumWidth(lb.sizeHint().width())
         b.clicked.connect(lambda _c=False, k=chave: ao_clicar(k))
         return b
 
@@ -901,10 +921,10 @@ class TicketsTab(QWidget):
         p.v.addLayout(topo)
 
         self.tab = QTableWidget(0, len(colunas_da_aba(self._aba)))
-        # a coluna se chama 'Dias', não 'Há': ver o comentário em _pinta_tabela sobre por que
-        # um único rótulo temporal não serve pras duas leituras que a célula carrega.
-        self.tab.setHorizontalHeaderLabels(["", "Usina", "Skid / Tracker", "OS", "Causa raiz",
-                                            "Início da ocorrência", "Dias"])
+        # os nomes vêm de `colunas_da_aba`: a lista fixa que estava aqui ficou para trás quando
+        # Trackers ganhou Cabine e Tracker separadas, e mostrava rótulos que não existiam mais
+        # até a primeira repintura.
+        self.tab.setHorizontalHeaderLabels(colunas_da_aba(self._aba))
         self.tab.verticalHeader().setVisible(False)
         self.tab.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         # SEM SELEÇÃO DO QT (Levi, 31/08: "não quero que mude a cor à esquerda" e "esse laranja
@@ -929,7 +949,8 @@ class TicketsTab(QWidget):
             # que é CLARA (#EFEFEF) — a tabela inteira ficava cinza dentro do navy. Só aparece
             # dentro da MainWindow, porque é ela quem instala a paleta; a tela isolada não
             # reproduzia, e foi por isso que passou em dois testes meus.
-            "QTableWidget{background:%s;border:none;color:%s;font-size:12.5px;outline:0;}"
+            "QTableWidget{background:%s;border:none;color:%s;font-size:12.5px;outline:0;"
+            "gridline-color:%s;}"
             "QTableWidget QWidget{background:%s;}"
             # cabeçalho QUADRADO e sem fio lateral (Levi, 31/08): só o fio de baixo, para dar
             # a impressão de divisão sem desenhar uma caixa. O QHeaderView precisa da regra
@@ -946,8 +967,8 @@ class TicketsTab(QWidget):
             # a altura do texto (11px medidos) e cortar as letras de baixo. 18px de conteúdo mais
             # as duas bordas cabem com folga na linha de 30px, e o delegate centraliza.
             "QTableWidget QLineEdit{background:%s;color:%s;border:1px solid %s;border-radius:5px;"
-            "padding:0px 5px;margin:0px;min-height:18px;max-height:18px;font-size:12.5px;}"
-            "QTableWidget::item{padding:9px 4px;border-bottom:1px solid rgba(42,53,80,0.4);}"
+            "padding:0px 5px;margin:0px;min-height:0px;font-size:12.5px;}"
+            "QTableWidget::item{padding:9px 4px;}"
             "QTableWidget::item:focus{border:none;outline:none;}"
             # A SELEÇÃO É PINTADA POR NÓS (Levi, 31/08: "não quero que mude a cor à esquerda" e
             # "esse laranja é feião, testa a cor grid"). Aqui o estilo é anulado: transparente
@@ -957,7 +978,7 @@ class TicketsTab(QWidget):
             # global do app, e sobravam riscos nas divisas das células.
             "QTableWidget{selection-background-color:transparent;}"
             "QTableWidget::item:selected{background:transparent;border:none;}"
-            % (CARD, TEXT, CARD, CARD, CARD, MUTED, BORDER, INPUT, TEXT, GREEN))
+            % (CARD, TEXT, _GRADE, CARD, CARD, CARD, MUTED, BORDER, INPUT, TEXT, GREEN))
         self.tab.cellClicked.connect(self._sel_tabela)
         self.tab.horizontalHeader().setSectionsClickable(True)
         self.tab.horizontalHeader().sectionClicked.connect(self._ordenar_por)
@@ -970,10 +991,10 @@ class TicketsTab(QWidget):
         # 1782px e o painel ficava cortado pela borda.
         cab = self.tab.horizontalHeader()
         self._ajustar_larguras()
-        # sem grade: o QSS global do app desenha as linhas de divisão, e sobre a linha
-        # selecionada elas apareciam como riscos claros em cada divisa de célula — foi o que o
-        # Levi chamou de "esse laranja em cada célula". A divisão já vem do fio de baixo do item.
-        self.tab.setShowGrid(False)
+        # GRADE (Levi, 31/08). Os riscos que apareciam antes na linha clicada não eram a grade
+        # — eram o estilo desenhando a seleção nativa, que já está desligada. Com ela fora do
+        # caminho, a grade pode voltar, e no azul que ele escolheu.
+        self.tab.setShowGrid(True)
         self.tab.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
         p.v.addWidget(self.tab, 1)
         self._rodape = _lbl("—", MUTED, 11.5)
@@ -1084,7 +1105,8 @@ class TicketsTab(QWidget):
         # este NÃO abre: é calculado pela janela solar a partir das duas datas acima. Campo
         # calculado que aceita digitação vira número que ninguém sabe de onde veio.
         self._p_indisp = _campo()
-        v.addWidget(_rotulado("Indisponibilidade", self._p_indisp, dica="calculado, 06–18h"))
+        v.addWidget(_rotulado("Indisponibilidade", self._p_indisp,
+                              dica="período solar (06 a 18h)"))
 
         v.addWidget(_regua())
         # COMENTÁRIOS vira um log (Levi, 31/08): o campo nasce VAZIO, para escrever o próximo, e
@@ -1382,9 +1404,9 @@ class TicketsTab(QWidget):
         "Início da ocorrência": lambda o: (
             (1, d) if (d := tickets_calc._para_dt(o.get("Início da ocorrência")))
             else (0, datetime.min)),
-        "Dias": lambda o: ((1, o["_dias"]) if o.get("_dias") is not None else (0, -1)),
+        "Período": lambda o: ((1, o["_dias"]) if o.get("_dias") is not None else (0, -1)),
     }
-    _DESC_POR_PADRAO = ("Início da ocorrência", "Dias")
+    _DESC_POR_PADRAO = ("Início da ocorrência", "Período")
 
     @slot_seguro
     def _ordenar_por(self, col):
@@ -1893,7 +1915,7 @@ class TicketsTab(QWidget):
             elif estado == "encerrada":
                 os_txt, os_cor = "—", MUTED
             else:
-                os_txt, os_cor = "SEM OS", tickets_spec.COR_ESTADO["aberta"]
+                os_txt, os_cor = "Sem OS", tickets_spec.COR_ESTADO["aberta"]
 
             dias = oc.get("_dias")
             # DECISÃO (revisão de 29/08): '_dias' mede coisas diferentes por estado — em
@@ -1908,12 +1930,10 @@ class TicketsTab(QWidget):
             # distinção aqui destruiria essa régua. Em vez disso: cabeçalho virou 'Dias' (vale
             # nos dois casos, não promete só idade) e cada célula se rotula pelo próprio estado,
             # então a leitura errada exige ignorar a palavra na própria célula.
-            if dias is None:
-                ha_txt = "—"
-            elif estado == "encerrada":
-                ha_txt = "durou %d d" % dias
-            else:
-                ha_txt = "há %d d" % dias
+            # "X dias", seco (Levi, 31/08). O "há"/"durou" saiu: a coluna passou a se chamar
+            # Período, e é o nome dela que diz o que o número é — em ocorrência aberta, quanto
+            # tempo já corre; em encerrada, quanto durou.
+            ha_txt = "—" if dias is None else ("%d dia" % dias if dias == 1 else "%d dias" % dias)
             alarme = dias is not None and dias > 30 and estado != "encerrada"
             ha_cor = tickets_spec.COR_ESTADO["aberta"] if alarme else TEXT
 
@@ -1926,6 +1946,9 @@ class TicketsTab(QWidget):
             for c, (v, cr) in enumerate(zip(vals, cores), start=1):
                 it = QTableWidgetItem(str(v))
                 it.setForeground(_cor(cr))
+                # a cor "de verdade" da célula fica guardada: na linha marcada o texto vira
+                # escuro para se ler sobre o dourado, e ao sair da marcação ela volta.
+                it.setData(_COR_ORIGINAL, cr)
                 # tudo centralizado menos a Causa raiz (Levi, 30/08): ela é a única coluna de
                 # texto corrido e de largura variável — centralizar faria cada linha começar
                 # num ponto diferente, e o olho perde a coluna ao descer a lista.
@@ -1979,9 +2002,24 @@ class TicketsTab(QWidget):
     _FUNDO_SEL = _rgba(GREEN, 0.16)
 
     def _pintar_selecao(self, linha):
-        """Marca a linha escolhida. Quem desenha é o `_RealceDaLinha`; aqui só se guarda qual é
-        e se pede o redesenho."""
+        """Marca a linha escolhida: o fundo quem pinta é o `_RealceDaLinha`; aqui vai só o texto.
+
+        SOBRE O DOURADO O TEXTO ESCURECE. As cores das células (Sem OS em vermelho, o alarme da
+        coluna Período) foram escolhidas para o fundo navy e somem sobre #A27D3F. A TARJA fica
+        de fora: a cor dela é a informação, e o Levi pediu explicitamente que não mude ao
+        clicar. Trocar a paleta no delegate não resolve — com folha de estilo na tabela, quem
+        decide a cor do texto é o estilo, não a paleta da opção."""
+        anterior = getattr(self, "_linha_sel", -1)
         self._linha_sel = linha
+        for r in (anterior, linha):
+            if not (0 <= r < self.tab.rowCount()):
+                continue
+            for c in range(1, self.tab.columnCount()):     # a coluna 0 é a tarja: não se mexe
+                it = self.tab.item(r, c)
+                if it is None:
+                    continue
+                original = it.data(_COR_ORIGINAL) or TEXT
+                it.setForeground(_cor(_TINTA_REALCE if r == linha else original))
         self.tab.viewport().update()
 
     @slot_seguro
@@ -2060,8 +2098,12 @@ class TicketsTab(QWidget):
             # o campo é para o comentário NOVO; o que já existe fica no histórico
             self._p_coment.setPlainText("")
             hist = comentarios_de(oc.get("Comentários gerais"))
-            self._b_hist.setEnabled(bool(hist))
-            self._b_hist.setText("histórico  %d" % len(hist) if hist else "sem histórico")
+            # SEM HISTÓRICO, O BOTÃO SOME (Levi, 31/08: "não está dando a opção de digitar"). Um
+            # botão apagado escrito "sem histórico" ao lado do título lê como "aqui não dá para
+            # comentar" — e dava: o campo logo abaixo sempre esteve aberto. Sem o botão, o que
+            # sobra é o campo com o convite para escrever.
+            self._b_hist.setVisible(bool(hist))
+            self._b_hist.setText("histórico  %d" % len(hist) if hist else "")
         finally:
             self._populando = False
         self._sujo = False
