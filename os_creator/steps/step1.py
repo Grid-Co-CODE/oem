@@ -1,13 +1,15 @@
-"""Step 1 — drill-down do Ativo: Cliente → Usina → Tipo → Ativo(s) + Data programada.
-Seleção MÚLTIPLA por checkbox (1 OS por ativo marcado). A Data programada (default = agora,
-horário de Brasília) vira o event_date da OS — ajustável, igual ao incidente do Várias OSs."""
+"""Step 1 — drill-down do Ativo: Cliente → Usina → Tipo → Ativo(s) + as duas datas.
+
+Seleção MÚLTIPLA por checkbox. DUAS DATAS desde 31/08, como no Performance: a do INCIDENTE
+(quando aconteceu → event_date, travada no passado) e a PROGRAMADA (quando alguém vai lá →
+prog_date, default amanhã). Antes era um campo só, chamado "programada" e usado como incidente."""
 import unicodedata
 from PyQt6.QtCore import Qt, pyqtSignal, QDateTime
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QLineEdit,
                              QPushButton, QDateTimeEdit, QTableWidget, QTableWidgetItem,
                              QHeaderView, QAbstractItemView)
-from steps.ui import Card, campo, rotulo, Linha, icone_pix, MUTED, GREEN
+from steps.ui import Card, campo, rotulo, Linha, icone_pix, travar_no_passado, MUTED, GREEN
 
 TODOS_USINA = "— Selecione a usina —"
 TODOS_TIPO  = "Todos os tipos"
@@ -70,22 +72,38 @@ class Step1(QWidget):
         self.tbl.setColumnWidth(1, 140)
         self.tbl.itemChanged.connect(self._on_check)
         self.hint = QLabel("carregando ativos…"); self.hint.setObjectName("hint")
-        self.dt_prog = QDateTimeEdit(QDateTime.currentDateTime())
+        # DUAS DATAS, como no Performance (Levi, 31/08). Antes era uma só, chamada "Data
+        # programada", que virava o event_date — ou seja, era a data do INCIDENTE com o nome
+        # errado. Com um campo só não dava para lançar hoje a falha de ontem e mandar a equipe
+        # semana que vem.
+        self.dt_prog = QDateTimeEdit(QDateTime.currentDateTime())     # INCIDENTE (event_date)
         self.dt_prog.setDisplayFormat("dd/MM/yyyy HH:mm"); self.dt_prog.setCalendarPopup(True)
+        travar_no_passado(self.dt_prog)      # o incidente já aconteceu; futuro ali é erro de digitação
         b_agora = QPushButton("Agora"); b_agora.setObjectName("secondary"); b_agora.setFixedWidth(64)
         b_agora.clicked.connect(lambda: self.dt_prog.setDateTime(QDateTime.currentDateTime()))
         dtw = QWidget(); dtw.setObjectName("uiGroup")
         dth = QHBoxLayout(dtw); dth.setContentsMargins(0, 0, 0, 0); dth.setSpacing(8)
         dth.addWidget(self.dt_prog, 1); dth.addWidget(b_agora)
 
+        self._prog_tocada = False            # a data programada já foi editada à mão?
+        self.dt_exec = QDateTimeEdit(QDateTime.currentDateTime().addDays(1))
+        self.dt_exec.setDisplayFormat("dd/MM/yyyy HH:mm"); self.dt_exec.setCalendarPopup(True)
+        self.dt_exec.dateTimeChanged.connect(lambda *_: setattr(self, "_prog_tocada", True))
+        self.dt_prog.dateTimeChanged.connect(self._sincronizar_prog)
+
         card = Card("box", "Ativo")
         card.add(Linha(campo("Cliente", self.cb_cliente, obrig=True),
                        campo("Usina", self.cb_usina, obrig=True)))
         card.add(Linha(campo("Tipo de equipamento", self.cb_tipo), campo(" ", self.busca)))
-        card.add(rotulo("Ativos", obrig=True, extra="(marque um ou vários — cada um vira uma OS; anexe imagens por ativo)"))
+        # o texto não promete mais "cada um vira uma OS": desde 31/08 dá para agrupar tudo numa
+        # OS só, e a escolha é feita na janela do responsável, no fim do fluxo.
+        card.add(rotulo("Ativos", obrig=True,
+                        extra="(marque um ou vários — no fim você escolhe uma OS por ativo ou "
+                              "uma OS só com várias tarefas; anexe imagens por ativo)"))
         card.add(self.tbl, stretch=1)
         card.add(self.hint)
-        card.add(campo("Data programada", dtw, extra="(Brasília)"))
+        card.add(Linha(campo("Data do incidente", dtw, extra="(Brasília)"),
+                       campo("Data programada", self.dt_exec, extra="(quando executar)")))
         lay.addWidget(card, 1)
 
         row = QHBoxLayout()
@@ -253,14 +271,38 @@ class Step1(QWidget):
                                       for im in self._imgs[a["id"]]]
         return out
 
-    def data_programada(self):
-        """Data/hora programada escolhida (naive = Brasília; o app anexa o fuso → event_date)."""
+    def _sincronizar_prog(self, *_):
+        """Mantém a data programada em AMANHÃ enquanto ninguém a editar à mão.
+
+        AMANHÃ EM RELAÇÃO A AGORA, não ao incidente — mesma regra do Performance (Levi, 03/08).
+        Somar um dia ao incidente agendaria no PASSADO sempre que a falha fosse antiga: um
+        incidente de 28/07 lançado hoje marcaria a ida a campo para 29/07, que já passou.
+        `_prog_tocada` separa "eu movi" de "a pessoa mexeu": escolhida a data, não encosto mais."""
+        if self._prog_tocada:
+            return
+        self.dt_exec.blockSignals(True)
+        self.dt_exec.setDateTime(QDateTime.currentDateTime().addDays(1))
+        self.dt_exec.blockSignals(False)
+
+    def data_incidente(self):
+        """Quando a coisa ACONTECEU (naive = Brasília; o app anexa o fuso → event_date)."""
         return self.dt_prog.dateTime().toPyDateTime()
+
+    def data_execucao(self):
+        """Quando alguém vai lá (→ prog_date). Independente do incidente."""
+        return self.dt_exec.dateTime().toPyDateTime()
+
+    # nome antigo, de quando havia uma data só — mantido para não quebrar chamador esquecido
+    def data_programada(self):
+        return self.data_incidente()
 
     def reset(self):
         self._checked.clear()
         self._imgs.clear()
         self.dt_prog.setDateTime(QDateTime.currentDateTime())
+        self._prog_tocada = False
+        self.dt_exec.setDateTime(QDateTime.currentDateTime().addDays(1))
+        self._prog_tocada = False       # o setDateTime acima dispara o sinal que marca "tocada"
         self.busca.blockSignals(True)
         self.busca.clear()
         self.busca.blockSignals(False)

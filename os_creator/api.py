@@ -868,7 +868,7 @@ def _msg_rpc(bruto) -> str:
 def create_os_rpc(asset: dict, description: str, task_type: str, subtasks: list,
                   requested_by: str = "", etiqueta: str = "", note: str = "",
                   event_date: datetime = None, tipo: dict = None, finalizar: dict = None,
-                  id_parent=None, falha: dict = None) -> dict:
+                  id_parent=None, falha: dict = None, prog_date: datetime = None) -> dict:
     """Cria uma OS (tarefa não-planejada) via RPC interno do Fracttal. asset = registro do
     get_assets() (precisa de id/id_parent/id_type_item/id_group_task). `event_date` = data
     programada (datetime; default = agora). `tipo` = dict opcional com id_main (id_task_type_main),
@@ -895,10 +895,17 @@ def create_os_rpc(asset: dict, description: str, task_type: str, subtasks: list,
     ev = event_date if event_date is not None else datetime.now(timezone.utc)
     if ev.tzinfo is None:                                 # garante UTC-aware p/ o _iso_z
         ev = ev.replace(tzinfo=timezone.utc)
+    # DATA PROGRAMADA separada da do INCIDENTE (Levi, 31/08 — o Tradicional passou a ter as
+    # duas, como o Performance já tinha). `event_date` diz quando quebrou; `prog_date` diz
+    # quando alguém vai lá. Sem `prog_date`, a programação é o próprio evento — exatamente o
+    # comportamento anterior, para nenhum outro caminho (COS, Chamados, PCM, Clonar) mudar.
+    prog = prog_date if prog_date is not None else ev
+    if prog.tzinfo is None:
+        prog = prog.replace(tzinfo=timezone.utc)
     fdt = fin.get("final_date")
     if fdt is not None and getattr(fdt, "tzinfo", None) is None:
         fdt = fdt.replace(tzinfo=timezone.utc)
-    final_iso = _iso_z(fdt) if fdt is not None else _iso_z(ev + timedelta(minutes=20))
+    final_iso = _iso_z(fdt) if fdt is not None else _iso_z(prog + timedelta(minutes=20))
     params = {
         "event_date": _iso_z(ev),
         # CONFIRMADO em 07/08, e era mesmo o que eu suspeitava em 30/07 sem conseguir medir.
@@ -911,9 +918,9 @@ def create_os_rpc(asset: dict, description: str, task_type: str, subtasks: list,
         # pedidos por ninguém — eram folga arbitrária de quando eu não sabia que o initial_date
         # mandava. Agora os três são o PRÓPRIO evento: a pessoa escolhe uma hora e é essa que
         # aparece no Fracttal. Mesma regra já aplicada no `create_planned_os`.
-        "cal_date_maintenance": _iso_z(ev),
-        "date_maintenance": _iso_z(ev),
-        "initial_date": _iso_z(ev),
+        "cal_date_maintenance": _iso_z(prog),
+        "date_maintenance": _iso_z(prog),
+        "initial_date": _iso_z(prog),
         "final_date": final_iso,
         "type_user": "HUMAN_RESOURCES",
         "id_priorities": prio,
@@ -4272,7 +4279,7 @@ def create_work_orders_bulk(assets: list, description: str, task_type: str, subt
                             etiqueta_ids: list = None, note: str = "", tipo: dict = None,
                             finalizar: dict = None, event_date=None, id_parent=None,
                             imagens_por_ativo: dict = None, por_ativo: dict = None,
-                            falha: dict = None) -> list:
+                            falha: dict = None, prog_date=None) -> list:
     """Cria N OS (uma por ativo). Fase 1: cria a tarefa pendente (create_os_rpc). Fase 2 (se
     id_responsible): converte em WO numerada + atribui o responsável. Fase 3 (se etiqueta_ids):
     aplica as etiquetas na WO. Fase 4 (se imagens_por_ativo): anexa as imagens em cada OS.
@@ -4295,7 +4302,7 @@ def create_work_orders_bulk(assets: list, description: str, task_type: str, subt
             os_ = create_os_rpc(asset, desc_i, task_type, subtasks,
                                 requested_by=responsible_name, etiqueta=etiqueta, note=note_i,
                                 tipo=tipo, event_date=event_date, finalizar=finalizar,
-                                id_parent=id_parent, falha=falha)
+                                id_parent=id_parent, falha=falha, prog_date=prog_date)
             fase1.append({"code": code, "ok": True, "os": os_})
         except FracttalError as e:
             fase1.append({"code": code, "ok": False, "erro": str(e)})
@@ -4343,6 +4350,98 @@ def create_work_orders_bulk(assets: list, description: str, task_type: str, subt
                 r["os"]["aviso"] = f"tarefa criada, mas falhou virar WO: {e}"
     _anexa_imagens_bulk(fase1, imagens_por_ativo)
     return fase1
+
+
+def create_work_orders_agrupada(assets: list, description: str, task_type: str, subtasks: list,
+                                etiqueta: str = "", responsible_name: str = "",
+                                id_responsible=None, etiqueta_ids: list = None, note: str = "",
+                                tipo: dict = None, event_date=None, id_parent=None,
+                                imagens_por_ativo: dict = None, por_ativo: dict = None,
+                                falha: dict = None, prog_date=None) -> dict:
+    """UMA OS com VÁRIAS tarefas — cada ativo marcado vira uma tarefa dentro da mesma OS.
+
+    Levi, 31/08: é a lógica que o Performance já tinha ("Agrupar em UMA OS com várias tarefas") e
+    que faltava no Tradicional, onde marcar N ativos criava N OS separadas. Quando a equipe vai
+    ao mesmo lugar mexer em cinco inversores, cinco OS é papelada; uma OS com cinco tarefas é o
+    trabalho como ele acontece.
+
+    Mesmo molde do `create_planned_os_one_wo`, mas com as subtarefas DIGITADAS (o Tradicional não
+    usa plano): Fase 1 cria N tarefas PENDENTES, Fase 2 junta todas num `work_order_insert` só.
+    Sem responsável não há Fase 2 — as tarefas ficam pendentes no kanban, como no fluxo normal.
+    → {'ok','os':{id_work_order,wo_folio,id_tasks},'n_tarefas','n_criadas','erros'[,'aviso']}."""
+    val, erros = [], []
+    for a in (assets or []):
+        asset = a if isinstance(a, dict) else _asset_by_code(a)
+        if isinstance(asset, dict) and asset.get("id"):
+            val.append(asset)
+        else:
+            erros.append("%s: ativo não encontrado."
+                         % (a.get("code") if isinstance(a, dict) else a))
+    if not val:
+        return {"ok": False, "erro": "Nenhum ativo válido.", "n_tarefas": 0, "n_criadas": 0,
+                "erros": erros}
+
+    id_tasks, por_task = [], {}
+    for asset in val:
+        ov = (por_ativo or {}).get(asset.get("code")) or {}
+        try:
+            r = create_os_rpc(asset, ov.get("description", description), task_type, subtasks,
+                              requested_by=responsible_name, etiqueta=etiqueta,
+                              note=ov.get("note", note), tipo=tipo, event_date=event_date,
+                              id_parent=id_parent, falha=falha, prog_date=prog_date)
+            if r.get("id_task"):
+                id_tasks.append(r["id_task"])
+                por_task[r["id_task"]] = asset.get("code")
+            else:
+                erros.append("%s: tarefa não criada" % asset.get("code"))
+        except FracttalError as e:
+            erros.append("%s: %s" % (asset.get("code"), e))
+    if not id_tasks:
+        return {"ok": False, "erro": "Falha ao criar as tarefas: " + "; ".join(erros[:3]),
+                "n_tarefas": len(val), "n_criadas": 0, "erros": erros}
+
+    saida = {"ok": True, "n_tarefas": len(val), "n_criadas": len(id_tasks), "erros": erros,
+             "os": {"id_tasks": id_tasks}}
+    if not id_responsible:
+        saida["aviso"] = ("tarefas criadas e pendentes no kanban — sem responsável não gerei a "
+                          "OS numerada.")
+        return saida
+    try:
+        recs_map = _kanban_records(set(id_tasks))
+    except FracttalError as e:
+        saida["aviso"] = "tarefas criadas; não gerei a OS numerada (%s)." % e
+        return saida
+    recs = [recs_map[i] for i in id_tasks if i in recs_map]
+    if not recs:
+        saida["aviso"] = "tarefas criadas, mas não as achei no kanban p/ gerar a OS."
+        return saida
+    try:
+        wo = _work_order_insert(recs, id_responsible, responsible_name)
+    except FracttalError as e:
+        saida["aviso"] = "tarefas criadas; a OS não fechou (%s)." % e
+        return saida
+    idwo = wo.get("id_work_order")
+    saida["os"].update({"id_work_order": idwo, "wo_folio": wo.get("wo_folio")})
+    if idwo and etiqueta_ids:
+        try:
+            apply_labels(idwo, etiqueta_ids)
+            saida["os"]["etiquetas"] = list(etiqueta_ids)
+        except FracttalError as e:
+            saida["aviso"] = "OS %s criada, mas a etiqueta falhou: %s" % (wo.get("wo_folio"), e)
+    # as imagens de CADA ativo vão para a tarefa daquele ativo, dentro da OS única
+    if idwo and imagens_por_ativo:
+        try:
+            tarefas = _ids_tarefas_da_os(idwo)
+        except Exception:
+            tarefas = []
+        for i, tid in enumerate(tarefas):
+            code = por_task.get(id_tasks[i]) if i < len(id_tasks) else None
+            for im in (imagens_por_ativo.get(code) or []):
+                try:
+                    attach_imagem_os(idwo, tid, im.get("bytes"), im.get("nome") or "imagem.png")
+                except Exception:
+                    pass
+    return saida
 
 
 def create_work_orders_datas(asset: dict, description: str, task_type: str, subtasks: list,

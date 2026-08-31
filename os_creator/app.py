@@ -8,7 +8,8 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
                              QLabel, QProgressBar, QDialog, QLineEdit, QListWidget,
                              QListWidgetItem, QPushButton, QMessageBox, QTabWidget, QFrame,
-                             QGridLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect)
+                             QGridLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
+                             QCheckBox)
 import api
 from workers import ApiWorker, auth_bus
 from steps.step1 import Step1
@@ -799,7 +800,8 @@ class MainWindow(QMainWindow):
                      "etiqueta": self.s2.etiqueta(), "etiqueta_ids": self.s2.etiqueta_ids(),
                      "subs": self.s3.subtarefas(),
                      "imagens": self.s1.selected_images(),       # anexo por ativo (Passo 1) → 1 OS/ativo
-                     "event_dt": self.s1.data_programada(),      # data programada (Passo 1) → event_date
+                     "event_dt": self.s1.data_incidente(),       # quando aconteceu → event_date
+                     "prog_dt": self.s1.data_execucao(),         # quando alguém vai lá → prog_date
                      "event_qdt": self.s1.dt_prog.dateTime()}    # idem, p/ default do painel 'já realizada'
         # A API exige o responsável JÁ na criação → escolhe primeiro, depois gera.
         ResponsavelDialog(self).exec()
@@ -865,6 +867,19 @@ class ResponsavelDialog(QDialog):
         self.fin.toggled.connect(lambda *_: self.adjustSize())   # cresce p/ caber o painel (sem scroll aqui)
         lay.addWidget(self.fin)
 
+        # AGRUPAR (Levi, 31/08): a mesma lógica que o Performance já tinha. Marcar N ativos
+        # criava N OS separadas; quando a equipe vai ao mesmo lugar mexer em cinco inversores,
+        # cinco OS é papelada e uma OS com cinco tarefas é o trabalho como ele acontece.
+        # Só aparece com mais de um ativo — com um só não há o que agrupar.
+        self.ck_agrupar = QCheckBox("Agrupar em UMA OS com várias tarefas")
+        self.ck_agrupar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.ck_agrupar.setToolTip("Em vez de uma OS por ativo, cria uma OS só em que cada ativo "
+                                   "marcado vira uma tarefa.")
+        self.ck_agrupar.setVisible(n > 1)
+        self.ck_agrupar.toggled.connect(self._on_agrupar)
+        if n > 1:
+            lay.addWidget(self.ck_agrupar)
+
         lay.addWidget(QLabel("<b>Ela depende de outra OS?</b> "
                              "<span style='color:#8a90a2'>(opcional)</span>"))
         self.os_pai = OsPaiPicker()
@@ -927,16 +942,51 @@ class ResponsavelDialog(QDialog):
                          "respostas": self.fin.respostas()}
         self.b_ok.setEnabled(False)
         self.b_cancel.setEnabled(False)
+        _pdt = d.get("prog_dt")
+        prog_date = _pdt.replace(tzinfo=brt) if _pdt is not None else None
+        if self.ck_agrupar.isChecked():
+            self.busca.setPlaceholderText(f"Gerando 1 OS com {len(ativos)} tarefas…")
+            self._w2 = ApiWorker(api.create_work_orders_agrupada, ativos, d["desc"], d["tipo"],
+                                 d["subs"], d["etiqueta"], p["name"], p.get("id_personnel"),
+                                 d.get("etiqueta_ids"), d.get("obs", ""), tipo=d.get("tipo_dict"),
+                                 event_date=event_date, id_parent=self.os_pai.id_parent(),
+                                 imagens_por_ativo=d.get("imagens"), prog_date=prog_date)
+            self._w2.ok.connect(self._pronto_agrupada)
+            self._w2.erro.connect(self._err)
+            self._w2.start()
+            return
         self.busca.setPlaceholderText(f"Gerando {len(ativos)} OS (resp.: {p['name']})…")
         self._w2 = ApiWorker(api.create_work_orders_bulk, ativos, d["desc"], d["tipo"],
                              d["subs"], d["etiqueta"], p["code"], p["name"], p.get("id_personnel"),
                              d.get("etiqueta_ids"), d.get("obs", ""), tipo=d.get("tipo_dict"),
                              finalizar=finalizar, event_date=event_date,
                              id_parent=self.os_pai.id_parent(),
-                             imagens_por_ativo=d.get("imagens"))
+                             imagens_por_ativo=d.get("imagens"), prog_date=prog_date)
         self._w2.ok.connect(self._pronto)
         self._w2.erro.connect(self._err)
         self._w2.start()
+
+    def _on_agrupar(self, marcado):
+        """Agrupar e "já realizada" não combinam: a OS concluída nasce pronta, uma por ativo, e
+        não há o que juntar depois. Em vez de deixar a pessoa marcar os dois e descobrir no erro,
+        o painel some enquanto o agrupamento estiver ligado."""
+        if hasattr(self, "fin"):
+            self.fin.setVisible(not marcado)
+        self.adjustSize()
+
+    def _pronto_agrupada(self, res):
+        if not res.get("ok"):
+            self._err(res.get("erro") or "Não consegui criar a OS.")
+            return
+        o = res.get("os") or {}
+        num = o.get("wo_folio") or o.get("id_work_order") or "?"
+        msg = "OS %s criada com %d tarefa(s)." % (num, res.get("n_criadas") or 0)
+        if res.get("aviso"):
+            msg += "\n\n⚠ " + res["aviso"]
+        if res.get("erros"):
+            msg += "\n\n%d ativo(s) ficaram de fora:\n" % len(res["erros"])
+            msg += "\n".join("• " + e for e in res["erros"][:4])
+        self._final(msg)
 
     def _pronto(self, res):
         ok   = [r for r in res if r.get("ok")]
