@@ -37,6 +37,17 @@ def _paginar(sheet_id, buscar=None):
     return out
 
 
+_CABECALHOS = {}          # sheet_id -> colunas da última leitura
+
+
+def cabecalho_de(sheet_id):
+    """As colunas da aba, NA ORDEM em que a API as devolve — é assim que a escrita precisa
+    mandá-las de volta. Sai da última leitura, então não custa requisição; vazio se ninguém
+    leu a aba ainda (e aí a escrita não deve nem tentar: mandar ordem errada é gravar cada
+    valor na coluna do vizinho)."""
+    return list(_CABECALHOS.get(sheet_id) or [])
+
+
 def listar_linhas(sheet_id, buscar=None):
     """Todas as linhas da aba, já como dicionários {coluna: valor}.
 
@@ -47,6 +58,7 @@ def listar_linhas(sheet_id, buscar=None):
     if not cruas:
         return []
     headers = cruas[0].get("headers") or []
+    _CABECALHOS[sheet_id] = list(headers)
     out = []
     for r in cruas:
         d = linha_para_dict(headers, r.get("values") or [])

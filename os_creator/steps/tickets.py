@@ -19,12 +19,13 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
-                             QComboBox, QAbstractScrollArea)
+                             QComboBox, QAbstractScrollArea, QMenu)
 
 import api
 import tickets_api
 import tickets_ativo
 import tickets_calc
+import tickets_escrita
 import tickets_spec
 from steps.ui import BG, CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
 from workers import ApiWorker, slot_seguro
@@ -61,7 +62,8 @@ _TXT_AVISO = {
 # Em Trackers o SKID vem da PLANILHA (coluna "Nº do SKID"); em Strings essa coluna não existe — o
 # extra correspondente é o nome do inversor, e SKID/Cabine dele vêm do catálogo (ver _repintar_ident).
 _EXTRA_COL = {
-    "Trackers": ("Skid / Tracker",
+    # "Cabine", não "Skid": mesmo vocabulário do painel desde 31/08 — ver _repintar_ident.
+    "Trackers": ("Cabine / Tracker",
                  lambda oc: "%s / %s" % (oc.get("Nº do SKID") or "—",
                                          oc.get("Nº do tracker / Identificação") or "—")),
     "Strings": ("Inversor", lambda oc: str(oc.get("Inversor") or "—")),
@@ -258,6 +260,29 @@ def _rgba(hexa, a):
     return "rgba(%d,%d,%d,%.2f)" % (r, g, b, a)
 
 
+def _menu(dono):
+    """QMenu no tema da tela. O padrão do Qt vem CLARO — no navy vira um retângulo branco no
+    meio da tela. A folha precisa ser repetida em cada submenu: estilo de QMenu não desce
+    sozinho para o menu filho."""
+    m = QMenu(dono)
+    m.setStyleSheet(
+        "QMenu{background:%s;border:1px solid %s;border-radius:10px;padding:6px;}"
+        "QMenu::item{color:%s;padding:7px 30px 7px 14px;border-radius:7px;font-size:12px;}"
+        "QMenu::item:selected{background:%s;color:%s;}"
+        "QMenu::separator{height:1px;background:%s;margin:5px 8px;}"
+        % (CARD, BORDER, TEXT, GREEN, GREEN_INK, BORDER))
+    return m
+
+
+def _qss_barra():
+    """Botão da barra do topo: mesma caixa dos campos, para alinhar com os segmentos de estado
+    e com a busca. Sem padding vertical — ele entraria POR FORA da altura fixa."""
+    return ("QPushButton{background:%s;border:1px solid %s;border-radius:10px;"
+            "padding:0px 12px;min-height:0px;color:%s;font-size:12px;font-weight:700;"
+            "text-align:left;}"
+            "QPushButton:hover{border-color:%s;}" % (INPUT, BORDER, TEXT, GREEN))
+
+
 def _qss_campo(cor_texto=MUTED):
     # Fundo SEMPRE o INPUT (Levi, 28/08): um fundo mais escuro que o card vira buraco na tela.
     # Nesta fase TODO campo é somente-leitura — a cor do texto (MUTED, o padrão aqui) é o único
@@ -269,13 +294,44 @@ def _qss_campo(cor_texto=MUTED):
             "color:%s;font-size:12.5px;" % (INPUT, BORDER, cor_texto))
 
 
-def _campo(ph=""):
+def _campo(ph="", editavel=False):
+    """Campo do painel. `editavel` muda três coisas ao mesmo tempo, de propósito: deixa digitar,
+    acende o texto (MUTED lê como desligado) e fixa a altura dos botões da barra — o Levi pediu
+    o mesmo tamanho dos segmentos de estado (31/08). A altura precisa vir por `max-height` na
+    folha: o mínimo de conteúdo do QLineEdit sobrevive a setFixedHeight."""
     e = QLineEdit()
-    e.setReadOnly(True)
+    e.setReadOnly(not editavel)
     if ph:
         e.setPlaceholderText(ph)
-    e.setStyleSheet("QLineEdit{%s}" % _qss_campo())
+    if editavel:
+        e.setStyleSheet("QLineEdit{%s min-height:%dpx;max-height:%dpx;}"
+                        "QLineEdit:focus{border-color:%s;}"
+                        % (_qss_campo(TEXT), _ALTURA_QSS, _ALTURA_QSS, GREEN))
+    else:
+        e.setStyleSheet("QLineEdit{%s}" % _qss_campo())
     return e
+
+
+def _combo(opcoes):
+    """Campo de escolha, na mesma caixa e altura do _campo editável."""
+    c = QComboBox()
+    c.addItems(opcoes)
+    c.setCursor(Qt.CursorShape.PointingHandCursor)
+    c.setStyleSheet(
+        "QComboBox{background:%s;border:1px solid %s;border-radius:9px;padding:0px 10px;"
+        "min-height:%dpx;max-height:%dpx;color:%s;font-size:12.5px;}"
+        "QComboBox:hover{border-color:%s;}"
+        "QComboBox::drop-down{border:none;width:22px;}"
+        # o Qt não desenha seta neste tema — sem isto o campo parece texto e ninguém descobre
+        # que é uma escolha. Triângulo feito com bordas, que é o que o QSS aceita no subcontrole.
+        "QComboBox::down-arrow{width:0px;height:0px;margin-right:7px;"
+        "border-left:4px solid transparent;border-right:4px solid transparent;"
+        "border-top:5px solid %s;}"
+        "QComboBox QAbstractItemView{background:%s;color:%s;border:1px solid %s;"
+        "selection-background-color:%s;selection-color:%s;outline:0;}"
+        % (INPUT, BORDER, _ALTURA_QSS, _ALTURA_QSS, TEXT, GREEN, GREEN, CARD, TEXT, BORDER,
+           GREEN, GREEN_INK))
+    return c
 
 
 def _rotulado(rotulo, widget, dica=None, cor_dica=GREEN):
@@ -307,46 +363,19 @@ class _Painel(QFrame):
         self.v.setSpacing(12)
 
 
-class _Chip(QPushButton):
-    def __init__(self, texto, ligado=False, cor=GREEN, ao_clicar=None):
-        super().__init__(texto)
-        self.setCheckable(True)
-        self.setChecked(ligado)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(
-            "QPushButton{color:%s;background:transparent;border:1px solid %s;border-radius:999px;"
-            "padding:5px 13px;font-size:11.5px;font-weight:700;}"
-            "QPushButton:hover{border-color:%s;}"
-            "QPushButton:checked{color:%s;background:%s;border-color:%s;}"
-            % (MUTED, BORDER, cor, GREEN_INK, cor, cor))
-        if ao_clicar:
-            # `clicked` do Qt manda um bool (checked) — o chamador não precisa saber disso.
-            self.clicked.connect(lambda _checked=False: ao_clicar())
-
-
-class _Tile(QFrame):
-    """Contador do topo. A cor é do ESTADO, não decoração — quem bate o olho já sabe onde doer."""
-    def __init__(self, n, rotulo, cor, dica=""):
-        super().__init__()
-        self.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:12px;"
-                           "border-top:2px solid %s;}" % (CARD, BORDER, cor))
-        v = QVBoxLayout(self)
-        v.setContentsMargins(15, 11, 15, 12)
-        v.setSpacing(1)
-        v.addWidget(_lbl(f"{n:,}".replace(",", "."), cor, 25, 800))
-        v.addWidget(_lbl(rotulo, TEXT, 11.5, 700))
-        if dica:
-            d = _lbl(dica, MUTED, 10.5)
-            d.setWordWrap(True)
-            v.addWidget(d)
-
-
 # altura dos controles da barra do topo. Levi, 31/08: "reduza o tamanho em 50%%". Precisa ser
 # FIXA em cada um: o QSS global do app (app.py:50) poe padding:9px em QPushButton e
 # padding:7px nos campos, e isso entra na altura mesmo quando o estilo local pede menos.
-_ALTURA_BARRA = 29      # com min-height:0 nos campos, este é o valor QUE APARECE na tela
-                        # (Levi, 31/08: metade dos 58 anteriores). Sem o min-height:0 o Qt
-                        # impunha 42 e nem a altura fixa vencia.
+_ALTURA_BARRA = 31      # altura VISÍVEL na tela (Levi, 31/08: metade dos 58 anteriores, e os
+                        # campos do painel "do mesmo tamanho dos botões de aberto/encerrada").
+_ALTURA_QSS = _ALTURA_BARRA - 2   # a folha de estilo mede o CONTEÚDO: a borda de 1px de cada
+                        # lado entra por fora. Pedir 31 no QSS dá 33 na tela.
+                        #
+                        # E a folha precisa dizer min-height E max-height, os dois: `min-height:0`
+                        # sozinho derruba o mínimo que setFixedHeight tinha posto, e o layout
+                        # espreme o campo quando o painel fica apertado — medido em 31/08, os
+                        # campos do painel nasceram com 21px pedindo 29. Sem nenhum min-height,
+                        # o Qt impõe 42 e nem a altura fixa vence. Só a dupla resolve.
 
 
 class _Segmentado(QFrame):
@@ -394,7 +423,10 @@ class _Segmentado(QFrame):
             "QPushButton:hover{color:%s;}"
             "QPushButton:checked{color:%s;background:%s;border-top:2px solid %s;}"
             % (MUTED, e, e, d, d, TEXT, cor, _rgba(cor, 0.13), cor))
-        b.setFixedHeight(_ALTURA_BARRA)
+        # o botão vai DENTRO do quadro, que tem 1px de borda em cima e embaixo: com a altura
+        # cheia aqui o controle fecharia em 33 e ficaria 2px mais alto que a busca e que os
+        # campos do painel — justamente o alinhamento que o Levi pediu.
+        b.setFixedHeight(_ALTURA_QSS)
         b.clicked.connect(lambda _c=False, k=chave: ao_clicar(k))
         return b
 
@@ -445,6 +477,10 @@ class TicketsTab(QWidget):
         self._ativos_prontos = False
         self._ativos_falhou = False
         self._w = self._wa = None
+        # edicao (fase 2): _populando cala os sinais enquanto a tela preenche os campos;
+        # _sujo é o que acende o Salvar e avisa que há coisa digitada sem gravar.
+        self._populando = False
+        self._sujo = False
         self.setStyleSheet(_QSS_SCROLLBAR)
         self._monta()
         self._carregar()
@@ -463,24 +499,24 @@ class TicketsTab(QWidget):
         self._seg_box = QHBoxLayout()
         self._seg_box.setSpacing(0)
         self._tiles_box.addLayout(self._seg_box)
-        self._combo_usina = QComboBox()
-        self._combo_usina.setFixedSize(250, 38)     # sem altura fixa ele estica com a barra
-        self._combo_usina.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._combo_usina.setStyleSheet(
-            "QComboBox{background:%s;border:1px solid %s;border-radius:10px;padding:0px 12px;"
-            "min-height:0px;"
-            "color:%s;font-size:12px;font-weight:700;}"
-            "QComboBox::drop-down{border:none;width:22px;}"
-            "QComboBox QAbstractItemView{background:%s;color:%s;border:1px solid %s;"
-            "selection-background-color:%s;selection-color:%s;outline:0;}"
-            % (INPUT, BORDER, TEXT, CARD, TEXT, BORDER, GREEN, GREEN_INK))
+        # A usina virou BOTÃO com menu, não mais um combo (Levi, 31/08): 63 usinas numa lista
+        # única é rolagem sem fim. O menu abre por CLIENTE e só então mostra as usinas dele —
+        # dois cliques em vez de caçar na lista.
+        self._b_usina = QPushButton("Todas as usinas")
+        self._b_usina.setFixedWidth(250)
+        self._b_usina.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._b_usina.setStyleSheet(_qss_barra())
         # ALTURA depois da folha de estilo: o QSS global do app (app.py:42) põe padding nos
-        # campos, e o padding entra na altura. setFixedSize antes do stylesheet não segura —
-        # medido: pedi 38 e o combo nasceu com 58, desalinhado dos chips ao lado.
-        self._combo_usina.setFixedHeight(_ALTURA_BARRA)
-        self._combo_usina.currentIndexChanged.connect(self._trocar_usina)
-        self._tiles_box.addWidget(self._combo_usina)
+        # campos, e o padding entra na altura. Altura fixa antes do stylesheet não segura —
+        # medido: pedi 38 e o controle nasceu com 58, desalinhado dos chips ao lado.
+        self._b_usina.setFixedHeight(_ALTURA_BARRA)
+        self._b_usina.clicked.connect(self._menu_usinas)
+        self._tiles_box.addWidget(self._b_usina)
         self._tiles_box.addStretch(1)
+        # A BUSCA MORA AQUI, não no cabeçalho (Levi, 31/08: "na mesma LINHA dos botões de
+        # aberta, encerrada"). Fica fora do _seg_box de propósito: aquele é limpo a cada
+        # repintura e levaria o campo junto, apagando o que a pessoa digitou.
+        self._tiles_box.addWidget(self._campo_busca())
         raiz.addLayout(self._tiles_box)
 
         # DUAS colunas desde o redesenho de 30/08 (direção "tabela protagonista"): a coluna de
@@ -507,36 +543,91 @@ class TicketsTab(QWidget):
             cab.addWidget(b)
         cx = QVBoxLayout()
         cx.setSpacing(1)
-        cx.addWidget(_lbl("Tickets", TEXT, 20, 800))
+        # O TÍTULO É O SELETOR DE FONTE (Levi, 31/08). Antes eram dois chips ao lado do título
+        # dizendo a mesma coisa que ele; agora o nome da aba faz parte da frase — "Tickets de
+        # Trackers" — no verde da Grid e com a seta avisando que dá para trocar. Sai um controle
+        # da barra e o título passa a dizer o que a tela está mostrando.
+        lt = QHBoxLayout()
+        lt.setSpacing(9)
+        lt.addWidget(_lbl("Tickets de", TEXT, 20, 800))
+        self._b_fonte = QPushButton()
+        self._b_fonte.setCursor(Qt.CursorShape.PointingHandCursor)
+        # mesma fonte e mesmo tamanho de "Tickets", só a cor muda — é uma palavra do título que
+        # por acaso é clicável, não um botão colado no título.
+        self._b_fonte.setStyleSheet(
+            "QPushButton{background:transparent;border:none;padding:0px;text-align:left;"
+            "color:%s;font-size:20px;font-weight:800;}"
+            "QPushButton:hover{color:%s;}" % (GREEN, TEXT))
+        self._b_fonte.clicked.connect(self._menu_fonte)
+        lt.addWidget(self._b_fonte)
+        lt.addStretch(1)
+        cx.addLayout(lt)
         self._sub = _lbl("carregando ocorrências…", MUTED, 12)
         self._sub.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
         cx.addWidget(self._sub)
         cab.addLayout(cx)
-        cab.addSpacing(20)
-        self._chips_aba = {}
-        for nome in tickets_spec.ABAS:
-            c = _Chip(nome, nome == self._aba, GREEN, ao_clicar=lambda n=nome: self._trocar_aba(n))
-            self._chips_aba[nome] = c
-            cab.addWidget(c)
         cab.addStretch(1)
+        self._pinta_fonte()
+        return cab
+
+    def _campo_busca(self):
         self._busca = QLineEdit()
-        self._busca.setPlaceholderText("usina, skid, tracker/inversor, causa…")
+        self._busca.setPlaceholderText("usina, cabine, tracker/inversor, causa…")
         # max-height na própria folha de estilo: o mínimo de conteúdo do QLineEdit sobrevive a
         # setFixedHeight e a setMinimumHeight(0) — só o QSS o vence (medido: 42 nos dois casos).
-        self._busca.setStyleSheet("QLineEdit{%s min-height:0px;max-height:%dpx;}"
-                                  % (_qss_campo(TEXT), _ALTURA_BARRA))
+        self._busca.setStyleSheet("QLineEdit{%s min-height:%dpx;max-height:%dpx;}"
+                                  % (_qss_campo(TEXT), _ALTURA_QSS, _ALTURA_QSS))
         self._busca.setFixedWidth(320)
         # zerar o mínimo ANTES da altura fixa: o QLineEdit guarda um mínimo de conteúdo próprio,
         # e setFixedHeight sozinho não desce abaixo dele (medido: pedia 29 e ficava em 42).
-        self._busca.setMinimumHeight(0)
-        self._busca.setFixedHeight(_ALTURA_BARRA)   # mesma razão do combo, ver acima
         self._t_busca = QTimer(self)
         self._t_busca.setSingleShot(True)
         self._t_busca.setInterval(220)
         self._t_busca.timeout.connect(self._repintar)
         self._busca.textChanged.connect(lambda *_: self._t_busca.start())
-        cab.addWidget(self._busca)
-        return cab
+        return self._busca
+
+    def _pinta_fonte(self):
+        self._b_fonte.setText("%s  ▾" % self._aba)
+
+    @slot_seguro
+    def _menu_fonte(self, *_):
+        m = _menu(self)
+        for nome in tickets_spec.ABAS:
+            a = m.addAction(nome)
+            a.setCheckable(True)
+            a.setChecked(nome == self._aba)
+            a.triggered.connect(lambda _c=False, n=nome: self._trocar_aba(n))
+        m.exec(self._b_fonte.mapToGlobal(self._b_fonte.rect().bottomLeft()))
+
+    @slot_seguro
+    def _menu_usinas(self, *_):
+        """Drill-down cliente → usina (Levi, 31/08). Cliente vem do próprio ticket (é uma das
+        15 colunas do núcleo), então não custa consulta nenhuma."""
+        m = _menu(self)
+        a = m.addAction("Todas as usinas")
+        a.setCheckable(True)
+        a.setChecked(not self._usina_filtro)
+        a.triggered.connect(lambda _c=False: self._trocar_usina(""))
+        m.addSeparator()
+        por_cliente = {}
+        for o in self._ocs:
+            cli = str(o.get("Cliente") or "").strip() or "sem cliente informado"
+            u = str(o.get("Usina") or "—")
+            por_cliente.setdefault(cli, {})
+            por_cliente[cli][u] = por_cliente[cli].get(u, 0) + 1
+        # "sem cliente informado" por último: é falta de cadastro, não um cliente.
+        for cli in sorted(por_cliente, key=lambda c: (c == "sem cliente informado",
+                                                      api._norm_txt(c))):
+            usinas = por_cliente[cli]
+            sub = m.addMenu("%s   %d" % (cli, sum(usinas.values())))
+            sub.setStyleSheet(m.styleSheet())     # estilo de QMenu não desce para o submenu
+            for u, qtd in sorted(usinas.items(), key=lambda x: -x[1]):
+                ac = sub.addAction("%s   %d" % (u, qtd))
+                ac.setCheckable(True)
+                ac.setChecked(u == self._usina_filtro)
+                ac.triggered.connect(lambda _c=False, n=u: self._trocar_usina(n))
+        m.exec(self._b_usina.mapToGlobal(self._b_usina.rect().bottomLeft()))
 
     def _coluna_lista(self):
         p = _Painel()
@@ -597,6 +688,13 @@ class TicketsTab(QWidget):
     def _coluna_painel(self):
         p = _Painel(400)          # 452 não cabia com a tabela em 1366px de notebook
         self._p_conteudo = QWidget()
+        # A COR DO CARD, EXPLÍCITA — mesma armadilha do QScrollArea mais abaixo, e o Levi
+        # apontou de novo em 31/08 ao clicar numa linha. Medido varrendo uma coluna de pixels da
+        # tela renderizada: os widgets de dentro (rótulos, identificação, aviso, área de
+        # rolagem) pintam #121A2B cada um por conta própria, mas os VÃOS do layout entre eles
+        # mostravam #090D18, a cor da JANELA — porque este QWidget não pintava nada. Lia como
+        # faixas escuras atravessando o painel.
+        self._p_conteudo.setStyleSheet("background:%s;" % CARD)
         cv = QVBoxLayout(self._p_conteudo)
         cv.setContentsMargins(0, 0, 0, 0)
         cv.setSpacing(12)
@@ -667,29 +765,58 @@ class TicketsTab(QWidget):
         # Cliente, UF, Supervisor e Responsável SAÍRAM (Levi, 28/08): vêm do catálogo, não mudam
         # e não são decisão de ninguém nesta tela.
         v.addWidget(_secao("CAUSA RAIZ", tickets_spec.COR_ESTADO["verificando"]))
-        self._p_causa = _campo(ph="aguardando técnico")
+        self._p_causa = _campo(ph="aguardando técnico", editavel=True)
         v.addWidget(_rotulado("Causa raiz", self._p_causa, dica="só o técnico",
                               cor_dica=tickets_spec.COR_ESTADO["verificando"]))
-        self._p_resp = _campo()
+        # escolha, não texto livre: a régua da indisponibilidade da Grid Co. tem exatamente
+        # três casos (Sim = tudo, Parcial = menos 6 h, resto = zero) e digitar "sim " ou "SIM"
+        # cai fora dela em silêncio, zerando a hora de quem preencheu.
+        self._p_resp = _combo(["", "Sim", "Parcial", "Não"])
         v.addWidget(_rotulado("Responsabilidade da Grid Co.?", self._p_resp))
 
         v.addWidget(_regua())
         v.addWidget(_secao("PRAZOS"))
-        self._p_ini = _campo()
+        self._p_ini = _campo(ph="dd/mm/aaaa hh:mm", editavel=True)
         v.addWidget(_rotulado("Início da ocorrência", self._p_ini, dica="data e hora"))
-        self._p_fim = _campo()
+        self._p_fim = _campo(ph="em aberto", editavel=True)
         v.addWidget(_rotulado("Fim da ocorrência", self._p_fim))
+        # este NÃO abre: é calculado pela janela solar a partir das duas datas acima. Campo
+        # calculado que aceita digitação vira número que ninguém sabe de onde veio.
         self._p_indisp = _campo()
-        v.addWidget(_rotulado("Indisponibilidade", self._p_indisp, dica="janela solar 06–18h"))
+        v.addWidget(_rotulado("Indisponibilidade", self._p_indisp, dica="calculado, 06–18h"))
 
         v.addWidget(_regua())
         v.addWidget(_secao("COMENTÁRIOS"))
         self._p_coment = QTextEdit()
-        self._p_coment.setReadOnly(True)
         self._p_coment.setFixedHeight(56)
-        self._p_coment.setStyleSheet("QTextEdit{%s}" % _qss_campo())
+        self._p_coment.setStyleSheet("QTextEdit{%s}QTextEdit:focus{border-color:%s;}"
+                                     % (_qss_campo(TEXT), GREEN))
         v.addWidget(self._p_coment)
+
+        v.addWidget(_regua())
+        acao = QHBoxLayout()
+        acao.setSpacing(10)
+        self._p_estado_edicao = _lbl("", MUTED, 10.5)
+        self._p_estado_edicao.setWordWrap(True)
+        acao.addWidget(self._p_estado_edicao, 1)
+        self._b_salvar = QPushButton("Salvar")
+        self._b_salvar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._b_salvar.setFixedHeight(_ALTURA_BARRA)
+        self._b_salvar.setStyleSheet(
+            "QPushButton{background:%s;color:%s;border:none;border-radius:9px;"
+            "padding:0px 18px;min-height:0px;font-size:12px;font-weight:800;}"
+            "QPushButton:disabled{background:%s;color:%s;}" % (GREEN, GREEN_INK, INPUT, MUTED))
+        self._b_salvar.clicked.connect(self._salvar)
+        acao.addWidget(self._b_salvar)
+        v.addLayout(acao)
         v.addStretch(1)
+
+        # marcar sujo em cada campo: é o que acende o Salvar e o que permite avisar antes de a
+        # troca de linha jogar fora o que foi digitado.
+        for w in (self._p_causa, self._p_ini, self._p_fim):
+            w.textEdited.connect(self._marcar_sujo)
+        self._p_resp.activated.connect(self._marcar_sujo)
+        self._p_coment.textChanged.connect(self._marcar_sujo)
         sc.setWidget(dentro)
         cv.addWidget(sc, 1)
 
@@ -869,7 +996,7 @@ class TicketsTab(QWidget):
         self._todos_ativos = [a for a in (ativos or []) if isinstance(a, dict)]
         self._por_id = tickets_ativo.indexar(self._todos_ativos)
         self._ativos_prontos = True
-        # se já tinha uma ocorrência de Strings selecionada, os campos SKID/Cabine que estavam
+        # se já tinha uma ocorrência de Strings selecionada, o campo Cabine que estava
         # em 'carregando catálogo…' saem do escuro sem precisar clicar de novo na linha.
         if self._aba == "Strings" and self._sel is not None:
             self._repintar_ident(self._sel)
@@ -885,8 +1012,7 @@ class TicketsTab(QWidget):
         if nome == self._aba or nome not in tickets_spec.ABAS:
             return
         self._aba = nome
-        for n, c in self._chips_aba.items():
-            c.setChecked(n == nome)
+        self._pinta_fonte()
         self._ocs = []
         self._sel = None
         self._estados_filtro.clear()
@@ -937,9 +1063,100 @@ class TicketsTab(QWidget):
         self.tab.clearSelection()
         self._selecionar(None)
 
+    # ── edição (fase 2) ──────────────────────────────────────────────────────────────────
+    # Os campos abrem, mas a gravação ainda esbarra no pipeline: enquanto a planilha subir as
+    # abas Trackers e Strings com replace=true, o que fosse gravado aqui sumiria no próximo
+    # sync, em silêncio. Por isso a trava é de CÓDIGO (tickets_escrita.SHEETS_LIBERADAS) e o
+    # erro diz o motivo, em vez de o Salvar falhar com uma mensagem genérica de rede.
+    _CAMPOS_EDITAVEIS = ("Causa raiz", "Responsabilidade da Grid Co.?",
+                         "Início da ocorrência", "Fim da ocorrência", "Comentários gerais")
+
     @slot_seguro
-    def _trocar_usina(self, *_):
-        self._usina_filtro = self._combo_usina.currentData() or ""
+    def _marcar_sujo(self, *_):
+        if self._populando or self._sel is None:
+            return
+        self._sujo = True
+        self._pinta_edicao()
+
+    def _pinta_edicao(self):
+        self._b_salvar.setEnabled(self._sujo and self._sel is not None)
+        if self._sujo:
+            self._p_estado_edicao.setText("alterações não salvas")
+            self._p_estado_edicao.setStyleSheet(
+                "color:%s;font-size:10.5px;background:transparent;border:none;"
+                % tickets_spec.COR_ESTADO["aberta"])
+        else:
+            self._p_estado_edicao.setText("")
+
+    def _digitado(self):
+        """O que está nos campos agora, na grafia das colunas da planilha."""
+        return {"Causa raiz": self._p_causa.text().strip(),
+                "Responsabilidade da Grid Co.?": self._p_resp.currentText().strip(),
+                "Início da ocorrência": self._p_ini.text().strip(),
+                "Fim da ocorrência": self._p_fim.text().strip(),
+                "Comentários gerais": self._p_coment.toPlainText().strip()}
+
+    def _aviso_edicao(self, texto, cor):
+        self._p_estado_edicao.setText(texto)
+        self._p_estado_edicao.setStyleSheet(
+            "color:%s;font-size:10.5px;background:transparent;border:none;" % cor)
+
+    @slot_seguro
+    def _salvar(self, *_):
+        oc = self._sel
+        if oc is None or not self._sujo:
+            return
+        sheet_id = tickets_spec.ABAS[self._aba]["sheet_id"]
+        cab = tickets_api.cabecalho_de(sheet_id)
+        if not cab:
+            self._aviso_edicao("não sei a ordem das colunas desta aba — recarregue a tela antes "
+                               "de salvar", tickets_spec.COR_ESTADO["aberta"])
+            return
+        # a linha INTEIRA volta, não só o que mudou: o PUT da API substitui a linha, e mandar
+        # apenas os campos editados apagaria as outras 10 colunas.
+        dados = {c: oc.get(c) for c in cab if str(c or "").strip()}
+        dados.update(self._digitado())
+        base = {c: oc.get(c) for c in self._CAMPOS_EDITAVEIS}
+        self._b_salvar.setEnabled(False)
+        self._aviso_edicao("salvando…", MUTED)
+        try:
+            tickets_escrita.gravar_linha(sheet_id, oc.get("_row"), dados, cab, base=base)
+        except tickets_escrita.EscritaBloqueada:
+            # a mensagem da exceção é para o log; na tela vale o que a pessoa pode fazer a
+            # respeito. O id da aba e o replace=true não ajudam quem está tentando salvar.
+            self._aviso_edicao("ainda não dá para gravar: a planilha do OneDrive continua "
+                               "sobrescrevendo esta aba a cada sync, e o que você digitou "
+                               "sumiria. Falta o corte no pipeline.",
+                               tickets_spec.COR_ESTADO["aberta"])
+            self._b_salvar.setEnabled(True)
+        except tickets_escrita.ConflitoDeEdicao as e:
+            # alguém mexeu na linha enquanto esta tela estava aberta. Não gravo por cima: o
+            # trabalho do outro sumiria sem ninguém perceber.
+            self._aviso_edicao("outra pessoa alterou %s nesta linha — recarregue antes de salvar"
+                               % ", ".join(e.campos), tickets_spec.COR_ESTADO["aberta"])
+            self._b_salvar.setEnabled(True)
+        except Exception as e:                                   # rede, 401, 500…
+            self._aviso_edicao("não consegui salvar: %s" % str(e)[:120],
+                               tickets_spec.COR_ESTADO["aberta"])
+            self._b_salvar.setEnabled(True)
+        else:
+            oc.update(self._digitado())
+            self._sujo = False
+            self._recalcular(oc)
+            self._aviso_edicao("salvo", GREEN)
+            self._repintar()
+
+    def _recalcular(self, oc):
+        """Depois de gravar, a indisponibilidade e o estado precisam sair das datas NOVAS —
+        senão a linha continua dizendo 'em aberto' com o Fim já preenchido."""
+        ini, fim = oc.get("Início da ocorrência"), oc.get("Fim da ocorrência")
+        oc["_estado"] = tickets_spec.estado_do_ticket(oc.get("OS"), oc.get("Status da OS"), fim)
+        oc["_dias"] = _dias_desde(ini, fim)
+        oc["_horas"] = tickets_calc.indisponibilidade_horas(ini, fim)
+
+    @slot_seguro
+    def _trocar_usina(self, nome):
+        self._usina_filtro = nome or ""
         self._repintar()
 
     # ── repintura ────────────────────────────────────────────────────────────────────────
@@ -1021,19 +1238,13 @@ class TicketsTab(QWidget):
 
     def _pinta_seletor_usina(self):
         """A usina saiu da coluna e virou seletor aqui: 63 opções não cabiam numa lista fixa, e
-        a coluna que as segurava comia a largura da tabela."""
-        cont = {}
-        for o in self._ocs:
-            u = str(o.get("Usina") or "—")
-            cont[u] = cont.get(u, 0) + 1
-        self._combo_usina.blockSignals(True)
-        self._combo_usina.clear()
-        self._combo_usina.addItem("Todas as %d usinas" % len(cont), "")
-        for u, qtd in sorted(cont.items(), key=lambda x: -x[1]):
-            self._combo_usina.addItem("%s   %d" % (u[:28], qtd), u)
-        i = self._combo_usina.findData(self._usina_filtro)
-        self._combo_usina.setCurrentIndex(i if i >= 0 else 0)
-        self._combo_usina.blockSignals(False)
+        a coluna que as segurava comia a largura da tabela. O rótulo diz o filtro em vigor —
+        sem o número de usinas, que o Levi tirou em 31/08 por não decidir nada."""
+        if not self._usina_filtro:
+            self._b_usina.setText("Todas as usinas")
+            return
+        qtd = sum(1 for o in self._ocs if o.get("Usina") == self._usina_filtro)
+        self._b_usina.setText("%s   %d" % (self._usina_filtro[:26], qtd))
 
     def _pinta_tabela(self, rotulo_extra, valor_extra):
         rot = ["", "Usina", rotulo_extra, "OS", "Causa raiz", "Início da ocorrência", "Dias"]
@@ -1122,6 +1333,8 @@ class TicketsTab(QWidget):
         self._sel = oc
         if oc is None:
             self._p_conteudo.setVisible(False)
+            self._sujo = False
+            self._pinta_edicao()
             self._pinta_geral()
             self._p_geral.setVisible(True)
             return
@@ -1159,52 +1372,66 @@ class TicketsTab(QWidget):
                                     % (_rgba(cor, 0.10), _rgba(cor, 0.45)))
         self._p_aviso_txt.setText(_TXT_AVISO.get(estado, ""))
 
-        causa = oc.get("Causa raiz")
-        self._p_causa.setText(str(causa) if causa not in (None, "") else "")
-        resp = oc.get("Responsabilidade da Grid Co.?")
-        self._p_resp.setText(str(resp) if resp not in (None, "") else "—")
+        # `_populando` cala os sinais de edição: setText/setPlainText disparam os mesmos sinais
+        # que a digitação, e sem a trava toda linha clicada nasceria "com alterações não salvas".
+        self._populando = True
+        try:
+            causa = oc.get("Causa raiz")
+            self._p_causa.setText(str(causa) if causa not in (None, "") else "")
+            resp = str(oc.get("Responsabilidade da Grid Co.?") or "").strip()
+            # valor fora das três opções (grafia antiga na planilha) entra como opção extra em
+            # vez de sumir: apagar calado o que já estava gravado é pior que mostrar o estranho.
+            if resp and self._p_resp.findText(resp) < 0:
+                self._p_resp.addItem(resp)
+            self._p_resp.setCurrentText(resp)
 
-        self._p_ini.setText(_fmt_dt(oc.get("Início da ocorrência")))
-        fim = oc.get("Fim da ocorrência")
-        self._p_fim.setText("em aberto" if fim in (None, "") else _fmt_dt(fim))
-        horas = oc.get("_horas")
-        self._p_indisp.setText("%.1f h" % horas if horas is not None else "—")
+            self._p_ini.setText(_fmt_dt(oc.get("Início da ocorrência")))
+            fim = oc.get("Fim da ocorrência")
+            self._p_fim.setText("" if fim in (None, "") else _fmt_dt(fim))
+            horas = oc.get("_horas")
+            self._p_indisp.setText("%.1f h" % horas if horas is not None else "—")
 
-        coment = oc.get("Comentários gerais")
-        self._p_coment.setPlainText(str(coment) if coment not in (None, "") else "")
+            coment = oc.get("Comentários gerais")
+            self._p_coment.setPlainText(str(coment) if coment not in (None, "") else "")
+        finally:
+            self._populando = False
+        self._sujo = False
+        self._pinta_edicao()
 
     def _repintar_ident(self, oc):
-        """ATIVO · SKID · CABINE. Em Trackers vêm direto da planilha (SKID) ou são fixos
-        (Cabine — a cadeia do tracker nunca passa por lá, medido em tickets_ativo). Em Strings
-        vêm do catálogo via _achar_inversor + skid_de/cabine_de."""
+        """ATIVO · CABINE.
+
+        UM campo só desde 31/08 (Levi): "Skid e Cabine é a mesma coisa". Eram dois porque o
+        catálogo do Fracttal tem os dois níveis, mas na boca de quem opera é o mesmo lugar
+        físico. A régua que ele deu: se só existe skid, o número do skid VAI no campo Cabine;
+        se existem os dois, vale a cabine. Em Trackers a planilha só traz o skid — e a cadeia
+        do tracker nunca passa por uma cabine (medido em tickets_ativo), então lá é sempre o
+        skid que aparece."""
         _limpar_layout(self._ident_box)
         if self._aba == "Trackers":
             trk = oc.get("Nº do tracker / Identificação")
             skid = oc.get("Nº do SKID")
             campos = [("ATIVO", "Tracker %s" % trk if trk not in (None, "") else "—", GREEN, False),
-                      ("SKID", str(skid) if skid not in (None, "") else "—", TEXT, False),
-                      ("CABINE", "não se aplica a tracker", MUTED, True)]
+                      ("CABINE", str(skid) if skid not in (None, "") else "—", TEXT, False)]
         else:
             inv_nome = oc.get("Inversor")
             campos = [("ATIVO", str(inv_nome) if inv_nome not in (None, "") else "—", GREEN, False)]
             if not self._ativos_prontos:
-                campos += [("SKID", "carregando catálogo…", MUTED, True),
-                          ("CABINE", "carregando catálogo…", MUTED, True)]
+                campos += [("CABINE", "carregando catálogo…", MUTED, True)]
             elif self._ativos_falhou:
-                campos += [("SKID", "catálogo indisponível", MUTED, True),
-                          ("CABINE", "catálogo indisponível", MUTED, True)]
+                campos += [("CABINE", "catálogo indisponível", MUTED, True)]
             else:
                 ativo = _achar_inversor(inv_nome, oc.get("Usina"), self._todos_ativos)
                 if ativo is None:
-                    campos += [("SKID", "não encontrado no catálogo", MUTED, True),
-                              ("CABINE", "não encontrado no catálogo", MUTED, True)]
+                    campos += [("CABINE", "não encontrado no catálogo", MUTED, True)]
                 else:
-                    sk = tickets_ativo.skid_de(ativo, self._por_id)
-                    cb = tickets_ativo.cabine_de(ativo, self._por_id)
-                    campos += [("SKID", api._asset_short_name(sk) if sk else "não encontrado no catálogo",
-                               TEXT if sk else MUTED, not bool(sk)),
-                              ("CABINE", api._asset_short_name(cb) if cb else "não encontrado no catálogo",
-                               TEXT if cb else MUTED, not bool(cb))]
+                    # a cabine manda; sem ela, o skid ocupa o lugar (a régua do Levi)
+                    lugar = (tickets_ativo.cabine_de(ativo, self._por_id)
+                             or tickets_ativo.skid_de(ativo, self._por_id))
+                    campos += [("CABINE",
+                                api._asset_short_name(lugar) if lugar
+                                else "não encontrado no catálogo",
+                                TEXT if lugar else MUTED, not bool(lugar))]
         for rot, val, cor_v, ital in campos:
             c = QVBoxLayout()
             c.setSpacing(1)
@@ -1240,4 +1467,5 @@ class TicketsTab(QWidget):
         self._busca.blockSignals(False)
         self._estados_filtro.clear()
         self._usina_filtro = ""
+        self._sujo = False
         self._repintar()
