@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QL
                              QFrame, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
-                             QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget,
+                             QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget, QScrollBar,
                              QStyledItemDelegate, QStyleOptionViewItem,
                              QTimeEdit)
 
@@ -32,7 +32,7 @@ import tickets_calc
 import tickets_diario
 import tickets_escrita
 import tickets_spec
-from steps import lupa_ativos, lupa_os
+from steps import lupa_ativos, lupa_os, lupa_usinas
 from steps.ui import BG, CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
 from workers import ApiWorker, slot_seguro
 
@@ -103,8 +103,9 @@ _EXTRA_COL = {
     # guarda quantas strings o inversor TEM e quantas foram AFETADAS, nunca qual delas. Então a
     # coluna mostra o que há — "1 de 19" —, que é a informação real. Inventar um número seria
     # pior que não ter.
-    "Strings": [("Inversor", lambda oc: str(oc.get("Inversor") or "—")),
-                ("Strings", _strings_afetadas)],
+    # a contagem de strings NÃO tem coluna (Levi, 31/08: "não gostei de 8 de 8"): ela vira a
+    # dica do próprio inversor, que é onde a pergunta nasce.
+    "Strings": [("Inversor", lambda oc: str(oc.get("Inversor") or "—"))],
 }
 
 # a ordem das colunas da tabela; as extras entram depois da Usina
@@ -464,13 +465,13 @@ def _menu(dono):
     return m
 
 
-def _qss_barra():
+def _qss_barra(cor=TEXT):
     """Botão da barra do topo: mesma caixa dos campos, para alinhar com os segmentos de estado
     e com a busca. Sem padding vertical — ele entraria POR FORA da altura fixa."""
     return ("QPushButton{background:%s;border:1px solid %s;border-radius:10px;"
             "padding:0px 12px;min-height:0px;color:%s;font-size:12px;font-weight:700;"
             "text-align:left;}"
-            "QPushButton:hover{border-color:%s;}" % (INPUT, BORDER, TEXT, GREEN))
+            "QPushButton:hover{border-color:%s;}" % (INPUT, BORDER, cor, GREEN))
 
 
 def _qss_campo(cor_texto=MUTED):
@@ -838,6 +839,15 @@ class _Segmentado(QFrame):
 # Barra de rolagem: sem isto o Qt desenha a do Windows, cinza-claro (#EFEFEF), que grita no
 # meio do navy — foi o "plano de fundo mais claro" que o Levi apontou em 30/08 depois de eu
 # ter consertado o escuro. Fina, sem setas, e só a alça visível.
+_QSS_SCROLLBAR_SO_BARRA = ("QScrollBar:vertical{background:transparent;width:9px;margin:0;}"
+                           "QScrollBar::handle:vertical{background:#2A3550;border-radius:4px;"
+                           "min-height:30px;}"
+                           "QScrollBar::handle:vertical:hover{background:#3C4A6E;}"
+                           "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{"
+                           "height:0;border:none;}"
+                           "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{"
+                           "background:transparent;}")
+
 _QSS_SCROLLBAR = """
 QScrollBar:vertical{background:transparent;width:9px;margin:0;}
 QScrollBar::handle:vertical{background:%s;border-radius:4px;min-height:30px;}
@@ -924,7 +934,7 @@ class TicketsTab(QWidget):
         self._b_usina = QPushButton("Todas as usinas")
         self._b_usina.setFixedWidth(250)
         self._b_usina.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._b_usina.setStyleSheet(_qss_barra())
+        self._b_usina.setStyleSheet(_qss_barra(MUTED))
         # ALTURA depois da folha de estilo: o QSS global do app (app.py:42) põe padding nos
         # campos, e o padding entra na altura. Altura fixa antes do stylesheet não segura —
         # medido: pedi 38 e o controle nasceu com 58, desalinhado dos chips ao lado.
@@ -1019,6 +1029,15 @@ class TicketsTab(QWidget):
             a.triggered.connect(lambda _c=False, n=nome: self._trocar_aba(n))
         m.exec(self._b_fonte.mapToGlobal(self._b_fonte.rect().bottomLeft()))
 
+    def _sem_filtro_de_usina(self):
+        """As ocorrências que passam por TODOS os filtros menos o de usina — é a base do menu de
+        usinas. Incluir o próprio filtro de usina deixaria o menu com uma opção só: a atual."""
+        guardado, self._usina_filtro = self._usina_filtro, ""
+        try:
+            return [o for o in self._ocs if self._passa_filtros(o)]
+        finally:
+            self._usina_filtro = guardado
+
     @slot_seguro
     def _menu_usinas(self, *_):
         """Drill-down cliente → usina (Levi, 31/08). Cliente vem do próprio ticket (é uma das
@@ -1029,8 +1048,11 @@ class TicketsTab(QWidget):
         a.setChecked(not self._usina_filtro)
         a.triggered.connect(lambda _c=False: self._trocar_usina(""))
         m.addSeparator()
+        # A LISTA SEGUE OS OUTROS FILTROS (Levi, 31/08). Antes ela vinha de `self._ocs`, ou
+        # seja, do total: clicar em "Abertas há +30 dias" e abrir o menu mostrava usinas que não
+        # tinham nenhuma ocorrência naquele recorte, e contagens que não batiam com a tabela.
         por_cliente = {}
-        for o in self._ocs:
+        for o in self._sem_filtro_de_usina():
             cli = str(o.get("Cliente") or "").strip() or "sem cliente informado"
             u = str(o.get("Usina") or "—")
             por_cliente.setdefault(cli, {})
@@ -1084,8 +1106,10 @@ class TicketsTab(QWidget):
             # que é CLARA (#EFEFEF) — a tabela inteira ficava cinza dentro do navy. Só aparece
             # dentro da MainWindow, porque é ela quem instala a paleta; a tela isolada não
             # reproduzia, e foi por isso que passou em dois testes meus.
-            "QTableWidget{background:%s;border:1px solid %s;color:%s;font-size:12.5px;"
-            "outline:0;gridline-color:%s;}"
+            # o raio acompanha o card que a envolve: com o canto quadrado, a borda da tabela
+            # aparecia cortada contra o arredondado do painel (Levi, 31/08).
+            "QTableWidget{background:%s;border:1px solid %s;border-radius:10px;color:%s;"
+            "font-size:12.5px;outline:0;gridline-color:%s;}"
             "QTableWidget QWidget{background:%s;}"
             # O CABEÇALHO ENTRA NA GRADE (Levi, 31/08). Antes ele tinha só o fio de baixo, de
             # quando a tabela não tinha grade nenhuma; com a grade desenhada, um cabeçalho sem
@@ -1134,7 +1158,25 @@ class TicketsTab(QWidget):
         # caminho, a grade pode voltar, e no azul que ele escolheu.
         self.tab.setShowGrid(True)
         self.tab.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
-        p.v.addWidget(self.tab, 1)
+        # A ROLAGEM FICA FORA DA TABELA (Levi, 31/08), colada à direita com 2px. A barra do Qt
+        # mora DENTRO da área de rolagem e come a última coluna; aqui a de dentro é desligada e
+        # uma barra própria, ao lado, comanda a mesma rolagem nos dois sentidos.
+        self.tab.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._barra = QScrollBar(Qt.Orientation.Vertical)
+        self._barra.setStyleSheet(_QSS_SCROLLBAR_SO_BARRA)
+        interna = self.tab.verticalScrollBar()
+        interna.rangeChanged.connect(
+            lambda mn, mx: (self._barra.setRange(mn, mx),
+                            self._barra.setPageStep(interna.pageStep()),
+                            self._barra.setVisible(mx > mn)))
+        interna.valueChanged.connect(self._barra.setValue)
+        self._barra.valueChanged.connect(interna.setValue)
+        caixa = QHBoxLayout()
+        caixa.setContentsMargins(0, 0, 0, 0)
+        caixa.setSpacing(2)
+        caixa.addWidget(self.tab, 1)
+        caixa.addWidget(self._barra)
+        p.v.addLayout(caixa, 1)
         self._rodape = _lbl("—", MUTED, 11.5)
         p.v.addWidget(self._rodape)
         return p
@@ -1503,8 +1545,14 @@ class TicketsTab(QWidget):
         if not self._todos_ativos:
             for oc in ocs:
                 oc["_ativo_ok"] = bool(str(oc.get("Ativo") or "").strip())
+                oc["_usina_ok"] = True     # sem catálogo, ninguém é acusado de solto
             return
+        vistas = {}
         for oc in ocs:
+            u = str(oc.get("Usina") or "")
+            if u not in vistas:
+                vistas[u] = bool(_ativos_da_usina(u, self._todos_ativos))
+            oc["_usina_ok"] = vistas[u]
             oc["_ativo_ok"] = ativo_da_ocorrencia(aba, oc, self._todos_ativos) is not None
 
     @slot_seguro
@@ -1567,8 +1615,7 @@ class TicketsTab(QWidget):
         "Tracker": lambda o: ((1, int(t)) if (t := str(
             o.get("Nº do tracker / Identificação") or "").strip()).isdigit() else (0, 0)),
         "Inversor": lambda o: (1, api._norm_txt(o.get("Inversor") or "")),
-        "Strings": lambda o: ((1, int(t)) if (t := str(
-            o.get("Quantidade de strings no afetadas") or "").strip()).isdigit() else (0, 0)),
+
         _ROTULO_CAUSA: lambda o: (1 if str(o.get("Causa raiz") or "").strip() else 0,
                                   api._norm_txt(o.get("Causa raiz") or "")),
         _COL_ATIVO: lambda o: (1, "" if o.get("_ativo_ok") else "z"),
@@ -1850,7 +1897,8 @@ class TicketsTab(QWidget):
         Comentário é ACRÉSCIMO, não substituição: o campo traz só o texto novo, e aqui ele vira
         mais uma linha datada e assinada no fim da coluna. Mandar o campo direto apagaria todo o
         histórico a cada salvamento."""
-        return {"Causa raiz": self._p_causa.text().strip(),
+        return {"Usina": str((self._sel or {}).get("Usina") or "").strip(),
+                "Causa raiz": self._p_causa.text().strip(),
                 "Responsabilidade da Grid Co.?": self._p_resp.currentText().strip(),
                 "Início da ocorrência": para_iso(self._p_ini.text()),
                 "Fim da ocorrência": para_iso(self._p_fim.text()),
@@ -1955,28 +2003,32 @@ class TicketsTab(QWidget):
     # acima — é o coração da tela. Ver o comentário de _trocar_aba: sem @slot_seguro, uma
     # exceção aqui é a janela sumindo sem mensagem, não um traceback no log.
     @slot_seguro
-    def _repintar(self):
+    def _passa_filtros(self, oc):
+        """A ocorrência passa por todos os filtros da barra?
+
+        É método, e não função interna do `_repintar`, porque o menu de usinas precisa da MESMA
+        regra — com o filtro de usina de fora — para listar só as usinas que têm ocorrência no
+        recorte em vigor."""
+        # "+30d" não é estado: é o recorte de aberta há mais de 30 dias, o mesmo alarme
+        # vermelho da coluna Período, oferecido como filtro na barra do topo.
+        if "+30d" in self._estados_filtro:
+            if oc["_estado"] == "encerrada" or (oc.get("_dias") or 0) <= 30:
+                return False
+        estados_reais = self._estados_filtro - {"+30d"}
+        if estados_reais and oc["_estado"] not in estados_reais:
+            return False
+        if self._usina_filtro and oc.get("Usina") != self._usina_filtro:
+            return False
         termo = api._norm_txt(self._busca.text())
+        if not termo:
+            return True
         extratores = [f for _, f in _EXTRA_COL[self._aba]]
+        campos = [oc.get("Usina"), oc.get("Causa raiz")] + [f(oc) for f in extratores]
+        texto = api._norm_txt(" ".join(str(c) for c in campos if c not in (None, "")))
+        return termo in texto
 
-        def _passa(oc):
-            # "+30d" não é estado: é o recorte de aberta há mais de 30 dias, o mesmo alarme
-            # vermelho da coluna Dias, oferecido como filtro na barra do topo.
-            if "+30d" in self._estados_filtro:
-                if oc["_estado"] == "encerrada" or (oc.get("_dias") or 0) <= 30:
-                    return False
-            estados_reais = self._estados_filtro - {"+30d"}
-            if estados_reais and oc["_estado"] not in estados_reais:
-                return False
-            if self._usina_filtro and oc.get("Usina") != self._usina_filtro:
-                return False
-            if not termo:
-                return True
-            campos = [oc.get("Usina"), oc.get("Causa raiz")] + [f(oc) for f in extratores]
-            texto = api._norm_txt(" ".join(str(c) for c in campos if c not in (None, "")))
-            return termo in texto
-
-        passou = [o for o in self._ocs if _passa(o)]
+    def _repintar(self):
+        passou = [o for o in self._ocs if self._passa_filtros(o)]
         if self._ordem is None:
             filtradas = ordenar_ocorrencias(passou)
         else:
@@ -2033,7 +2085,11 @@ class TicketsTab(QWidget):
         sem o número de usinas, que o Levi tirou em 31/08 por não decidir nada."""
         if not self._usina_filtro:
             self._b_usina.setText("Todas as usinas")
+            # cinza quando não filtra nada, como os segmentos de estado apagados; só acende
+            # quando há usina escolhida — a cor passa a significar "há filtro em vigor".
+            self._b_usina.setStyleSheet(_qss_barra(MUTED))
             return
+        self._b_usina.setStyleSheet(_qss_barra(TEXT))
         qtd = sum(1 for o in self._ocs if o.get("Usina") == self._usina_filtro)
         self._b_usina.setText("%s   %d" % (self._usina_filtro[:26], qtd))
 
@@ -2150,10 +2206,11 @@ class TicketsTab(QWidget):
             cores_extras = [cor_ativo if r_ in ("Tracker", "Inversor") else TEXT
                             for r_, _ in _EXTRA_COL[self._aba]]
             st = str(oc.get("Status do ticket") or "").strip()
+            usina_ok = oc.get("_usina_ok", True)
             vals = ([str(oc.get("Usina") or "—")[:24]] + extras
                     + ["Sim" if ligado else "Não", os_txt, st or "—", causa_txt,
                        _fmt_dt(oc.get("Início da ocorrência")), ha_txt])
-            cores = ([TEXT] + cores_extras
+            cores = ([TEXT if usina_ok else tickets_spec.COR_ESTADO["aberta"]] + cores_extras
                      + [TEXT if ligado else tickets_spec.COR_ESTADO["aberta"], os_cor,
                         TEXT if st else MUTED,
                         MUTED if causa in (None, "") else TEXT, TEXT, ha_cor])
@@ -2183,6 +2240,9 @@ class TicketsTab(QWidget):
                     it.setData(_VALOR_CRU, str(oc.get(_CAMPO_DA_COLUNA[nome_col]) or ""))
                 else:
                     it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                # a contagem de strings é DICA do inversor, não coluna (Levi, 31/08)
+                if self._aba == "Strings" and nome_col == "Inversor":
+                    it.setToolTip("%s string(s) afetada(s)" % _strings_afetadas(oc))
                 if c == i_causa:
                     # EDITÁVEL NA PRÓPRIA TABELA (Levi, 31/08). Só esta coluna: as outras ou são
                     # calculadas ou vêm da planilha. E o texto INTEIRO vai para a edição, não o
@@ -2278,9 +2338,39 @@ class TicketsTab(QWidget):
             self._selecionar(self._visiveis[r])
             nomes = colunas_da_aba(self._aba)
             # clicar no "Não" da coluna do ativo é o que abre o card — a coluna não é digitável
-            if 0 <= c < len(nomes) and nomes[c] == _COL_ATIVO \
-                    and not self._visiveis[r].get("_ativo_ok"):
+            oc_clicada = self._visiveis[r]
+            nome_col = nomes[c] if 0 <= c < len(nomes) else ""
+            if nome_col == _COL_ATIVO and not oc_clicada.get("_ativo_ok"):
                 self._abrir_ativos()
+            # clicar no nome VERMELHO da usina abre o card de usinas: é o próprio nome que está
+            # errado, e corrigi-lo destrava o ativo daquela linha.
+            elif nome_col == "Usina" and not oc_clicada.get("_usina_ok", True):
+                self._abrir_usinas()
+
+    @slot_seguro
+    def _abrir_usinas(self, *_):
+        """O card de usinas do Fracttal, para trocar o nome que a planilha traz errado."""
+        oc = self._sel
+        if oc is None:
+            return
+        dlg = lupa_usinas.LupaUsinas(self, self._todos_ativos, self._usina_escolhida,
+                                     atual=str(oc.get("Usina") or ""))
+        dlg.exec()
+
+    def _usina_escolhida(self, usina):
+        """Grava o CÓDIGO da usina escolhida na planilha — é a coluna 'Usina' que passa a valer.
+
+        Só a linha aberta: as irmãs com o mesmo nome errado ficam como estão. Corrigir todas de
+        uma vez seria uma edição em massa disparada por um clique, e sem desfazer."""
+        oc = self._sel
+        if oc is None or not isinstance(usina, dict):
+            return
+        oc["Usina"] = str(usina.get("codigo") or "").strip()
+        self._marcar_ativos([oc], self._aba)
+        self._selecionar(oc)
+        self._sujo = True
+        self._pinta_edicao()
+        self._salvar()
 
     @slot_seguro
     def _abrir_ativos(self, *_):

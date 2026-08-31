@@ -3334,6 +3334,23 @@ def create_performance_os(itens: list, id_responsible=None, responsible_name: st
                     apply_labels(res["id_work_order"], lbls)
                 except Exception:
                     pass
+            # A OCORRÊNCIA NASCE COM A OS (Levi, 31/08 — "o pulo do gato"). Import tardio: o
+            # tickets_nasce importa este módulo, e no topo daria import circular.
+            try:
+                import tickets_nasce
+                aba_tk = tickets_nasce.aba_do_plano(plan.get("description"))
+                if aba_tk:
+                    tk = tickets_nasce.criar(aba_tk, a, tickets_nasce.usina_do_ativo(a),
+                                             res.get("wo_folio"), quando=event_date)
+                    if not tk.get("ok"):
+                        res["aviso"] = ((res.get("aviso") or "")
+                                        + " ocorrência não registrada: %s" % tk.get("erro")).strip()
+                    elif tk.get("aviso"):
+                        res["aviso"] = ((res.get("aviso") or "") + " " + tk["aviso"]).strip()
+            except Exception as e:                       # noqa: BLE001
+                # a OS é o que a equipe precisa; a linha de ticket é registro. Nunca derruba.
+                res["aviso"] = ((res.get("aviso") or "")
+                                + " ocorrência não registrada (%s)" % str(e)[:80]).strip()
             nok, nerr = 0, []
             for img in (it.get("imagens") or []):
                 try:
