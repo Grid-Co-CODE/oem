@@ -167,6 +167,45 @@ congelaria as outras duas.
 cópia passa a **remover as abas que o app domina** antes do upload. Aba migrada some do upload; o
 Excel segue alimentando as demais. Migração uma aba por vez, com o Excel vivo ao lado.
 
+### Implementado em 31/08 — e desligado
+
+`coleta API PV/src/sync_gridco_api.py` ganhou a limpeza **E**, comandada por uma lista:
+
+```python
+ABAS_DO_APP = {
+    "tickets_performance": [],        # o corte será: ["Trackers", "Strings indisp"]
+}
+```
+
+**Encher essa lista É o corte.** Enquanto vazia, o pipeline roda exatamente como antes.
+
+**A pergunta que decidia tudo — aba ausente do arquivo é apagada no banco?** Medido contra o
+`zz_teste_claude_apagar`: gravei uma linha-marca em `Strings indisp`, subi o arquivo **sem**
+`Trackers` e **sem** `Strings indisp`, e a API respondeu
+
+```
+{"sheets":13,"inserted":14446,"updated":7296,"deleted":0}
+```
+
+com a marca ainda lá. **`replace=true` substitui só as abas presentes no arquivo; aba ausente ele
+nem olha.** É isso que permite migrar uma aba por vez sem big-bang — e sem essa medição o corte
+seria um chute que custaria os dados de quem digita.
+
+**Por que a remoção é mínima (só a entrada em `xl/workbook.xml`):** o arquivo tem 165 partes, com
+pivôs, gráficos, tabelas nomeadas, `calcChain` e `definedName` indexado por posição de aba. Tirar
+de verdade a planilha do zip obrigaria a mexer também em `_rels`, `[Content_Types].xml` e nos
+índices — quatro chances de gerar um pacote que o importador recusa. É `workbook.xml` que decide o
+que um leitor enxerga como aba; tirar a linha de lá basta. Conferido com openpyxl: o pacote abre e
+as duas abas somem.
+
+**Provado nos três casos** (executando a `limpa()` real do arquivo):
+
+| lista | resultado |
+|---|---|
+| vazia (hoje) | 15 abas, nada removido — idêntico ao comportamento atual |
+| `["Trackers", "Strings indisp"]` | 13 abas, as duas fora, e 18 mil fórmulas a menos para limpar |
+| nome que não existe | avisa alto e não remove nada — falha barulhenta, não silenciosa |
+
 ## 10. Indisponibilidade: quem calcula
 
 Hoje é fórmula do Excel; o banco guarda só o resultado (política valores-only). Sem o Excel,
