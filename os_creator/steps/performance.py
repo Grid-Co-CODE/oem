@@ -228,11 +228,16 @@ class PerformanceTab(QWidget):
     a cada card). Mantém a mesma interface do PcmTab (`carregar_inicial`) p/ o wrap do app.py."""
     _selfnav = True                                       # faz a própria navegação (não usa o Voltar do wrap)
 
-    def __init__(self, on_sair=None):
+    def __init__(self, on_sair=None, on_tickets=None):
         super().__init__()
         self.setStyleSheet(QSS_FORM)
         self._assets = api.load_assets_cached() or []
         self._on_sair = on_sair
+        # Tickets mora AQUI desde 31/08 (Levi): "quero que o card tickets que fica na página
+        # inicial fique na verdade dentro do card performance". Faz sentido — a ocorrência de
+        # tracker ou string é o que ORIGINA a OS de Performance; eram duas portas para o mesmo
+        # trabalho, e a tela inicial ficava com dois cards da mesma área.
+        self._on_tickets = on_tickets
         self._cria = None
         self._wcont = None
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0)
@@ -276,7 +281,8 @@ class PerformanceTab(QWidget):
         top.addWidget(b_carga)
         v.addLayout(top)
         intro = QLabel("Escolha o tipo de atendimento. Cada opção cria <b>uma OS por ativo</b> selecionado, "
-                       "com tipo, classificação e criticidade já do plano.")
+                       "com tipo, classificação e criticidade já do plano. Em <b>Tickets</b> ficam "
+                       "as ocorrências de trackers e strings que originam essas OS.")
         intro.setObjectName("uiAjuda"); intro.setWordWrap(True)
         v.addWidget(intro)
         grid = QGridLayout(); grid.setSpacing(14)
@@ -286,6 +292,15 @@ class PerformanceTab(QWidget):
                               lambda t=titulo, f=frase, k=ic: self._abrir(t, f, k))
             self._cards[frase] = card
             grid.addWidget(card, i // 2, i % 2)
+        if self._on_tickets is not None:
+            n = len(_PLANOS)
+            tk = _PlanoCard("ticket", "Tickets", "Trackers · Strings",
+                            "Ocorrências abertas e encerradas • vincule a OS e registre a causa",
+                            lambda: self._on_tickets())
+            # o "N subtarefas" é dos PLANOS do Fracttal; Tickets não é plano, e o rótulo ficaria
+            # eternamente em "… subtarefas" esperando uma contagem que nunca vem.
+            tk.sub_lbl.setVisible(False)
+            grid.addWidget(tk, n // 2, n % 2)
         grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1)
         v.addLayout(grid); v.addStretch(1)
         wrap = QWidget(); wl = QVBoxLayout(wrap); wl.setContentsMargins(0, 0, 0, 0); wl.addWidget(scroll)

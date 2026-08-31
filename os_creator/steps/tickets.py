@@ -16,11 +16,13 @@ import re
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer, QDate, QTime
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QFrame, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
                              QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget,
+                             QStyledItemDelegate,
                              QTimeEdit)
 
 import api
@@ -65,13 +67,33 @@ _TXT_AVISO = {
 # o que muda entre as duas abas na tabela central: rótulo da coluna + como tirar o valor da linha.
 # Em Trackers o SKID vem da PLANILHA (coluna "Nº do SKID"); em Strings essa coluna não existe — o
 # extra correspondente é o nome do inversor, e SKID/Cabine dele vêm do catálogo (ver _repintar_ident).
+def _so_numero(v):
+    """'02' -> '2'. A planilha guarda a cabine com zero à esquerda; é formatação de quem
+    digitou, não parte do número (Levi, 31/08). Texto que não for número passa inteiro — há
+    cabine escrita como '1A' e cortar o zero de '01A' quebraria o nome."""
+    t = str(v or "").strip()
+    if not t:
+        return "—"
+    return str(int(t)) if t.isdigit() else t
+
+
+# Colunas que mudam com a aba. DUAS colunas em Trackers desde 31/08: Cabine e Tracker vinham
+# grudadas num "02 / 93" que não dava para ordenar nem ler em coluna.
 _EXTRA_COL = {
     # "Cabine", não "Skid": mesmo vocabulário do painel desde 31/08 — ver _repintar_ident.
-    "Trackers": ("Cabine / Tracker",
-                 lambda oc: "%s / %s" % (oc.get("Nº do SKID") or "—",
-                                         oc.get("Nº do tracker / Identificação") or "—")),
-    "Strings": ("Inversor", lambda oc: str(oc.get("Inversor") or "—")),
+    "Trackers": [("Cabine", lambda oc: _so_numero(oc.get("Nº do SKID"))),
+                 ("Tracker", lambda oc: str(oc.get("Nº do tracker / Identificação") or "—"))],
+    "Strings": [("Inversor", lambda oc: str(oc.get("Inversor") or "—"))],
 }
+
+# a ordem das colunas da tabela; as extras entram depois da Usina
+_FIXAS_ANTES = ["", "Usina"]
+_FIXAS_DEPOIS = ["OS", "Causa raiz", "Início da ocorrência", "Dias"]
+
+
+def colunas_da_aba(aba):
+    """Nomes das colunas, na ordem. Trackers tem 8 (Cabine E Tracker), Strings tem 7."""
+    return _FIXAS_ANTES + [r for r, _ in _EXTRA_COL[aba]] + _FIXAS_DEPOIS
 
 
 # ── datas: mesma tolerância de tickets_calc, sem reimplementar o parser ────────────────────
@@ -572,6 +594,24 @@ _ALTURA_QSS = _ALTURA_BARRA - 2   # a folha de estilo mede o CONTEÚDO: a borda 
                         # o Qt impõe 42 e nem a altura fixa vence. Só a dupla resolve.
 
 
+class _RealceDaLinha(QStyledItemDelegate):
+    """Pinta o fundo da linha escolhida — e só isso.
+
+    Existe porque `item.setBackground()` não pinta nada quando a tabela tem folha de estilo: com
+    QSS na view, o Qt ignora o BackgroundRole do modelo. E a seleção nativa está desligada de
+    propósito (ver a nota em `setSelectionMode`), porque o estilo desenhava uma barra na aresta
+    de cada célula e repintava o texto, apagando a cor de estado da tarja."""
+
+    def __init__(self, dono):
+        super().__init__(dono)
+        self._dono = dono
+
+    def paint(self, painter, option, index):
+        if index.row() == getattr(self._dono, "_linha_sel", -1):
+            painter.fillRect(option.rect, QColor(166, 226, 46, 38))    # verde Grid, 15%
+        super().paint(painter, option, index)
+
+
 class _Segmentado(QFrame):
     """Barra de segmentos: um bloco só, com divisórias finas, em vez de N pílulas soltas.
 
@@ -604,7 +644,22 @@ class _Segmentado(QFrame):
         b.setCursor(Qt.CursorShape.PointingHandCursor)
         b.setCheckable(True)
         b.setChecked(ligado)
-        b.setText("%s   %s" % (rotulo, n))
+        # O NÚMERO EM VERDE (Levi, 31/08). O texto de um QPushButton é de uma cor só — ele não
+        # aceita rich text —, então o rótulo e a contagem viram dois QLabel dentro do próprio
+        # botão. `WA_TransparentForMouseEvents` é o que mantém o clique funcionando: sem isso o
+        # rótulo engole o clique e o filtro para de responder no meio do botão.
+        lb = QHBoxLayout(b)
+        lb.setContentsMargins(16, 0, 16, 0)
+        lb.setSpacing(9)
+        lb.addStretch(1)
+        for texto, cor_txt, peso in ((rotulo, TEXT if ligado else MUTED, 700),
+                                     (str(n), GREEN, 800)):
+            q = QLabel(texto)
+            q.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            q.setStyleSheet("color:%s;background:transparent;border:none;font-size:12px;"
+                            "font-weight:%d;" % (cor_txt, peso))
+            lb.addWidget(q)
+        lb.addStretch(1)
         # cantos só nas pontas, para o conjunto ler como UM bloco
         e = "10px" if primeiro else "0"
         d = "10px" if ultimo else "0"
@@ -845,13 +900,21 @@ class TicketsTab(QWidget):
         topo.addStretch(1)
         p.v.addLayout(topo)
 
-        self.tab = QTableWidget(0, 7)
+        self.tab = QTableWidget(0, len(colunas_da_aba(self._aba)))
         # a coluna se chama 'Dias', não 'Há': ver o comentário em _pinta_tabela sobre por que
         # um único rótulo temporal não serve pras duas leituras que a célula carrega.
         self.tab.setHorizontalHeaderLabels(["", "Usina", "Skid / Tracker", "OS", "Causa raiz",
                                             "Início da ocorrência", "Dias"])
         self.tab.verticalHeader().setVisible(False)
         self.tab.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        # SEM SELEÇÃO DO QT (Levi, 31/08: "não quero que mude a cor à esquerda" e "esse laranja
+        # em cada célula é feião"). Provado por experimento: com a seleção ligada o estilo
+        # desenha uma barra na aresta esquerda de cada célula e repinta o texto da linha, o que
+        # apagava a cor de estado da tarja. Nenhuma regra de folha derruba isso. Quem marca a
+        # linha é o `_pintar_selecao`, com o verde da Grid, e as cores de cada célula ficam.
+        self.tab.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._linha_sel = -1
+        self.tab.setItemDelegate(_RealceDaLinha(self))
         self.tab.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         # duplo clique (ou F2) abre a edição, e só na coluna da Causa raiz — ver a nota em
         # _pinta_tabela. Clique simples continua só selecionando.
@@ -886,9 +949,16 @@ class TicketsTab(QWidget):
             "padding:0px 5px;margin:0px;min-height:18px;max-height:18px;font-size:12.5px;}"
             "QTableWidget::item{padding:9px 4px;border-bottom:1px solid rgba(42,53,80,0.4);}"
             "QTableWidget::item:focus{border:none;outline:none;}"
-            "QTableWidget::item:selected{background:rgba(166,226,46,0.12);color:%s;}"
-            % (CARD, TEXT, CARD, CARD, CARD, MUTED, BORDER, INPUT, TEXT, GREEN, TEXT))
-        self.tab.itemSelectionChanged.connect(self._sel_tabela)
+            # A SELEÇÃO É PINTADA POR NÓS (Levi, 31/08: "não quero que mude a cor à esquerda" e
+            # "esse laranja é feião, testa a cor grid"). Aqui o estilo é anulado: transparente
+            # nos dois lugares. Quem pinta é o `_pintar_selecao`, item a item — assim o texto de
+            # cada célula mantém a sua cor (SEM OS em vermelho, dias em alarme) e a tarja mantém
+            # a cor do estado. Deixar com o estilo repintava tudo com a cor de seleção do QSS
+            # global do app, e sobravam riscos nas divisas das células.
+            "QTableWidget{selection-background-color:transparent;}"
+            "QTableWidget::item:selected{background:transparent;border:none;}"
+            % (CARD, TEXT, CARD, CARD, CARD, MUTED, BORDER, INPUT, TEXT, GREEN))
+        self.tab.cellClicked.connect(self._sel_tabela)
         self.tab.horizontalHeader().setSectionsClickable(True)
         self.tab.horizontalHeader().sectionClicked.connect(self._ordenar_por)
         self.tab.setColumnWidth(0, 14)
@@ -899,9 +969,11 @@ class TicketsTab(QWidget):
         # empurrava o painel da direita para FORA da tela. Medido em 1536px: o layout exigia
         # 1782px e o painel ficava cortado pela borda.
         cab = self.tab.horizontalHeader()
-        cab.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        for i in (0, 1, 2, 3, 5, 6):
-            cab.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        self._ajustar_larguras()
+        # sem grade: o QSS global do app desenha as linhas de divisão, e sobre a linha
+        # selecionada elas apareciam como riscos claros em cada divisa de célula — foi o que o
+        # Levi chamou de "esse laranja em cada célula". A divisão já vem do fio de baixo do item.
+        self.tab.setShowGrid(False)
         self.tab.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
         p.v.addWidget(self.tab, 1)
         self._rodape = _lbl("—", MUTED, 11.5)
@@ -942,7 +1014,7 @@ class TicketsTab(QWidget):
         topo.addWidget(self._p_row)
         # o caminho de VOLTA para a visão geral. Sem ele, depois do primeiro clique numa linha a
         # pessoa nunca mais veria o panorama — a tabela não tem como "desselecionar".
-        b_geral = QPushButton("✕ visão geral")
+        b_geral = QPushButton("visão geral  ✕")
         b_geral.setCursor(Qt.CursorShape.PointingHandCursor)
         b_geral.setStyleSheet("QPushButton{background:transparent;color:%s;border:none;"
                               "font-size:10px;font-weight:800;padding:0 0 0 10px;}"
@@ -1295,20 +1367,33 @@ class TicketsTab(QWidget):
     # A chave é uma TUPLA (tem_valor, valor). Assim a linha SEM dado vai para o fim nos DOIS
     # sentidos, em vez de virar "a mais recente" ao inverter — e são muitas: 251 das 513
     # ocorrências abertas de trackers não têm data de início (limitação conhecida, 30/08).
+    # por NOME e não por índice: desde que Trackers ganhou Cabine e Tracker separadas, a mesma
+    # coluna está em posições diferentes nas duas abas.
     _ORDENAVEL = {
-        1: lambda o: (1, api._norm_txt(o.get("Usina") or "")),
-        4: lambda o: (1 if str(o.get("Causa raiz") or "").strip() else 0,
-                      api._norm_txt(o.get("Causa raiz") or "")),
-        5: lambda o: ((1, d) if (d := tickets_calc._para_dt(o.get("Início da ocorrência")))
-                      else (0, datetime.min)),
-        6: lambda o: ((1, o["_dias"]) if o.get("_dias") is not None else (0, -1)),
+        "Usina": lambda o: (1, api._norm_txt(o.get("Usina") or "")),
+        "Cabine": lambda o: ((1, int(str(o.get("Nº do SKID") or "").strip()))
+                             if str(o.get("Nº do SKID") or "").strip().isdigit()
+                             else (0, 0)),
+        "Tracker": lambda o: ((1, int(t)) if (t := str(
+            o.get("Nº do tracker / Identificação") or "").strip()).isdigit() else (0, 0)),
+        "Inversor": lambda o: (1, api._norm_txt(o.get("Inversor") or "")),
+        "Causa raiz": lambda o: (1 if str(o.get("Causa raiz") or "").strip() else 0,
+                                 api._norm_txt(o.get("Causa raiz") or "")),
+        "Início da ocorrência": lambda o: (
+            (1, d) if (d := tickets_calc._para_dt(o.get("Início da ocorrência")))
+            else (0, datetime.min)),
+        "Dias": lambda o: ((1, o["_dias"]) if o.get("_dias") is not None else (0, -1)),
     }
+    _DESC_POR_PADRAO = ("Início da ocorrência", "Dias")
 
     @slot_seguro
     def _ordenar_por(self, col):
-        if col not in self._ORDENAVEL:
+        nomes = colunas_da_aba(self._aba)
+        nome = nomes[col] if 0 <= col < len(nomes) else ""
+        if nome not in self._ORDENAVEL:
             return
-        padrao_desc = col in (5, 6)          # data e dias começam do maior para o menor
+        col = nome
+        padrao_desc = nome in self._DESC_POR_PADRAO   # data e dias começam do maior p/ o menor
         if self._ordem is None or self._ordem[0] != col:
             self._ordem = (col, padrao_desc)
         elif self._ordem[1] == padrao_desc:
@@ -1322,7 +1407,7 @@ class TicketsTab(QWidget):
     # viu em 31/08 no "✕ visão geral". Um slot ligado a clicked SEMPRE aceita o argumento.
     @slot_seguro
     def _voltar_geral(self, *_):
-        self.tab.clearSelection()
+        self._pintar_selecao(-1)
         self._selecionar(None)
 
     # ── edição (fase 2) ──────────────────────────────────────────────────────────────────
@@ -1670,7 +1755,7 @@ class TicketsTab(QWidget):
     @slot_seguro
     def _repintar(self):
         termo = api._norm_txt(self._busca.text())
-        rotulo_extra, valor_extra = _EXTRA_COL[self._aba]
+        extratores = [f for _, f in _EXTRA_COL[self._aba]]
 
         def _passa(oc):
             # "+30d" não é estado: é o recorte de aberta há mais de 30 dias, o mesmo alarme
@@ -1685,7 +1770,7 @@ class TicketsTab(QWidget):
                 return False
             if not termo:
                 return True
-            campos = [oc.get("Usina"), oc.get("Causa raiz"), valor_extra(oc)]
+            campos = [oc.get("Usina"), oc.get("Causa raiz")] + [f(oc) for f in extratores]
             texto = api._norm_txt(" ".join(str(c) for c in campos if c not in (None, "")))
             return termo in texto
 
@@ -1705,14 +1790,14 @@ class TicketsTab(QWidget):
         self._visiveis = filtradas[:_LIMITE_TABELA]
 
         self._pinta_estados()
-        self._pinta_tabela(rotulo_extra, valor_extra)
+        self._pinta_tabela()
         extra = total - _LIMITE_TABELA
         self._rodape.setText("%s ocorrências" % f"{total:,}".replace(",", ".")
                              + (" · mostrando as %d primeiras, refine a busca" % _LIMITE_TABELA
                                 if extra > 0 else ""))
         # NÃO auto-seleciona mais (redesenho de 30/08): a visão geral é o primeiro estado do
         # painel, e ela responde "onde estão as abertas" antes de a pessoa saber em que clicar.
-        self.tab.clearSelection()
+        self._pintar_selecao(-1)
         self._selecionar(None)
 
     def _pinta_estados(self):
@@ -1750,19 +1835,43 @@ class TicketsTab(QWidget):
         qtd = sum(1 for o in self._ocs if o.get("Usina") == self._usina_filtro)
         self._b_usina.setText("%s   %d" % (self._usina_filtro[:26], qtd))
 
-    def _pinta_tabela(self, rotulo_extra, valor_extra):
-        rot = ["", "Usina", rotulo_extra, "OS", "Causa raiz", "Início da ocorrência", "Dias"]
+    def _ajustar_larguras(self):
+        """QUEM ESTICA É A CAUSA RAIZ, onde quer que ela esteja: é a única coluna de texto longo
+        e de largura variável. Em ResizeToContents ela pedia todo o espaço que precisasse e
+        empurrava o painel da direita para FORA da tela (medido em 1536px). Por nome, e não por
+        índice, porque Trackers e Strings têm quantidades de colunas diferentes desde 31/08."""
+        cab = self.tab.horizontalHeader()
+        nomes = colunas_da_aba(self._aba)
+        for i, nome in enumerate(nomes):
+            cab.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch if nome == "Causa raiz"
+                                     else QHeaderView.ResizeMode.ResizeToContents)
+        self.tab.setColumnWidth(0, 14)
+
+    def _pinta_tabela(self):
+        rot = list(colunas_da_aba(self._aba))
         if self._ordem is not None:          # a seta diz por onde está ordenado, e em que sentido
             col, desc = self._ordem
-            rot[col] = rot[col] + ("  ▼" if desc else "  ▲")
+            if col in rot:
+                rot[rot.index(col)] += ("  ▼" if desc else "  ▲")
+        if self.tab.columnCount() != len(rot):
+            self.tab.setColumnCount(len(rot))
+            self._ajustar_larguras()          # colunas novas nascem sem modo de redimensionar
         self.tab.setHorizontalHeaderLabels(rot)
         self.tab.blockSignals(True)
+        self.tab.clearContents()          # descarta também os widgets de célula da tarja
         self.tab.setRowCount(0)
         self.tab.setRowCount(len(self._visiveis))
         for r, oc in enumerate(self._visiveis):
             estado = oc["_estado"]
             cor_estado = tickets_spec.COR_ESTADO.get(estado, MUTED)
             tarja = QTableWidgetItem("▐")
+            # A COR EXPLICADA NO HOVER (Levi, 31/08). A tarja dizia o estado só por cor, e cor
+            # sozinha não se explica: o mesmo texto que o painel usa vira a dica aqui, então
+            # quem passa o mouse descobre sem precisar clicar na linha.
+            tarja.setToolTip("%s — %s" % (tickets_spec.NOME_ESTADO.get(estado, estado),
+                                          _TXT_AVISO.get(estado, "")))
+            # a cor da tarja é A INFORMAÇÃO: sem isto o azul de seleção a substitui e a linha
+            # escolhida some da leitura por estado (Levi, 31/08).
             tarja.setForeground(_cor(cor_estado))
             self.tab.setItem(r, 0, tarja)
 
@@ -1784,7 +1893,7 @@ class TicketsTab(QWidget):
             elif estado == "encerrada":
                 os_txt, os_cor = "—", MUTED
             else:
-                os_txt, os_cor = "sem OS", tickets_spec.COR_ESTADO["aberta"]
+                os_txt, os_cor = "SEM OS", tickets_spec.COR_ESTADO["aberta"]
 
             dias = oc.get("_dias")
             # DECISÃO (revisão de 29/08): '_dias' mede coisas diferentes por estado — em
@@ -1808,20 +1917,23 @@ class TicketsTab(QWidget):
             alarme = dias is not None and dias > 30 and estado != "encerrada"
             ha_cor = tickets_spec.COR_ESTADO["aberta"] if alarme else TEXT
 
-            vals = (str(oc.get("Usina") or "—")[:24], valor_extra(oc), os_txt, causa_txt,
-                    _fmt_dt(oc.get("Início da ocorrência")), ha_txt)
-            cores = (TEXT, TEXT, os_cor, MUTED if causa in (None, "") else TEXT, TEXT, ha_cor)
+            extras = [f(oc) for _, f in _EXTRA_COL[self._aba]]
+            vals = ([str(oc.get("Usina") or "—")[:24]] + extras
+                    + [os_txt, causa_txt, _fmt_dt(oc.get("Início da ocorrência")), ha_txt])
+            cores = ([TEXT] + [TEXT] * len(extras)
+                     + [os_cor, MUTED if causa in (None, "") else TEXT, TEXT, ha_cor])
+            i_causa = colunas_da_aba(self._aba).index("Causa raiz")
             for c, (v, cr) in enumerate(zip(vals, cores), start=1):
                 it = QTableWidgetItem(str(v))
                 it.setForeground(_cor(cr))
                 # tudo centralizado menos a Causa raiz (Levi, 30/08): ela é a única coluna de
                 # texto corrido e de largura variável — centralizar faria cada linha começar
                 # num ponto diferente, e o olho perde a coluna ao descer a lista.
-                if c != 4:
+                if c != i_causa:
                     it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 else:
                     it.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                if c == 4:
+                if c == i_causa:
                     # EDITÁVEL NA PRÓPRIA TABELA (Levi, 31/08). Só esta coluna: as outras ou são
                     # calculadas ou vêm da planilha. E o texto INTEIRO vai para a edição, não o
                     # truncado — senão salvar de dentro da tabela cortaria a causa raiz em 40
@@ -1834,6 +1946,9 @@ class TicketsTab(QWidget):
                 else:
                     it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.tab.setItem(r, c, it)
+        # a repintura recria os itens: sem isto a linha marcada perderia o realce a cada busca,
+        # filtro ou ordenação, e a pessoa não saberia mais qual estava aberta no painel.
+        self._pintar_selecao(getattr(self, "_linha_sel", -1))
         self.tab.blockSignals(False)
 
     @slot_seguro
@@ -1843,7 +1958,7 @@ class TicketsTab(QWidget):
         Deixar pendente de um clique em Salvar no painel seria pior que não ter a edição — a
         pessoa digitaria numa linha, clicaria na próxima e perderia o que escreveu sem aviso.
         `_pinta_tabela` roda com os sinais bloqueados, então aqui só chega edição de gente."""
-        if item is None or item.column() != 4:
+        if item is None or item.column() != colunas_da_aba(self._aba).index("Causa raiz"):
             return
         r = item.row()
         if not (0 <= r < len(self._visiveis)):
@@ -1854,18 +1969,26 @@ class TicketsTab(QWidget):
             novo = ""
         if novo == str(oc.get("Causa raiz") or "").strip():
             return
-        self.tab.selectRow(r)
-        self._selecionar(oc)
+        self._sel_tabela(r)
         self._p_causa.setText(novo)
         self._sujo = True
         self._pinta_edicao()
         self._salvar()
 
     # ── seleção ──────────────────────────────────────────────────────────────────────────
+    _FUNDO_SEL = _rgba(GREEN, 0.16)
+
+    def _pintar_selecao(self, linha):
+        """Marca a linha escolhida. Quem desenha é o `_RealceDaLinha`; aqui só se guarda qual é
+        e se pede o redesenho."""
+        self._linha_sel = linha
+        self.tab.viewport().update()
+
     @slot_seguro
-    def _sel_tabela(self):
-        r = self.tab.currentRow()
+    def _sel_tabela(self, r=-1, _c=0):
+        self._pintar_selecao(r)
         if 0 <= r < len(self._visiveis):
+            self._linha_sel = r
             self._selecionar(self._visiveis[r])
 
     def _selecionar(self, oc):

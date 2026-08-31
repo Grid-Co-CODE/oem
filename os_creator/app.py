@@ -492,8 +492,6 @@ class MainWindow(QMainWindow):
             # Ativos em 1º (Levi, 06/08): consulta é a porta de entrada — do ativo se decide a OS
             ("rack", "Ativos", "Todo o catálogo do Fracttal — busca, histórico e atalhos",
              lambda: self._mostrar_modo("ativos")),
-            ("ticket", "Tickets", "Ocorrências de trackers e strings — leitura",
-             lambda: self._mostrar_modo("tickets")),
             ("bolt", "Performance", "Inversores, Strings, Trackers e ETM",
              lambda: self._mostrar_modo("perf")),
             ("stack", "COS", "Ocorrência de desligamento, religamento e inspeção",
@@ -625,7 +623,8 @@ class MainWindow(QMainWindow):
                 inner = VariasOSsDialog(on_voltar=lambda: self.criar_stack.setCurrentIndex(0))
             elif key == "perf":                                       # Performance = fluxo próprio (N OS)
                 from steps.performance import PerformanceTab
-                inner = PerformanceTab(on_sair=lambda: self.criar_stack.setCurrentIndex(0))
+                inner = PerformanceTab(on_sair=lambda: self.criar_stack.setCurrentIndex(0),
+                                       on_tickets=lambda: self._mostrar_modo("tickets"))
             elif key == "chamados":                                   # CHAMADOS = OS nova ligada a uma OS pai
                 from steps.chamados import ChamadosTab
                 inner = ChamadosTab(on_voltar=lambda: self.criar_stack.setCurrentIndex(0))
