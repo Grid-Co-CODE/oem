@@ -32,7 +32,7 @@ import tickets_calc
 import tickets_diario
 import tickets_escrita
 import tickets_spec
-from steps import lupa_os
+from steps import lupa_ativos, lupa_os
 from steps.ui import BG, CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
 from workers import ApiWorker, slot_seguro
 
@@ -43,9 +43,10 @@ _LIMITE_TABELA = 400
 
 # Cores escolhidas pelo Levi em 31/08 para a tabela.
 _REALCE = "#A27D3F"      # a linha clicada, inteira
-_GRADE = "#3D61A6"       # as linhas da grade
+_GRADE = "#818487"       # as linhas da grade e as bordas (Levi, 31/08)
 _TINTA_REALCE = "#141824"  # o texto sobre o dourado; ver _pintar_selecao
 _COR_ORIGINAL = 260        # papel do item onde a cor "de verdade" da célula fica guardada
+_VALOR_CRU = 261           # papel do item onde fica o valor do campo, sem formatação
 
 # ordem dos estados na lista: quem precisa de gente primeiro. `a_fechar` vem junto de `com_os`
 # porque é a mesma espera — a diferença é só de quem depende.
@@ -62,7 +63,7 @@ def ordenar_ocorrencias(ocs):
 # Adaptado do esboço: tirei toda referência a "desmarque"/"Salvar" — não existe botão que grave
 # nesta fase, e prometer uma ação que não está na tela confundiria mais do que ajudaria.
 _TXT_AVISO = {
-    "aberta": "Nenhuma OS vinculada ainda: a ocorrência está em aberto e ninguém foi mandado olhar.",
+    "aberta": "Sem OS vinculada.",
     "com_os": "OS aberta, técnico em campo. O fim chega quando ela for concluída.",
     "verificando": "O técnico fechou a tarefa, mas ninguém confirmou que resolveu. Fique de olho: "
                    "o problema pode voltar a existir sem ninguém perceber.",
@@ -73,6 +74,15 @@ _TXT_AVISO = {
 # o que muda entre as duas abas na tabela central: rótulo da coluna + como tirar o valor da linha.
 # Em Trackers o SKID vem da PLANILHA (coluna "Nº do SKID"); em Strings essa coluna não existe — o
 # extra correspondente é o nome do inversor, e SKID/Cabine dele vêm do catálogo (ver _repintar_ident).
+def _strings_afetadas(oc):
+    """'1 de 19'. Ver a nota em _EXTRA_COL: a planilha não tem o número da string."""
+    afet = str(oc.get("Quantidade de strings no afetadas") or "").strip()
+    tot = str(oc.get("Quantidade de strings no inversor") or "").strip()
+    if afet and tot:
+        return "%s de %s" % (afet, tot)
+    return afet or tot or "—"
+
+
 def _so_numero(v):
     """'02' -> '2'. A planilha guarda a cabine com zero à esquerda; é formatação de quem
     digitou, não parte do número (Levi, 31/08). Texto que não for número passa inteiro — há
@@ -89,12 +99,45 @@ _EXTRA_COL = {
     # "Cabine", não "Skid": mesmo vocabulário do painel desde 31/08 — ver _repintar_ident.
     "Trackers": [("Cabine", lambda oc: _so_numero(oc.get("Nº do SKID"))),
                  ("Tracker", lambda oc: str(oc.get("Nº do tracker / Identificação") or "—"))],
-    "Strings": [("Inversor", lambda oc: str(oc.get("Inversor") or "—"))],
+    # O Nº DA STRING NÃO EXISTE NA PLANILHA (conferido em 31/08 nas 18 colunas da aba): ela
+    # guarda quantas strings o inversor TEM e quantas foram AFETADAS, nunca qual delas. Então a
+    # coluna mostra o que há — "1 de 19" —, que é a informação real. Inventar um número seria
+    # pior que não ter.
+    "Strings": [("Inversor", lambda oc: str(oc.get("Inversor") or "—")),
+                ("Strings", _strings_afetadas)],
 }
 
 # a ordem das colunas da tabela; as extras entram depois da Usina
 _FIXAS_ANTES = ["", "Usina"]
-_FIXAS_DEPOIS = ["OS", "Causa raiz", "Início da ocorrência", "Período"]
+# "Resumo incidente" é o NOME DA COLUNA (Levi, 31/08); o dado continua sendo a coluna
+# 'Causa raiz' da planilha — por isso o de-para logo abaixo.
+_ROTULO_CAUSA = "Resumo incidente"
+_COL_ATIVO = "Ativo vinculado"
+_COL_STATUS = "Status"
+_FIXAS_DEPOIS = [_COL_ATIVO, "OS", _COL_STATUS, _ROTULO_CAUSA, "Início da ocorrência", "Período"]
+
+# Os status do ticket (lista do Levi, 31/08). Vazio no começo: enquanto ninguém disser em que pé
+# está, dizer "Triagem" seria inventar andamento.
+STATUS = ["", "Triagem", "OS Pendente", "OS Programada", "OS em Verificação", "Validação da OS",
+          "Aguardando Cliente", "Aguardando Concessionária", "Aguardando Condições da Planta",
+          "Aguardando Fabricante", "Aguardando Programação da OS", "Em Análise de Performance",
+          "Em Análise da Engenharia", "Reavaliação de Performance", "Concluído"]
+
+# Coluna da tabela → campo da ocorrência. O que não está aqui NÃO é editável na tabela: Usina e
+# Início da ocorrência por decisão do Levi (a data só se edita no painel, onde há calendário),
+# Período porque é calculado, 'Strings' porque é derivado de duas colunas, e 'Ativo vinculado'
+# porque o clique dele abre o card de ativos em vez de digitar.
+_CAMPO_DA_COLUNA = {
+    "Cabine": "Nº do SKID",
+    "Tracker": "Nº do tracker / Identificação",
+    "Inversor": "Inversor",
+    "OS": "OS",
+    # "Status do ticket", nunca "Status": a aba Trackers já tem uma coluna com esse nome
+    # ("Parado"/"Em conformidade") e escrever por cima dela apaga o filtro que separa
+    # ocorrência de check periódico.
+    _COL_STATUS: "Status do ticket",
+    _ROTULO_CAUSA: "Causa raiz",
+}
 
 
 def colunas_da_aba(aba):
@@ -167,6 +210,26 @@ def _ativos_da_usina(usina_ticket, todos):
     if por_codigo:
         return por_codigo
     return [a for a in todos if _nomes_de_usina_batem(un, api._norm_txt(a.get("usina")))]
+
+
+def ativo_da_ocorrencia(aba, oc, todos):
+    """O ativo do Fracttal desta ocorrência, ou None.
+
+    Duas origens, nesta ordem: o código que alguém VINCULOU à mão (guardado no diário) e, só
+    para Strings, o casamento automático do inversor. Tracker não entra no automático: medido em
+    31/08, o Fracttal não tem tracker cadastrado por unidade — o TIM100 tem 151 ativos de tracker
+    e todos terminam em `.100`, um por skid. Tentar adivinhar ali produziria vínculo errado, que
+    é pior que vínculo nenhum."""
+    code = str(oc.get("Ativo") or "").strip()
+    if code:
+        alvo = api._norm_txt(code)
+        for a in todos or []:
+            if api._norm_txt(a.get("code")) == alvo:
+                return a
+        return None
+    if aba == "Strings":
+        return _achar_inversor(oc.get("Inversor"), oc.get("Usina"), todos)
+    return None
 
 
 def _achar_inversor(nome, usina_ticket, todos):
@@ -513,6 +576,16 @@ def comentarios_de(texto):
     return entradas
 
 
+def _status_ao_vincular(oc, status_da_os):
+    """Status padrão quando uma OS é vinculada (Levi, 31/08): 'OS Programada' enquanto ela não
+    foi feita, 'OS em Verificação' quando o técnico já fechou. Só preenche quando está VAZIO —
+    status escolhido à mão não é sobrescrito por um padrão."""
+    if str(oc.get("Status do ticket") or "").strip():
+        return
+    st = api._norm_txt(status_da_os)
+    oc["Status do ticket"] = "OS em Verificação" if ("verifica" in st or "conclu" in st) else "OS Programada"
+
+
 def para_iso(texto):
     """'20/08/2026 14:03' → '2026-08-20 14:03:00'. Devolve o texto cru se não for data.
 
@@ -611,6 +684,17 @@ class _RealceDaLinha(QStyledItemDelegate):
     def __init__(self, dono):
         super().__init__(dono)
         self._dono = dono
+
+    def setEditorData(self, editor, index):
+        """O editor abre com o valor CRU do campo, não com o texto da célula.
+
+        A célula mostra "Sem OS", "—" ou a causa truncada em 40 caracteres; abrir a edição com
+        isso faria a pessoa salvar o próprio rótulo — ou cortar a causa raiz sem pedir."""
+        cru = index.data(_VALOR_CRU)
+        if cru is not None and hasattr(editor, "setText"):
+            editor.setText(str(cru))
+            return
+        super().setEditorData(editor, index)
 
     def updateEditorGeometry(self, editor, option, index):
         """O editor OCUPA A CÉLULA INTEIRA (Levi, 31/08: "pega só metade para baixo da linha").
@@ -949,15 +1033,17 @@ class TicketsTab(QWidget):
             # que é CLARA (#EFEFEF) — a tabela inteira ficava cinza dentro do navy. Só aparece
             # dentro da MainWindow, porque é ela quem instala a paleta; a tela isolada não
             # reproduzia, e foi por isso que passou em dois testes meus.
-            "QTableWidget{background:%s;border:none;color:%s;font-size:12.5px;outline:0;"
-            "gridline-color:%s;}"
+            "QTableWidget{background:%s;border:1px solid %s;color:%s;font-size:12.5px;"
+            "outline:0;gridline-color:%s;}"
             "QTableWidget QWidget{background:%s;}"
-            # cabeçalho QUADRADO e sem fio lateral (Levi, 31/08): só o fio de baixo, para dar
-            # a impressão de divisão sem desenhar uma caixa. O QHeaderView precisa da regra
+            # O CABEÇALHO ENTRA NA GRADE (Levi, 31/08). Antes ele tinha só o fio de baixo, de
+            # quando a tabela não tinha grade nenhuma; com a grade desenhada, um cabeçalho sem
+            # divisórias ficava solto das colunas que anuncia. O QHeaderView precisa da regra
             # própria — estilizar só ::section deixa o canto arredondado do widget aparecendo.
             "QHeaderView{background:%s;border:none;border-radius:0;}"
             "QHeaderView::section{background:%s;color:%s;border:none;border-radius:0;"
-            "border-bottom:1px solid %s;padding:5px 4px;font-size:10px;font-weight:800;}"
+            "border-right:1px solid %s;border-bottom:1px solid %s;"
+            "padding:5px 4px;font-size:10px;font-weight:800;}"
             # O EDITOR DA CÉLULA (Levi, 31/08): ao dar duplo clique na causa raiz, a caixa de
             # digitar nascia mais alta que a linha e escorregava para baixo, invadindo a linha
             # seguinte. O culpado é o QSS global do app, que põe padding e altura mínima em todo
@@ -978,7 +1064,8 @@ class TicketsTab(QWidget):
             # global do app, e sobravam riscos nas divisas das células.
             "QTableWidget{selection-background-color:transparent;}"
             "QTableWidget::item:selected{background:transparent;border:none;}"
-            % (CARD, TEXT, _GRADE, CARD, CARD, CARD, MUTED, BORDER, INPUT, TEXT, GREEN))
+            % (CARD, _GRADE, TEXT, _GRADE, CARD, CARD, CARD, MUTED, _GRADE, _GRADE,
+               INPUT, TEXT, GREEN))
         self.tab.cellClicked.connect(self._sel_tabela)
         self.tab.horizontalHeader().setSectionsClickable(True)
         self.tab.horizontalHeader().sectionClicked.connect(self._ordenar_por)
@@ -1095,11 +1182,21 @@ class TicketsTab(QWidget):
         # cai fora dela em silêncio, zerando a hora de quem preencheu.
         self._p_resp = _combo(["", "Sim", "Parcial", "Não"])
         v.addWidget(_rotulado("Responsabilidade da Grid Co.?", self._p_resp))
+        # O STATUS DO TICKET (Levi, 31/08). Não existe na planilha — vive no diário. A coluna
+        # 'Status' que a aba Trackers já tem é outra coisa ("Em conformidade") e não pode ser
+        # reaproveitada: sobrescrevê-la apagaria o filtro que separa ocorrência de check.
+        self._p_status = _combo(STATUS)
+        v.addWidget(_rotulado("Status do ticket", self._p_status, dica="andamento"))
 
         v.addWidget(_regua())
         v.addWidget(_secao("PRAZOS"))
         self._p_ini = _CampoData(ph="dd/mm/aaaa hh:mm")
         v.addWidget(_rotulado("Início da ocorrência", self._p_ini, dica="data e hora"))
+        # O INÍCIO DO CHAMADO no painel (Levi, 31/08). Ele já era gravado ao vincular a OS,
+        # mas não aparecia em lugar nenhum — dava para preencher e não dava para conferir.
+        self._p_chamado = _CampoData(ph="preenchido ao vincular a OS")
+        v.addWidget(_rotulado("Início do chamado pela Grid Co.", self._p_chamado,
+                              dica="data de criação da OS"))
         self._p_fim = _CampoData(ph="em aberto")
         v.addWidget(_rotulado("Fim da ocorrência", self._p_fim))
         # este NÃO abre: é calculado pela janela solar a partir das duas datas acima. Campo
@@ -1155,9 +1252,10 @@ class TicketsTab(QWidget):
 
         # marcar sujo em cada campo: é o que acende o Salvar e o que permite avisar antes de a
         # troca de linha jogar fora o que foi digitado.
-        for w in (self._p_causa, self._p_ini, self._p_fim):
+        for w in (self._p_causa, self._p_ini, self._p_chamado, self._p_fim):
             w.textEdited.connect(self._marcar_sujo)
         self._p_resp.activated.connect(self._marcar_sujo)
+        self._p_status.activated.connect(self._marcar_sujo)
         self._p_coment.textChanged.connect(self._marcar_sujo)
         sc.setWidget(dentro)
         cv.addWidget(sc, 1)
@@ -1328,6 +1426,7 @@ class TicketsTab(QWidget):
         # o DIÁRIO por cima do que veio do banco: se o sync desfez uma edição do app, aqui ela
         # volta. Ver tickets_diario — a aba dele não existe no .xlsx, então o sync não a alcança.
         self._placar_diario = tickets_diario.aplicar(aba_pedida, ocs, diario)
+        self._marcar_ativos(ocs, aba_pedida)
         for row in ocs:
             if row.get("_restaurado"):
                 ini, fim = row.get("Início da ocorrência"), row.get("Fim da ocorrência")
@@ -1343,12 +1442,30 @@ class TicketsTab(QWidget):
                           % (tickets_spec.ABAS[self._aba]["rotulo"], n_txt))
         self._repintar()
 
+    def _marcar_ativos(self, ocs, aba):
+        """Marca em cada ocorrência se ela tem ativo do Fracttal vinculado.
+
+        Fica guardado na própria ocorrência porque a tabela desenha 400 linhas a cada repintura,
+        e resolver o catálogo (2 mil inversores, 7 mil trackers) linha a linha ali dentro travaria
+        a rolagem. Sem catálogo carregado ainda, ninguém é marcado como solto — dizer "sem ativo"
+        antes de ter a lista seria alarme falso."""
+        if not self._todos_ativos:
+            for oc in ocs:
+                oc["_ativo_ok"] = bool(str(oc.get("Ativo") or "").strip())
+            return
+        for oc in ocs:
+            oc["_ativo_ok"] = ativo_da_ocorrencia(aba, oc, self._todos_ativos) is not None
+
     @slot_seguro
     def _ativos_chegaram(self, ativos):
         self._wa = None
         self._todos_ativos = [a for a in (ativos or []) if isinstance(a, dict)]
         self._por_id = tickets_ativo.indexar(self._todos_ativos)
         self._ativos_prontos = True
+        # o catálogo chega DEPOIS das ocorrências: sem esta remarcação a coluna "Ativo vinculado"
+        # ficaria em "Não" para todo mundo até a próxima busca.
+        self._marcar_ativos(self._ocs, self._aba)
+        self._repintar()
         # se já tinha uma ocorrência de Strings selecionada, o campo Cabine que estava
         # em 'carregando catálogo…' saem do escuro sem precisar clicar de novo na linha.
         if self._aba == "Strings" and self._sel is not None:
@@ -1399,8 +1516,15 @@ class TicketsTab(QWidget):
         "Tracker": lambda o: ((1, int(t)) if (t := str(
             o.get("Nº do tracker / Identificação") or "").strip()).isdigit() else (0, 0)),
         "Inversor": lambda o: (1, api._norm_txt(o.get("Inversor") or "")),
-        "Causa raiz": lambda o: (1 if str(o.get("Causa raiz") or "").strip() else 0,
-                                 api._norm_txt(o.get("Causa raiz") or "")),
+        "Strings": lambda o: ((1, int(t)) if (t := str(
+            o.get("Quantidade de strings no afetadas") or "").strip()).isdigit() else (0, 0)),
+        _ROTULO_CAUSA: lambda o: (1 if str(o.get("Causa raiz") or "").strip() else 0,
+                                  api._norm_txt(o.get("Causa raiz") or "")),
+        _COL_ATIVO: lambda o: (1, "" if o.get("_ativo_ok") else "z"),
+        _COL_STATUS: lambda o: (1 if str(o.get("Status do ticket") or "").strip() else 0,
+                                api._norm_txt(o.get("Status do ticket") or "")),
+        "OS": lambda o: (1 if str(o.get("OS") or "").strip() else 0,
+                         api._norm_txt(o.get("OS") or "")),
         "Início da ocorrência": lambda o: (
             (1, d) if (d := tickets_calc._para_dt(o.get("Início da ocorrência")))
             else (0, datetime.min)),
@@ -1440,6 +1564,8 @@ class TicketsTab(QWidget):
     _CAMPOS_EDITAVEIS = ("Causa raiz", "Responsabilidade da Grid Co.?",
                          "Início da ocorrência", "Início do chamado pela Grid Co.",
                          "Fim da ocorrência", "Comentários gerais")
+    # o que o app grava e a planilha não tem: conferir conflito neles compararia com o vazio
+    _SO_NO_DIARIO = ("OS", "Ativo", "Status do ticket")
 
     def _pode_vincular(self):
         """Só faz sentido oferecer vínculo em ocorrência SEM OS e ainda aberta. Encerrada já
@@ -1516,6 +1642,7 @@ class TicketsTab(QWidget):
                 oc["Início do chamado pela Grid Co."] = criada
             oc["_estado"] = tickets_spec.estado_do_ticket(oc.get("OS"), oc.get("Status da OS"),
                                                           oc.get("Fim da ocorrência"))
+            _status_ao_vincular(oc, os_achada.get("status"))
             pop.close()
             self._sujo = True
             self._selecionar(oc)      # repinta o painel com a OS já no cabeçalho
@@ -1592,6 +1719,7 @@ class TicketsTab(QWidget):
             oc["Início do chamado pela Grid Co."] = criada
         oc["_estado"] = tickets_spec.estado_do_ticket(oc.get("OS"), oc.get("Status da OS"),
                                                       oc.get("Fim da ocorrência"))
+        _status_ao_vincular(oc, os_.get("status"))
         self._selecionar(oc)
         self._sujo = True
         self._pinta_edicao()
@@ -1682,8 +1810,9 @@ class TicketsTab(QWidget):
                 # aqui mesmo assim — é o que o diário grava, e o que o PUT manda para a coluna
                 # 'Início do chamado', que existe na planilha ('OS' não existe e é ignorada).
                 "OS": str((self._sel or {}).get("OS") or "").strip(),
-                "Início do chamado pela Grid Co.":
-                    para_iso((self._sel or {}).get("Início do chamado pela Grid Co."))}
+                "Ativo": str((self._sel or {}).get("Ativo") or "").strip(),
+                "Status do ticket": self._p_status.currentText().strip(),
+                "Início do chamado pela Grid Co.": para_iso(self._p_chamado.text())}
 
     def _aviso_edicao(self, texto, cor):
         self._p_estado_edicao.setText(texto)
@@ -1865,9 +1994,30 @@ class TicketsTab(QWidget):
         cab = self.tab.horizontalHeader()
         nomes = colunas_da_aba(self._aba)
         for i, nome in enumerate(nomes):
-            cab.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch if nome == "Causa raiz"
-                                     else QHeaderView.ResizeMode.ResizeToContents)
+            if nome in (_ROTULO_CAUSA, _COL_STATUS):
+                cab.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+            else:
+                cab.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         self.tab.setColumnWidth(0, 14)
+        self._ajustar_elasticas()
+
+    def _ajustar_elasticas(self):
+        """O STATUS FICA COM 1/3 DA LARGURA DO RESUMO (Levi, 31/08).
+
+        As duas são as únicas elásticas: o que sobra depois das colunas de conteúdo fixo é
+        dividido 3 para 1. Sem isto, o Status em ResizeToContents encolhia até o tamanho da
+        palavra e não caberia um "Aguardando Condições da Planta" — e o Resumo, em Stretch,
+        ficava com tudo."""
+        nomes = colunas_da_aba(self._aba)
+        if _COL_STATUS not in nomes or _ROTULO_CAUSA not in nomes:
+            return
+        sobra = self.tab.viewport().width()
+        for i, nome in enumerate(nomes):
+            if nome not in (_ROTULO_CAUSA, _COL_STATUS):
+                sobra -= self.tab.columnWidth(i)
+        if sobra > 240:
+            self.tab.setColumnWidth(nomes.index(_COL_STATUS), sobra // 4)
+            self.tab.setColumnWidth(nomes.index(_ROTULO_CAUSA), sobra - sobra // 4 - 2)
 
     def _pinta_tabela(self):
         rot = list(colunas_da_aba(self._aba))
@@ -1938,11 +2088,25 @@ class TicketsTab(QWidget):
             ha_cor = tickets_spec.COR_ESTADO["aberta"] if alarme else TEXT
 
             extras = [f(oc) for _, f in _EXTRA_COL[self._aba]]
+            # ATIVO VINCULADO (Levi, 31/08: "tudo tem que estar vinculado"). O nome do
+            # tracker/inversor sai em VERMELHO quando não há vínculo — é o jeito de varrer a
+            # lista e ver o que falta sem ler coluna por coluna.
+            ligado = bool(oc.get("_ativo_ok"))
+            cor_ativo = TEXT if ligado else tickets_spec.COR_ESTADO["aberta"]
+            # o vermelho vai na coluna que NOMEIA o ativo — 'Tracker' em Trackers, 'Inversor'
+            # em Strings. A contagem de strings não identifica ativo nenhum e ficaria vermelha
+            # sem querer dizer nada.
+            cores_extras = [cor_ativo if r_ in ("Tracker", "Inversor") else TEXT
+                            for r_, _ in _EXTRA_COL[self._aba]]
+            st = str(oc.get("Status do ticket") or "").strip()
             vals = ([str(oc.get("Usina") or "—")[:24]] + extras
-                    + [os_txt, causa_txt, _fmt_dt(oc.get("Início da ocorrência")), ha_txt])
-            cores = ([TEXT] + [TEXT] * len(extras)
-                     + [os_cor, MUTED if causa in (None, "") else TEXT, TEXT, ha_cor])
-            i_causa = colunas_da_aba(self._aba).index("Causa raiz")
+                    + ["Sim" if ligado else "Não", os_txt, st or "—", causa_txt,
+                       _fmt_dt(oc.get("Início da ocorrência")), ha_txt])
+            cores = ([TEXT] + cores_extras
+                     + [TEXT if ligado else tickets_spec.COR_ESTADO["aberta"], os_cor,
+                        TEXT if st else MUTED,
+                        MUTED if causa in (None, "") else TEXT, TEXT, ha_cor])
+            i_causa = colunas_da_aba(self._aba).index(_ROTULO_CAUSA)
             for c, (v, cr) in enumerate(zip(vals, cores), start=1):
                 it = QTableWidgetItem(str(v))
                 it.setForeground(_cor(cr))
@@ -1956,44 +2120,71 @@ class TicketsTab(QWidget):
                     it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 else:
                     it.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                nome_col = colunas_da_aba(self._aba)[c]
+                if nome_col in _CAMPO_DA_COLUNA:
+                    it.setFlags(it.flags() | Qt.ItemFlag.ItemIsEditable)
+                    # o valor CRU do campo, para o editor abrir com ele e para a comparação do
+                    # `_causa_editada` não olhar o texto exibido
+                    # SÓ o papel próprio: `setData(EditRole, ...)` num QTableWidgetItem troca
+                    # também o texto EXIBIDO — os dois papéis são o mesmo dado ali —, e a coluna
+                    # passava a mostrar o valor cru ("" no lugar de "Sem OS"). Quem leva o valor
+                    # para dentro do editor é o `setEditorData` do delegate.
+                    it.setData(_VALOR_CRU, str(oc.get(_CAMPO_DA_COLUNA[nome_col]) or ""))
+                else:
+                    it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 if c == i_causa:
                     # EDITÁVEL NA PRÓPRIA TABELA (Levi, 31/08). Só esta coluna: as outras ou são
                     # calculadas ou vêm da planilha. E o texto INTEIRO vai para a edição, não o
                     # truncado — senão salvar de dentro da tabela cortaria a causa raiz em 40
                     # caracteres sem ninguém pedir.
-                    it.setFlags(it.flags() | Qt.ItemFlag.ItemIsEditable)
-                    it.setData(Qt.ItemDataRole.EditRole,
-                               "" if causa in (None, "") else str(causa))
                     if causa_txt != causa_completa:            # o resto no hover
                         it.setToolTip(causa_completa)
-                else:
-                    it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.tab.setItem(r, c, it)
         # a repintura recria os itens: sem isto a linha marcada perderia o realce a cada busca,
         # filtro ou ordenação, e a pessoa não saberia mais qual estava aberta no painel.
         self._pintar_selecao(getattr(self, "_linha_sel", -1))
         self.tab.blockSignals(False)
+        # DEPOIS de pintar: na construção a tabela ainda não tem largura, e a conta do 1/3 saía
+        # de um viewport de poucos pixels — a tabela nascia estreita, sobrando um vão à direita.
+        self._ajustar_elasticas()
 
     @slot_seguro
     def _causa_editada(self, item):
-        """Causa raiz digitada direto na tabela: grava na hora.
+        """Célula digitada direto na tabela: grava na hora.
 
-        Deixar pendente de um clique em Salvar no painel seria pior que não ter a edição — a
-        pessoa digitaria numa linha, clicaria na próxima e perderia o que escreveu sem aviso.
-        `_pinta_tabela` roda com os sinais bloqueados, então aqui só chega edição de gente."""
-        if item is None or item.column() != colunas_da_aba(self._aba).index("Causa raiz"):
+        Vale para toda coluna de `_CAMPO_DA_COLUNA` (Levi, 31/08: "todos os campos devem ser
+        editáveis na tabela menos Usina, Início da ocorrência e período"). Deixar pendente de um
+        clique em Salvar seria pior que não ter a edição — a pessoa digitaria numa linha,
+        clicaria na próxima e perderia o que escreveu sem aviso. `_pinta_tabela` roda com os
+        sinais bloqueados, então aqui só chega edição de gente."""
+        if item is None:
+            return
+        nomes = colunas_da_aba(self._aba)
+        c = item.column()
+        if not (0 <= c < len(nomes)):
+            return
+        campo = _CAMPO_DA_COLUNA.get(nomes[c])
+        if campo is None:
             return
         r = item.row()
         if not (0 <= r < len(self._visiveis)):
             return
         oc = self._visiveis[r]
         novo = item.text().strip()
-        if novo == "aguardando técnico":          # o texto de placeholder da célula vazia
+        # compara com o VALOR CRU guardado no item, nunca com o texto exibido: a célula mostra
+        # "Sem OS", "—" ou a causa truncada, e comparar com isso faz o app achar que a pessoa
+        # digitou o próprio rótulo. Foi assim que "Sem OS" virou número de OS no diário.
+        cru = str(item.data(_VALOR_CRU) or "").strip()
+        if novo == cru or novo == str(item.text() or "").strip() == cru:
+            return
+        if novo in ("aguardando técnico", "—", "Sem OS"):
             novo = ""
-        if novo == str(oc.get("Causa raiz") or "").strip():
+        if novo == str(oc.get(campo) or "").strip():
             return
         self._sel_tabela(r)
-        self._p_causa.setText(novo)
+        oc[campo] = novo
+        if campo == "Causa raiz":
+            self._p_causa.setText(novo)
         self._sujo = True
         self._pinta_edicao()
         self._salvar()
@@ -2011,6 +2202,11 @@ class TicketsTab(QWidget):
         decide a cor do texto é o estilo, não a paleta da opção."""
         anterior = getattr(self, "_linha_sel", -1)
         self._linha_sel = linha
+        # SINAIS BLOQUEADOS: mudar a cor de um item dispara `itemChanged`, o mesmo sinal da
+        # digitação. Sem isto, cada clique numa linha era lido como edição — e como a célula da
+        # OS mostra "Sem OS" enquanto o campo está vazio, o app "salvava" a string "Sem OS" como
+        # número de OS. Aconteceu de verdade: 103 registros de lixo no diário antes de eu ver.
+        self.tab.blockSignals(True)
         for r in (anterior, linha):
             if not (0 <= r < self.tab.rowCount()):
                 continue
@@ -2020,14 +2216,44 @@ class TicketsTab(QWidget):
                     continue
                 original = it.data(_COR_ORIGINAL) or TEXT
                 it.setForeground(_cor(_TINTA_REALCE if r == linha else original))
+        self.tab.blockSignals(False)
         self.tab.viewport().update()
 
     @slot_seguro
-    def _sel_tabela(self, r=-1, _c=0):
+    def _sel_tabela(self, r=-1, c=0):
         self._pintar_selecao(r)
         if 0 <= r < len(self._visiveis):
             self._linha_sel = r
             self._selecionar(self._visiveis[r])
+            nomes = colunas_da_aba(self._aba)
+            # clicar no "Não" da coluna do ativo é o que abre o card — a coluna não é digitável
+            if 0 <= c < len(nomes) and nomes[c] == _COL_ATIVO \
+                    and not self._visiveis[r].get("_ativo_ok"):
+                self._abrir_ativos()
+
+    @slot_seguro
+    def _abrir_ativos(self, *_):
+        """O card grande de ativos da usina, para vincular à ocorrência."""
+        oc = self._sel
+        if oc is None:
+            return
+        usina = str(oc.get("Usina") or "")
+        sug = (str(oc.get("Inversor") or "") if self._aba == "Strings"
+               else str(oc.get("Nº do tracker / Identificação") or ""))
+        dlg = lupa_ativos.LupaAtivos(self, usina, _ativos_da_usina(usina, self._todos_ativos),
+                                     self._ativo_escolhido, sugestao=sug)
+        dlg.exec()
+
+    def _ativo_escolhido(self, ativo):
+        oc = self._sel
+        if oc is None or not isinstance(ativo, dict):
+            return
+        oc["Ativo"] = str(ativo.get("code") or "").strip()
+        oc["_ativo_ok"] = True
+        self._selecionar(oc)
+        self._sujo = True
+        self._pinta_edicao()
+        self._salvar()
 
     def _selecionar(self, oc):
         self._sel = oc
@@ -2088,8 +2314,13 @@ class TicketsTab(QWidget):
             if resp and self._p_resp.findText(resp) < 0:
                 self._p_resp.addItem(resp)
             self._p_resp.setCurrentText(resp)
+            st = str(oc.get("Status do ticket") or "").strip()
+            if st and self._p_status.findText(st) < 0:
+                self._p_status.addItem(st)
+            self._p_status.setCurrentText(st)
 
             self._p_ini.setText(_fmt_dt(oc.get("Início da ocorrência")))
+            self._p_chamado.setText(_fmt_dt(oc.get("Início do chamado pela Grid Co.")))
             fim = oc.get("Fim da ocorrência")
             self._p_fim.setText("" if fim in (None, "") else _fmt_dt(fim))
             horas = oc.get("_horas")

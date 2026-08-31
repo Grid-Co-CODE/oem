@@ -36,11 +36,17 @@ import tickets_escrita as _esc
 BASE = _esc.BASE
 TIMEOUT = _esc.TIMEOUT
 WORKBOOK = "tickets_performance"
-NOME_ABA = "Edicoes do app"          # sem acento: é nome de aba, e o .xlsx não a conhece
+# sem acento: é nome de aba, e o .xlsx não a conhece. O "v2" é porque a API NÃO SABE ALARGAR
+# uma aba: o PATCH de /api/sheets aceita `headers`, responde 200 e ignora — medido em 31/08 —, e
+# gravar uma linha mais larga faz os campos que sobram serem DESCARTADOS em silêncio (o `Ativo`
+# e o `Status` voltaram como None). Ou seja: coluna nova exige aba nova, com os registros
+# copiados. Quem precisar de outra coluna um dia repete a receita e vira v3.
+NOME_ABA = "Edicoes do app v3"
 
 # 'quando' em ISO para ordenar como texto; o resto são os campos que a tela edita.
 CAMPOS = ["Causa raiz", "Responsabilidade da Grid Co.?", "Início da ocorrência",
-          "Início do chamado pela Grid Co.", "Fim da ocorrência", "Comentários gerais", "OS"]
+          "Início do chamado pela Grid Co.", "Fim da ocorrência", "Comentários gerais", "OS",
+          "Ativo", "Status do ticket"]
 
 # Campos que NÃO existem como coluna na planilha e por isso vivem só aqui. Duas consequências:
 # eles nunca são "restaurados" (não há valor no banco para o sync desfazer, então anunciar seria
@@ -50,7 +56,16 @@ CAMPOS = ["Causa raiz", "Responsabilidade da Grid Co.?", "Início da ocorrência
 # 'OS' é o caso: a planilha não tem coluna de OS (conferido nas duas abas em 31/08) e criar uma
 # não adiantaria enquanto o pipeline subir o .xlsx — o sync encolhe a aba de volta. Então o
 # vínculo com a OS mora no diário até o corte.
-CAMPOS_SEM_COLUNA = {"OS"}
+# 'Status do ticket' se chama assim, e não 'Status', por um motivo achado da pior maneira: a aba
+# Trackers JÁ TEM uma coluna 'Status' ("Parado"/"Em conformidade"), e gravar a nossa por cima
+# apagava o filtro que separa ocorrência de check periódico — 734 das 1.094 linhas são check.
+# O nome distinto é o que impede as duas de se encontrarem.
+# 'Ativo' guarda o CÓDIGO do ativo do Fracttal que a pessoa vinculou à ocorrência quando o
+# casamento automático não acha (tracker não tem cadastro por unidade; 14% dos inversores da aba
+# Strings também não resolvem). 'Status' é o andamento do ticket, que a planilha nunca teve — a
+# coluna 'Status' que existe em Trackers é outra coisa ("Em conformidade"), e sobrescrevê-la
+# apagaria o filtro que separa ocorrência de check periódico.
+CAMPOS_SEM_COLUNA = {"OS", "Ativo", "Status do ticket"}
 
 COLUNAS = ["quando", "quem", "aba", "linha", "impressao"] + CAMPOS
 
@@ -90,6 +105,7 @@ def garantir_aba(listar=None, criar=None) -> int:
     abas = listar() if listar is not None else _get("/api/sheets")
     for s in abas or []:
         if s.get("workbook_key") == WORKBOOK and s.get("sheet_name") == NOME_ABA:
+            _conferir_largura(s)
             return _liberar(s["id"])
     corpo = {"sheet_name": NOME_ABA, "headers": list(COLUNAS)}
     if criar is not None:
@@ -100,6 +116,25 @@ def garantir_aba(listar=None, criar=None) -> int:
         r.raise_for_status()
         nova = r.json()
     return _liberar(nova["id"])
+
+
+class AbaEstreita(RuntimeError):
+    """A aba do diário tem menos colunas do que os campos que se quer gravar."""
+
+
+def _conferir_largura(aba: dict):
+    """Recusa gravar numa aba mais estreita que CAMPOS — ALTO, e não em silêncio.
+
+    A API não sabe alargar: o PATCH aceita `headers`, responde 200 e não muda nada, e a linha
+    mais larga entra com os campos que sobram virando None (medido em 31/08). Sem esta checagem,
+    acrescentar um campo faria o app gravar sem ele e ninguém perceberia — que é exatamente o
+    tipo de perda silenciosa que este módulo existe para impedir. A saída é criar a aba seguinte
+    (v3, v4…) e copiar os registros."""
+    tem = int(aba.get("column_count") or 0)
+    if tem and tem < len(COLUNAS):
+        raise AbaEstreita(
+            "a aba '%s' tem %d colunas e o app grava %d. A API não alarga aba: crie a próxima "
+            "versão e copie os registros." % (aba.get("sheet_name"), tem, len(COLUNAS)))
 
 
 def _liberar(sheet_id: int) -> int:
