@@ -241,6 +241,18 @@ def subtarefas(tema: str, tipo_ativo: str = "") -> list:
     return out
 
 
+def subtarefas_base() -> list:
+    """Só a BASE, para a solicitação SEM tema.
+
+    Nove dos catorze temas ainda não têm checklist escrito. Se a fila do PCM travasse neles, ele
+    voltaria para o Fracttal — e aí a OS nasce sem subtarefa nenhuma. Com a base, nasce com três:
+    pior que o ideal, melhor que hoje."""
+    return [{"description": s["desc"],
+             "id_task_form_item_type": TIPO_ID.get(s["tipo"], 1),
+             "is_required": bool(s["obrig"]),
+             "attachments_required": bool(s["anexo"])} for s in BASE]
+
+
 def classificacao(tema: str) -> dict:
     """Classificação sugerida pelo tema → {'classif1','tipo','dominio'}.
 
