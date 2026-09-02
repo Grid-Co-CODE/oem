@@ -19,8 +19,7 @@ from steps.ui import QSS_FORM
 from steps.finalizar import FinalizarPanel
 from steps.ospai import OsPaiPicker
 from steps.historico import HistoricoOS
-from steps.historico_solic import HistoricoSolic
-from steps.solicitacao import SolicitacaoTab
+from steps.solic_pcm import SolicPcmTab       # painel + form + fila do PCM + histórico, numa aba
 from steps.pcm import abrir_pcm, PcmTab
 from steps.searchcombo import tornar_todos_pesquisaveis
 from steps.sugestoes import SugestoesTab
@@ -330,18 +329,20 @@ class MainWindow(QMainWindow):
         self.criar_stack.addWidget(trad)                              # página 1: Tradicional
         self.tabs.addTab(criar, "Criar OS")
 
-        # ── aba 2: Criar Solicitação ──
-        self.sol = SolicitacaoTab()
-        self._tab_sol = self.sol                                   # o form novo já traz o "* obrigatórios"
-        self.tabs.addTab(self._tab_sol, "Criar Solicitação")
+        # ── aba 2: Solicitação / PCM ──
+        # Uma aba só, decisão do Levi (02/09). Antes eram duas — "Criar Solicitação" e "Histórico
+        # de Solicitação" — e o painel novo seria uma terceira. Três lugares mostrando solicitação
+        # é três lugares para procurar, e o PCM precisaria pular entre eles para aprovar UMA.
+        # O painel, o formulário, a fila do PCM e o histórico agora vivem no mesmo stack.
+        self.solpcm = SolicPcmTab()
+        self.sol = self.solpcm.nova                    # o form, p/ quem já falava com ele
+        self._tab_sol = self.solpcm
+        self.hsol = self.solpcm.hist
+        self.tabs.addTab(self.solpcm, "Solicitação / PCM")
 
         # ── aba 3: Históricos de OS ──
         self.hist = HistoricoOS()
         self.tabs.addTab(self.hist, "Históricos de OS")
-
-        # ── aba 4: Histórico de Solicitação ──
-        self.hsol = HistoricoSolic()
-        self.tabs.addTab(self.hsol, "Histórico de Solicitação")
 
         # estilo das abas (imagem 2): planas, com ícone + sublinhado verde na ativa
         self.tabs.setStyleSheet(
@@ -392,10 +393,9 @@ class MainWindow(QMainWindow):
         txt = self.tabs.tabText(idx)                          # 1ª abertura → carrega
         if txt.startswith("Históricos"):
             self.hist.carregar_inicial()
-        elif txt.startswith("Histórico de Solicitação"):
-            self.hsol.carregar_inicial()
-        elif txt.startswith("Criar Solicitação"):
-            self.sol.carregar_inicial()
+        elif txt.startswith("Solicitação"):
+            # a aba inteira: o form carrega as listas e o painel busca as solicitações
+            self.solpcm.carregar_inicial()
         elif txt.startswith("Sugestões"):
             self.sug.carregar_inicial()
 
@@ -767,6 +767,9 @@ class MainWindow(QMainWindow):
         """Vai p/ a aba 'Criar Solicitação' com cliente/usina/ativo pré-preenchidos pelo code do ativo
         (usado pelo detalhe da OS no histórico)."""
         self.tabs.setCurrentWidget(self._tab_sol)
+        # a aba agora tem quatro páginas: sem isto o deep link caía no PAINEL e o pré-preenchimento
+        # acontecia numa tela que ninguém estava vendo
+        self._tab_sol.abrir_nova()
         self.sol.carregar_inicial()
         if not self.sol.prefill_por_code(code):
             QMessageBox.information(self, "Criar Solicitação",
@@ -807,7 +810,9 @@ class MainWindow(QMainWindow):
         def _ok(assets):
             self.overlay.hide()
             self.s1.set_assets(assets)
-            self.sol.set_assets(assets)
+            # a aba repassa ao form E guarda para a fila do PCM, que precisa do registro completo
+            # do ativo (id/id_parent/id_type_item/id_group_task) para criar a OS na aprovação
+            self.solpcm.set_assets(assets)
 
         def _err(m):
             self.overlay.hide()

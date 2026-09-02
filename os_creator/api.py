@@ -868,7 +868,8 @@ def _msg_rpc(bruto) -> str:
 def create_os_rpc(asset: dict, description: str, task_type: str, subtasks: list,
                   requested_by: str = "", etiqueta: str = "", note: str = "",
                   event_date: datetime = None, tipo: dict = None, finalizar: dict = None,
-                  id_parent=None, falha: dict = None, prog_date: datetime = None) -> dict:
+                  id_parent=None, falha: dict = None, prog_date: datetime = None,
+                  id_request=None) -> dict:
     """Cria uma OS (tarefa não-planejada) via RPC interno do Fracttal. asset = registro do
     get_assets() (precisa de id/id_parent/id_type_item/id_group_task). `event_date` = data
     programada (datetime; default = agora). `tipo` = dict opcional com id_main (id_task_type_main),
@@ -938,7 +939,11 @@ def create_os_rpc(asset: dict, description: str, task_type: str, subtasks: list,
         "array_resources": [],                       # responsável: pendente de 1 captura p/ mapear
         "id_item": id_item,
         "items_description": asset.get("description") or "",
-        "id_request": None, "note": (note or "").strip() or None,
+        # `id_request` amarra a OS à SOLICITAÇÃO que a originou. Ficou fixo em None desde sempre
+        # porque nada no app criava OS a partir de solicitação — quem convertia era o PCM, à mão,
+        # no Fracttal web. Com a fila do PCM isso passa a ter dono, e o vínculo faz a solicitação
+        # virar "Resolvida com OS" sozinha, como já acontece hoje.
+        "id_request": id_request or None, "note": (note or "").strip() or None,
         "name": (fin.get("name") or None) if finalizada else None, "available": None,
         "initial_date_out_of_service": None,
         "id_group_task": asset.get("id_group_task"),
@@ -4025,7 +4030,7 @@ def atualizar_modelos_subtarefas(tarefas: list) -> list:
 
 def clonar_os(tarefas: list, id_responsible, responsible_name: str = "",
               etiqueta_ids: list = None, note: str = "", scheduled_date: datetime = None,
-              id_parent=None) -> dict:
+              id_parent=None, id_request=None) -> dict:
     """Cria UMA OS nova com TODAS as 'tarefas' dadas (cada uma: asset, tipo, descricao,
     subtarefas — formato de get_os_para_clonar). Fase 1: cria N tarefas pendentes. Fase 2:
     1 work_order_insert com as N → 1 OS multi-tarefa + responsável. Fase 3: etiquetas.
@@ -4059,7 +4064,7 @@ def clonar_os(tarefas: list, id_responsible, responsible_name: str = "",
                                 tipo=_tipo or None,
                                 note=(note or t.get("notas") or ""),
                                 event_date=(t.get("event_date") or scheduled_date),
-                                id_parent=id_parent)
+                                id_parent=id_parent, id_request=id_request)
             if os_.get("id_task"):
                 id_tasks.append(os_["id_task"])
             else:
@@ -4100,6 +4105,81 @@ def clonar_os(tarefas: list, id_responsible, responsible_name: str = "",
         avisos.append(f"{len(erros)} tarefa(s) não criadas: " + "; ".join(erros[:2]))
     return {"ok": True, "os": os_out, "aviso": " | ".join(avisos) or None,
             "n_tarefas": len(val), "n_criadas": len(recs)}
+
+
+def _solicitacao_row(id_code):
+    """A linha da solicitacao no Fracttal — ou None. So os campos que a listagem devolve."""
+    if not id_code:
+        return None
+    res = _rpc_call(RPC_REQ_LIST, {"filter": [{"operator": "=", "property": "id_code",
+                                               "value": id_code}],
+                                   "sort": [], "page": 1, "limit": 2, "start": 0})
+    data = res.get("data") if isinstance(res, dict) else res
+    return (data or [None])[0] if isinstance(data, list) else None
+
+
+def _tarefa_da_solicitacao(id_request):
+    """A tarefa pendente que JA existe para esta solicitacao — ou None.
+
+    O Fracttal aceita UMA tarefa por solicitacao: a segunda tentativa volta `unique_violation`.
+    Logo, uma aprovacao que falhou DEPOIS da fase 1 deixa a solicitacao travada — nunca mais
+    aceita conversao pela API. Medido em 02/09 nas solicitacoes 3534 e 3536: as duas ficaram com
+    tarefa orfa no kanban (21543888 e 21544130) e toda nova tentativa morria no unique_violation.
+    Achando a tarefa aqui, a aprovacao retomada faz so a fase 2 e a solicitacao se destrava."""
+    if not id_request:
+        return None
+    res = _rpc_call(RPC_KANBAN, {"page": 1, "limit": 500, "start": 0, "append": True,
+                                 "is_tree": False, "id_type_item": 0, "filter": [],
+                                 "group": {}, "sort": []})
+    data = res.get("data") if isinstance(res, dict) else res
+    alvo = str(id_request)
+    for t in (data if isinstance(data, list) else []):
+        if isinstance(t, dict) and str(t.get("id_request") or "") == alvo:
+            return t
+    return None
+
+
+def aprovar_solicitacao(asset: dict, descricao: str, subtarefas: list, id_request,
+                        id_responsible, responsible_name: str = "", note: str = "",
+                        tipo: str = "Corretiva") -> dict:
+    """Converte a solicitacao em OS NUMERADA. Mesmo envelope do `clonar_os`.
+
+    Aguenta ser chamada duas vezes: se a tentativa anterior parou no meio (tarefa criada, OS
+    nao), retoma pela fase 2 em vez de tentar criar outra tarefa — o que so devolveria
+    `unique_violation` e deixaria a solicitacao presa para sempre."""
+    # 1) a solicitacao JA virou OS? A fila so mostra pendentes, mas a lista pode estar velha —
+    #    e criar a segunda OS para o mesmo pedido e pior que recusar. Medido em 02/09: a segunda
+    #    aprovacao da 3537 voltava so "unique_violation", sem dizer que a OS 12778 ja existia.
+    try:
+        ja = _solicitacao_row(id_request) or {}
+    except FracttalError:
+        ja = {}
+    if ja.get("id_work_order"):
+        return {"ok": False, "n_tarefas": 1, "n_criadas": 0,
+                "erro": "Esta solicitacao ja virou a OS %s. Atualize a fila."
+                        % (ja.get("wo_folio") or ja.get("id_work_order"))}
+    # 2) sobrou tarefa de uma tentativa que parou no meio? Retoma nela.
+    rec = None
+    try:
+        rec = _tarefa_da_solicitacao(id_request)
+    except FracttalError:
+        pass   # sem a checagem seguimos pelo caminho normal; o pior caso e o erro de sempre
+    if rec is None:
+        return clonar_os([{"asset": asset, "tipo": tipo, "descricao": descricao,
+                           "subtarefas": subtarefas or []}],
+                         id_responsible, responsible_name, note=note, id_request=id_request)
+    if not id_responsible:
+        return {"ok": False, "erro": "Escolha o responsavel: sem ele a tarefa nao vira OS numerada.",
+                "n_tarefas": 1, "n_criadas": 0}
+    wo = _work_order_insert([rec], id_responsible, responsible_name)
+    idwo = wo.get("id_work_order")
+    return {"ok": bool(idwo),
+            "os": {"id_work_order": idwo, "wo_folio": wo.get("wo_folio"),
+                   "id_tasks": [rec.get("id_task")]} if idwo else None,
+            "erro": None if idwo else "A tarefa existe mas o Fracttal nao gerou a OS numerada.",
+            "aviso": "a tarefa desta solicitacao ja existia (tentativa anterior); "
+                     "reaproveitada em vez de criar outra.",
+            "n_tarefas": 1, "n_criadas": 1 if idwo else 0}
 
 
 def create_os_sem_plano(selecoes: list, id_responsible, responsible_name: str = "",
@@ -4160,6 +4240,12 @@ def _req_row_to_d(r, loc):
     return {
         "id_code": r.get("id_code"),
         "cliente": cliente or "—", "usina": usina or "—", "ativo": ativo,
+        # `id_item` e `code` do ATIVO. Ficavam de fora porque o card só mostra o nome — mas quem
+        # for CRIAR a OS a partir desta solicitação precisa do ativo EXATO. O nome não serve:
+        # "Chave Seccionadora 1" existe em várias usinas, e casar por nome escolheu a APG100 para
+        # uma solicitação da TESTE - PA (visto ao aprovar a 3534 em 02/09). Errar aqui não quebra
+        # nada — cria a OS na usina errada, no sistema do cliente.
+        "id_item": r.get("id_item"), "code": code,
         "tipo": tipo or "—",
         "descricao": (desc_full[:90] or "—"),
         "descricao_full": desc_full,
