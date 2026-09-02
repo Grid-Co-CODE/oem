@@ -1,0 +1,69 @@
+# Portoes do PR. O arranjo e o porque estao em docs/ambiente-compartilhado-engenharia.md.
+#
+# Roda em Linux de proposito: runner Windows consome cota em dobro, e nada aqui precisa de
+# Windows — a compilacao do .exe continua manual, na maquina de build.
+name: PR
+
+on:
+  pull_request:
+
+jobs:
+  fronteira:
+    # PORTAO 1. So vale para PR vindo de FORK, que e o fluxo da Engenharia. PR de branch interna
+    # e de quem mantem o app, e esse pode tocar em qualquer arquivo.
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # o diff precisa da base; checkout raso nao traz o commit dela
+
+      - name: Os arquivos alterados cabem na pasta da area
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          CABECA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Ao criar uma AREA NOVA, acrescente a pasta dela aqui. E acao de quem cuida do app, na
+          # mesma hora em que a linha do registro entra no app.py — nunca da propria area.
+          PERMITIDO='^os_creator/steps/engenharia/'
+
+          fora=$(git diff --name-only "$BASE" "$CABECA" | grep -v "$PERMITIDO" || true)
+          if [ -n "$fora" ]; then
+            echo "::error::Este PR altera arquivos fora da pasta da area:"
+            echo "$fora"
+            echo ""
+            echo "A fronteira esta em os_creator/steps/engenharia/CLAUDE.md."
+            echo "Precisa de mudanca fora dela? E pedido legitimo e acontece: abra a conversa"
+            echo "descrevendo o que precisa receber e devolver. Quem cuida do arquivo compartilhado"
+            echo "escreve, e a area chama. O que nao pode e a mudanca nascer no meio de uma tarefa"
+            echo "de tela, sem ninguem olhar."
+            exit 1
+          fi
+          echo "OK: o PR fica dentro da pasta da area."
+
+  testes:
+    # PORTOES 2 e 3. Rodam em TODO PR, inclusive os internos.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Bibliotecas de sistema do Qt
+        # O PyQt6 do PyPI nao traz as libs X/EGL do sistema. Sem elas o import falha com
+        # "could not load the Qt platform plugin", mesmo com QT_QPA_PLATFORM=offscreen.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
+
+      - name: Dependencias
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r os_creator/requirements.txt pytest
+
+      - name: Testes
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest
