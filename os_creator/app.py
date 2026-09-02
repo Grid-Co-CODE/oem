@@ -140,6 +140,18 @@ _ICO = {
 # e o KeyError estourou dentro do __init__ da MainWindow, ANTES de qualquer tela — o app nem abria.
 _ICONE_PADRAO = "doc"
 
+# ── Áreas: cada área mantém a própria pasta e entra aqui com UMA linha ────────────────────────
+# A fronteira de cada uma está em `steps/<area>/CLAUDE.md`; o arranjo, em
+# `docs/ambiente-compartilhado-engenharia.md`. Card, título, descrição e ícone saem do descritor
+# do pacote — é o que permite ao portão de fronteira do CI ser uma regra só, sem exceção para o
+# `app.py` que alguém (ou algum agente) possa alargar depois.
+from steps import engenharia as _area_engenharia
+
+AREAS = [_area_engenharia]
+
+for _area in AREAS:                    # o ícone da área entra no dicionário do launcher aqui,
+    _ICO.update(_area.ICONES)          # para a área nunca precisar editar o `_ICO` (a v135).
+
 
 def _icone(nome, cor="#8fce3f", size=24):
     """Nome desconhecido cai no ícone padrão em vez de derrubar o app. Um card com o ícone errado
@@ -507,15 +519,26 @@ class MainWindow(QMainWindow):
              lambda: self.criar_stack.setCurrentIndex(1)),
             ("copy", "Clonar OS", "Duplicar uma OS existente pelo número", self._mostrar_clonar_entrada),
         ]
+        # As áreas entram DEPOIS dos cards do app, sempre. Não é estética: o selo do card
+        # Performance era buscado por índice fixo (`_launcher_cards[2]`) e já apontou para o card
+        # errado uma vez, quando o Tickets entrou no meio da lista. Aqui o índice deixa de importar
+        # — o selo passa a ser achado pelo título — e a ordem no fim mantém a grade estável para
+        # quem já usa o app.
+        for area in AREAS:
+            cards.append((area.ICONE, area.TITULO, area.DESCRICAO,
+                          # `a=area` prende o valor no momento do laço; sem isso todos os cards de
+                          # área abririam a ÚLTIMA da lista, porque a lambda fecharia sobre a
+                          # variável e não sobre o valor.
+                          lambda a=area: self._mostrar_area(a)))
+
         self._launcher_cards = []
+        self._cards_por_titulo = {}
         for i, (ic, t, s, cb) in enumerate(cards):
             card = _CardOS(ic, t, s, cb)
             self._launcher_cards.append(card)
+            self._cards_por_titulo[t] = card
             grid.addWidget(card, i // 3, i % 3)
-        self._card_perf = self._launcher_cards[2]         # o selo "N atribuídas" mora no card de
-        # PERFORMANCE — que passou a ser o TERCEIRO da lista quando o Tickets entrou entre Ativos
-        # e Performance (Tarefa 7, 29/08). Índice fixo de propósito: se a ordem mudar de novo,
-        # mude aqui junto — era [1] até esta tarefa, quando Performance ainda era o 2º card.
+        self._card_perf = self._cards_por_titulo["Performance"]
         outer.addLayout(grid); outer.addStretch(1)
         return w
 
@@ -651,6 +674,29 @@ class MainWindow(QMainWindow):
             # ENTRAR de novo = tela limpa. O painel é criado uma vez e o stack só troca de página,
             # então sem isto o cliente/usina/ativos do uso anterior continuavam preenchidos (pedido
             # do Levi, 28/07 — vale p/ COS e Performance, que são os que criam OS em lote).
+            alvo = getattr(self, "_modo_inner", {}).get(key)
+            if alvo is not None and hasattr(alvo, "reiniciar"):
+                alvo.reiniciar()
+        self.criar_stack.setCurrentIndex(self._modo_idx[key])
+
+    def _mostrar_area(self, area):
+        """Abre a tela de uma área registrada.
+
+        Espelha o `_mostrar_modo` de propósito — mesma criação sob demanda, mesmo `reiniciar` ao
+        reentrar —, mas o painel vem do descritor do pacote em vez de um `elif` aqui dentro. É o
+        que mantém o `app.py` fora do caminho de quem mantém a área: card novo, título novo ou
+        ícone novo não passam mais por este arquivo.
+        """
+        key = "area:" + area.CHAVE
+        if key not in self._modo_idx:
+            inner = area.abrir(on_voltar=lambda: self.criar_stack.setCurrentIndex(0))
+            tornar_todos_pesquisaveis(inner)
+            self._modo_idx[key] = self.criar_stack.addWidget(self._wrap_modo(inner))
+            self._modo_inner = getattr(self, "_modo_inner", {})
+            self._modo_inner[key] = inner
+            if hasattr(inner, "carregar_inicial"):
+                inner.carregar_inicial()
+        else:
             alvo = getattr(self, "_modo_inner", {}).get(key)
             if alvo is not None and hasattr(alvo, "reiniciar"):
                 alvo.reiniciar()
