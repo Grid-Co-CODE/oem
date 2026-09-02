@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBo
                              QTextEdit, QLineEdit, QDateTimeEdit, QCheckBox, QPushButton,
                              QMessageBox, QScrollArea)
 import api
+import solic_spec as sp
 from workers import ApiWorker
 from steps.step1 import ALLOWED_TIPOS          # mesmos tipos de equipamento do Criar OS
 from steps.searchcombo import tornar_pesquisavel
@@ -26,6 +27,7 @@ class SolicitacaoTab(QWidget):
         self._types = None
         self._wt = None
         self._wc = None
+        self._wresp = None
         self.setStyleSheet(QSS_FORM)              # visual novo só nesta tela (sobrepõe o DARK_QSS global)
 
         outer = QVBoxLayout(self)
@@ -56,16 +58,31 @@ class SolicitacaoTab(QWidget):
         top.addWidget(req)
         lay.addLayout(top)
 
-        # ── Card 1 — Descrição ──
+        # ── Card 1 — Tema e descrição ──
+        # O TEMA é a mudança central desta tela. Medido em 02/09 sobre 2.500 solicitações: 163
+        # títulos se repetem literalmente cobrindo 24,5% delas (padronização feita na mão, por
+        # copiar e colar) e só 33,2% seguem o padrão [Usina][Ativo] - Motivo. Escolher o tema
+        # resolve os dois de uma vez, e ainda desce a Classificação 1 e as subtarefas da OS.
+        self.cb_tema = QComboBox()
+        self.cb_tema.addItem("— sem tema —", "")
+        for chave, nome in sp.temas():
+            self.cb_tema.addItem(nome, chave)
+        self.cb_tema.currentIndexChanged.connect(self._on_tema)
+
         self.desc = QTextEdit()
         self.desc.setPlaceholderText("Título do problema / solicitação")
         self.desc.setFixedHeight(44)
-        c1 = Card(1, "Descrição da Solicitação")
+        self.desc.textChanged.connect(self._marcar_titulo_manual)
+        self._titulo_auto = ""          # último título que ESTA tela gerou (ver _sync_titulo)
+
+        c1 = Card(1, "Tema e descrição")
         c1.add(Linha(
-            campo("Título", self.desc, obrig=True),
-            Dica("Seja claro e objetivo no título para facilitar a identificação da solicitação."),
+            campo("Tema", self.cb_tema),
+            Dica("O tema preenche o título no padrão, sugere a classificação e define as "
+                 "subtarefas que a OS vai pedir. Sem tema, a OS nasce só com a base."),
             pesos=(3, 2),
         ))
+        c1.add(campo("Título", self.desc, obrig=True))
         lay.addWidget(c1)
 
         # ── Card 2 — Ativo (cascata) ──
@@ -78,6 +95,9 @@ class SolicitacaoTab(QWidget):
         self.busca.addAction(QIcon(icone_pix("search", MUTED, 15)), QLineEdit.ActionPosition.LeadingPosition)
         self.busca.textChanged.connect(self._refresh_ativos)
         self.cb_ativo = QComboBox()
+        # o título depende de usina + ativo, então trocar o ativo o regenera (respeitando o
+        # título escrito à mão, que o `_sync_titulo` protege)
+        self.cb_ativo.currentIndexChanged.connect(self._sync_titulo)
         c2 = Card(2, "Ativo relacionado")
         c2.add(Linha(campo("Cliente", self.cb_cliente, obrig=True),
                      campo("Usina", self.cb_usina, obrig=True)))
@@ -95,9 +115,18 @@ class SolicitacaoTab(QWidget):
         uh = QHBoxLayout(urg); uh.setContentsMargins(0, 0, 0, 0); uh.addWidget(self.urgente); uh.addStretch(1)
         self.coment = QTextEdit(); self.coment.setFixedHeight(92)
         self.coment.setPlaceholderText("Informações adicionais sobre o incidente…")
+        # Técnico e data pretendida: SUGESTÃO do supervisor para o PCM. A solicitação do Fracttal
+        # NÃO tem campo de técnico — verificado nas 2.500: todo campo de pessoa é de quem criou ou
+        # de quem mudou o status. Então isso viaja num bloco parseável na observação, o mesmo
+        # recurso que o `perf_spec` usa para a prioridade da Performance.
+        self.cb_tecnico = QComboBox(); tornar_pesquisavel(self.cb_tecnico)
+        self.data_prev = QDateTimeEdit(QDateTime.currentDateTime().addDays(2))
+        self.data_prev.setDisplayFormat("dd/MM/yyyy"); self.data_prev.setCalendarPopup(True)
         c3 = Card(3, "Detalhes do incidente")
         c3.add(Linha(campo("Data do incidente", self.data, obrig=True),
                      campo(" ", urg), quebra=300, pesos=(3, 2)))
+        c3.add(Linha(campo("Técnico sugerido", self.cb_tecnico),
+                     campo("Data pretendida", self.data_prev), quebra=300))
         c3.add(campo("Observação", self.coment))
 
         # ── Card 4 — Classificação ──
@@ -111,6 +140,19 @@ class SolicitacaoTab(QWidget):
 
         # cards 3 e 4 lado a lado (empilham quando estreito)
         lay.addWidget(Linha(c3, c4, quebra=720))
+
+        # ── Card 5 — o que a OS vai pedir ──
+        # O supervisor vê AGORA o que está pedindo, e o PCM vê a mesma lista antes de aprovar. Sem
+        # isso a subtarefa só aparece depois da OS criada — e a API do Fracttal NÃO edita OS já
+        # criada, então errar ali custa uma OS cancelada.
+        self.lbl_subs = QLabel()
+        self.lbl_subs.setObjectName("hint")
+        self.lbl_subs.setWordWrap(True)
+        self.lbl_subs.setTextFormat(Qt.TextFormat.RichText)
+        self.card_subs = Card(5, "O que a OS vai pedir")
+        self.card_subs.add(self.lbl_subs)
+        lay.addWidget(self.card_subs)
+        self._sync_tema()                      # pinta o estado inicial (sem tema)
 
         # ── ações ──
         acts = QHBoxLayout(); acts.setContentsMargins(0, 2, 0, 0); acts.setSpacing(10); acts.addStretch(1)
@@ -177,6 +219,23 @@ class SolicitacaoTab(QWidget):
             self._wt.ok.connect(self._set_types)
             self._wt.erro.connect(lambda m: self.hint.setText("Erro ao carregar as listas: " + m))
             self._wt.start()
+        if self.cb_tecnico.count() <= 1 and self._wresp is None:
+            # A lista de técnicos é ACESSÓRIA: se falhar, a tela segue funcionando sem sugestão.
+            # Por isso o erro só apaga o placeholder, em vez de aparecer como falha da tela.
+            self._wresp = ApiWorker(api.get_responsaveis)
+            self._wresp.ok.connect(self._set_tecnicos)
+            self._wresp.erro.connect(lambda *_: setattr(self, "_wresp", None))
+            self._wresp.start()
+
+    def _set_tecnicos(self, lista):
+        self._wresp = None
+        self.cb_tecnico.blockSignals(True)
+        self.cb_tecnico.clear()
+        self.cb_tecnico.addItem(_SEL, None)
+        for p in (lista or []):
+            self.cb_tecnico.addItem(p.get("name") or "", p.get("id_personnel"))
+        self.cb_tecnico.setCurrentIndex(0)
+        self.cb_tecnico.blockSignals(False)
 
     def _set_types(self, t):
         self._wt = None
@@ -242,6 +301,74 @@ class SolicitacaoTab(QWidget):
             self.cb_ativo.addItem(a["label"], a)
 
     # ── criar ──
+    # ── tema ─────────────────────────────────────────────────────────────────
+    def _marcar_titulo_manual(self):
+        """Se o texto no campo não é mais o que ESTA tela gerou, o supervisor digitou o dele.
+
+        Sem essa marca, trocar o tema apagaria um título escrito à mão — que é o pior tipo de
+        automação: a que desfaz trabalho de gente sem avisar."""
+        if self.desc.toPlainText().strip() != self._titulo_auto:
+            self._titulo_auto = None            # None = título é do usuário, não mexer
+
+    def _on_tema(self):
+        self._sync_tema()
+        self._sync_titulo()
+        self._sugerir_classificacao()
+
+    def _sync_titulo(self):
+        """Regenera o título a partir do tema + usina + ativo. Só quando o campo está vazio ou
+        contém exatamente o título que esta tela gerou antes."""
+        tema = self.cb_tema.currentData() or ""
+        atual = self.desc.toPlainText().strip()
+        if not tema or (atual and self._titulo_auto is None):
+            return
+        asset = self.cb_ativo.currentData() or {}
+        novo = sp.titulo(self._usi() or "", (asset.get("description") or "").strip(), tema)
+        if not novo:
+            return
+        self.desc.blockSignals(True)            # não disparar _marcar_titulo_manual na própria escrita
+        self.desc.setPlainText(novo)
+        self.desc.blockSignals(False)
+        self._titulo_auto = novo
+
+    def _sugerir_classificacao(self):
+        """Desce a Classificação 1 do tema. É o conserto do campo obrigatório: medido nas 2.500,
+        ele mistura a escala binária (39,7%), a de severidade (51,6%) e valores fora de escala
+        (8,6%) — escolher no menu é escolher entre réguas que não se comparam."""
+        tema = self.cb_tema.currentData() or ""
+        if not tema or not self.cb_c1.count():
+            return
+        alvo = (sp.classificacao(tema).get("classif1") or "").strip().lower()
+        if not alvo:
+            return
+        for i in range(self.cb_c1.count()):
+            if self.cb_c1.itemText(i).strip().lower() == alvo:
+                self.cb_c1.setCurrentIndex(i)
+                return
+
+    def _sync_tema(self):
+        """Pinta a prévia das subtarefas do tema escolhido."""
+        tema = self.cb_tema.currentData() or ""
+        if not tema:
+            self.lbl_subs.setText(
+                f"<span style='color:{MUTED}'>Sem tema: a OS nasce com as 3 subtarefas da base "
+                f"(descrição, registro fotográfico e pendência). Escolher um tema acrescenta o "
+                f"roteiro do serviço.</span>")
+            return
+        subs = sp.subtarefas(tema)
+        n_tema = len(subs) - len(sp.BASE)
+        linhas = []
+        for i, s in enumerate(subs, 1):
+            marca = ""
+            if s["attachments_required"]:
+                marca = f" <span style='color:{GREEN}'>· anexo obrigatório</span>"
+            elif not s["is_required"]:
+                marca = f" <span style='color:{MUTED}'>· opcional</span>"
+            linhas.append(f"{i}. {s['description']}{marca}")
+        self.lbl_subs.setText(
+            f"<b>{len(subs)} subtarefas</b> <span style='color:{MUTED}'>· {n_tema} do tema, "
+            f"{len(sp.BASE)} da base</span><br>" + "<br>".join(linhas))
+
     def _criar(self):
         asset = self.cb_ativo.currentData()
         desc = self.desc.toPlainText().strip()
@@ -254,8 +381,15 @@ class SolicitacaoTab(QWidget):
             QMessageBox.warning(self, "Classificação 1", "A Classificação 1 é obrigatória."); return
         self.btn.setEnabled(False); self.hint.setText("criando solicitação…")
         di = self.data.dateTime().toPyDateTime()   # local; create_solicitacao converte p/ UTC
+        # A observação leva o relato do supervisor MAIS o bloco [PCM] com tema, técnico e data —
+        # é assim que a sugestão chega à fila, já que a solicitação não tem campo para isso.
+        obs = sp.observacao_com_bloco(self.coment.toPlainText(), {
+            "tema": self.cb_tema.currentData() or "",
+            "tecnico": self.cb_tecnico.currentText() if self.cb_tecnico.currentIndex() > 0 else "",
+            "data": self.data_prev.dateTime().toString("dd/MM/yyyy"),
+        })
         self._wc = ApiWorker(api.create_solicitacao, asset, desc, c1, self.cb_grupo.currentData(),
-                             self.cb_c2.currentData(), self.coment.toPlainText().strip(), di,
+                             self.cb_c2.currentData(), obs, di,
                              self.urgente.isChecked(),
                              desc_type_1=self._txt(self.cb_c1),
                              desc_type=self._txt(self.cb_grupo),
@@ -288,3 +422,9 @@ class SolicitacaoTab(QWidget):
             if cb.count():
                 cb.setCurrentIndex(0)
         self.data.setDateTime(QDateTime.currentDateTime())
+        self.data_prev.setDateTime(QDateTime.currentDateTime().addDays(2))
+        if self.cb_tecnico.count():
+            self.cb_tecnico.setCurrentIndex(0)
+        self.cb_tema.setCurrentIndex(0)
+        self._titulo_auto = ""          # volta a aceitar título automático
+        self._sync_tema()
