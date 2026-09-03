@@ -1384,6 +1384,11 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
         self.hist = HistoricoSolic()
         for w in (self.hub, self.nova, self.painel, self.fila, self.hist):
             self.stack.addWidget(w)
+            # O QStackedWidget se dimensiona pela MAIOR de todas as paginas, mesmo as escondidas.
+            # Com isto o Historico — cuja barra de filtros pede 1025 px — impunha a largura
+            # minima dele ao hub, que pede 485. Marcando as paginas ocultas como Ignored, o
+            # stack passa a seguir so a que esta na tela, e cada uma encolhe ate o proprio limite.
+            w.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         v.addWidget(self.stack, 1)
         self.ir(self.HUB)
 
@@ -1393,6 +1398,11 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
 
     def ir(self, i):
         self.stack.setCurrentIndex(i)
+        for k in range(self.stack.count()):
+            w = self.stack.widget(k)
+            pol = (QSizePolicy.Policy.Preferred if k == i else QSizePolicy.Policy.Ignored)
+            w.setSizePolicy(pol, pol)
+        self.stack.widget(i).adjustSize()
         # no hub a navegação não aparece: o hub JÁ é o menu, e duas barras de navegação na mesma
         # tela é a pessoa perguntando qual das duas manda.
         for k in range(self._nav.count()):

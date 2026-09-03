@@ -301,3 +301,22 @@ def test_o_limiar_do_refluxo_nao_e_numero_magico(qapp):
     h = _Hub(lambda a: None)
     assert h._limiar() == h.LARG_CARD * 3 + h.g_sub.spacing() * 2 + 56
     assert h._limiar() > 900
+
+
+def test_o_stack_segue_a_pagina_visivel(qapp):
+    """Sem isto o refluxo do hub era inalcançável na prática.
+
+    O QStackedWidget se dimensiona pela MAIOR de todas as páginas, inclusive as escondidas: a
+    barra de filtros do Histórico pede 1025 px e impunha essa largura mínima ao hub, que pede
+    485. O hub reflui abaixo de ~980, então o galho nunca engatava — o mecanismo estava certo e
+    o layout ao redor é que não deixava. Marcando as páginas ocultas como Ignored, cada uma
+    encolhe até o próprio limite."""
+    from PyQt6.QtWidgets import QSizePolicy
+    t = SolicPcmTab()
+    t.ir(t.HUB)
+    ocultas = [t.stack.widget(k).sizePolicy().horizontalPolicy()
+               for k in range(t.stack.count()) if k != t.HUB]
+    assert all(p == QSizePolicy.Policy.Ignored for p in ocultas)
+    assert t.stack.widget(t.HUB).sizePolicy().horizontalPolicy() != QSizePolicy.Policy.Ignored
+    t.ir(t.HIST)
+    assert t.stack.widget(t.HUB).sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
