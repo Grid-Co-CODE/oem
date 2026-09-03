@@ -1048,6 +1048,17 @@ class _Elevavel(QWidget):
         card.setParent(self)
         self._elevado = False
         self._anim = None
+        self._anims_sombra = []
+        # A sombra e PERMANENTE, com raio zero em repouso, e o hover anima o raio e o
+        # deslocamento. Antes eu instalava o efeito ja em forca total e removia de vez: a sombra
+        # aparecia e sumia num pulo. E o que fazia o hover parecer barato perto do CSS, onde o
+        # box-shadow transita em 300 ms — blurRadius e yOffset sao qreal, continuos, entao aqui
+        # o florescer sai tao liso quanto la.
+        self.sombra = QGraphicsDropShadowEffect(self)
+        self.sombra.setBlurRadius(0)
+        self.sombra.setOffset(0, 0)
+        self.sombra.setColor(QColor(138, 224, 0, 38))     # o verde neon da borda, a 15%
+        self.setGraphicsEffect(self.sombra)
 
     def sizeHint(self):
         h = self.card.sizeHint()
@@ -1081,14 +1092,14 @@ class _Elevavel(QWidget):
         self._elevado = on
         r = self._repouso()
         self._mover(r.translated(0, -4) if on else r, 300)
-        if on:
-            g = QGraphicsDropShadowEffect(self.card)
-            g.setBlurRadius(24)
-            g.setOffset(0, 8)
-            g.setColor(QColor(138, 224, 0, 38))     # o verde neon da borda, a 15%
-            self.card.setGraphicsEffect(g)
-        else:
-            self.card.setGraphicsEffect(None)
+        self._anims_sombra = []
+        for prop, alvo in ((b"blurRadius", 24.0 if on else 0.0), (b"yOffset", 8.0 if on else 0.0)):
+            a = QPropertyAnimation(self.sombra, prop, self)
+            a.setDuration(300)
+            a.setEndValue(alvo)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            a.start()
+            self._anims_sombra.append(a)     # sem dono vivo a animacao e coletada no meio
 
     # ── clique: afunda 3%, como o scale(0.97) ──
     def afundar(self, on):
@@ -1211,6 +1222,11 @@ class _Hub(QWidget):
     STAGGER_TOPO = 250      # entre os dois cards de cima
     DUR_TOPO = 1750         # de cada card de cima     -> 250 + 1750 = 2000 ms
     DESLOC = 15
+    # O DESLIZE dura menos que o esmaecer, de proposito. Em Qt a posicao e inteira: 15 px
+    # espalhados por 1600 ms sao 16 posicoes em 111 quadros — um salto a cada ~106 ms, e o olho
+    # ve picotar. Em 450 ms sao ~2 quadros por pixel e o movimento le liso. A lentidao pedida
+    # (2 s / 3 s) fica no fade, que e continuo (256 niveis) e nao picota.
+    DUR_DESLIZE = 450
     LARG_CARD = 300         # largura confortavel de um card do PCM; base do limiar de refluxo
 
     def __init__(self, ir):
@@ -1348,7 +1364,7 @@ class _Hub(QWidget):
             a1.setEndValue(1.0)
             a1.setEasingCurve(QEasingCurve.Type.OutCubic)
             a2 = QPropertyAnimation(m.card, b"geometry", g)
-            a2.setDuration(dur)
+            a2.setDuration(min(dur, self.DUR_DESLIZE))
             a2.setStartValue(ini)
             a2.setEndValue(fim)
             a2.setEasingCurve(QEasingCurve.Type.OutCubic)
