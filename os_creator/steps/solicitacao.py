@@ -5,7 +5,7 @@ Layout redesenhado (08/07): 4 cards compactos (Descrição · Ativo · Detalhes 
 dark premium (steps/ui.py), cards 3 e 4 lado a lado. NENHUMA regra/validação/ID/API mudou."""
 from PyQt6.QtCore import Qt, QDateTime, QSize
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
+from PyQt6.QtWidgets import (QGridLayout, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QTextEdit, QLineEdit, QDateTimeEdit, QCheckBox, QPushButton,
                              QMessageBox, QScrollArea)
 import api
@@ -14,6 +14,7 @@ from workers import ApiWorker
 from steps.step1 import ALLOWED_TIPOS          # mesmos tipos de equipamento do Criar OS
 from steps.searchcombo import tornar_pesquisavel
 from steps.subtarefas_edit import EditorSubtarefas
+from steps.light import Bloco, Valor, ValorObs, grade, QSS as QSS_LIGHT
 from steps.ui import QSS_FORM, Card, Dica, campo, Linha, icone_pix, GREEN, GREEN_INK, MUTED
 
 CLIENTES_OCULTOS = {"almoxarifado", "teste - pa"}
@@ -29,7 +30,9 @@ class SolicitacaoTab(QWidget):
         self._wt = None
         self._wc = None
         self._wresp = None
-        self.setStyleSheet(QSS_FORM)              # visual novo só nesta tela (sobrepõe o DARK_QSS global)
+        # QSS_LIGHT depois do QSS_FORM: as regras do light são mais específicas
+        # (#objectName) e vencem as genéricas do formulário antigo
+        self.setStyleSheet(QSS_FORM + QSS_LIGHT)              # visual novo só nesta tela (sobrepõe o DARK_QSS global)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -59,7 +62,7 @@ class SolicitacaoTab(QWidget):
         top.addWidget(req)
         lay.addLayout(top)
 
-        # ── Card 1 — Tema e descrição ──
+        # ── Bloco 1 — Tema e título ──
         # O TEMA é a mudança central desta tela. Medido em 02/09 sobre 2.500 solicitações: 163
         # títulos se repetem literalmente cobrindo 24,5% delas (padronização feita na mão, por
         # copiar e colar) e só 33,2% seguem o padrão [Usina][Ativo] - Motivo. Escolher o tema
@@ -72,21 +75,30 @@ class SolicitacaoTab(QWidget):
 
         self.desc = QTextEdit()
         self.desc.setPlaceholderText("Título do problema / solicitação")
-        self.desc.setFixedHeight(44)
         self.desc.textChanged.connect(self._marcar_titulo_manual)
         self._titulo_auto = ""          # último título que ESTA tela gerou (ver _sync_titulo)
 
-        c1 = Card(1, "Tema e descrição")
-        c1.add(Linha(
-            campo("Tema", self.cb_tema),
-            Dica("O tema preenche o título no padrão, sugere a classificação e define as "
-                 "subtarefas que a OS vai pedir. Sem tema, a OS nasce só com a base."),
-            pesos=(3, 2),
-        ))
-        c1.add(campo("Título", self.desc, obrig=True))
-        lay.addWidget(c1)
+        # LOGICA LIGHT (aprovada pelo Levi em 03/09, depois de duas rodadas de simulação): cada
+        # bloco tem borda e fundo próprios, mas por dentro o campo é RÓTULO + VALOR COMO TEXTO,
+        # que vira campo ao clique. Quase tudo aqui já vem respondido pelo tema e pela cascata de
+        # ativos — a pessoa confere mais do que digita, e um formulário de caixas de 40 px dizia
+        # o contrário.
+        self.v_tema = Valor("Tema", self.cb_tema,
+                            dica="O tema preenche o título no padrão, sugere a classificação e "
+                                 "define as subtarefas que a OS vai pedir. Sem tema, a OS nasce "
+                                 "só com a base.")
+        # o título é o único campo maior: 2 px acima dos outros valores, porque é o que o PCM lê
+        # primeiro — e foi o tamanho que o Levi escolheu na simulação
+        self.v_titulo = Valor("Título", self.desc, obrig=True, grande=True,
+                              vazio="Título do problema / solicitação",
+                              dica="preenchido pelo tema no padrão [Usina][Ativo] - Motivo; dá "
+                                   "para reescrever")
+        b1 = Bloco(1, "Tema e título")
+        b1.add(grade([self.v_tema, None, None]))
+        b1.add(self.v_titulo)
+        lay.addWidget(b1)
 
-        # ── Card 2 — Ativo (cascata) ──
+        # ── Bloco 2 — Ativo (cascata) ──
         self.cb_cliente = QComboBox(); tornar_pesquisavel(self.cb_cliente)   # busca + placeholder cinza
         self.cb_cliente.currentIndexChanged.connect(self._on_cli)
         self.cb_usina = QComboBox(); tornar_pesquisavel(self.cb_usina)
@@ -99,24 +111,28 @@ class SolicitacaoTab(QWidget):
         # o título depende de usina + ativo, então trocar o ativo o regenera (respeitando o
         # título escrito à mão, que o `_sync_titulo` protege)
         self.cb_ativo.currentIndexChanged.connect(self._sync_titulo)
-        c2 = Card(2, "Ativo relacionado")
-        c2.add(Linha(campo("Cliente", self.cb_cliente, obrig=True),
-                     campo("Usina", self.cb_usina, obrig=True)))
-        c2.add(Linha(campo("Tipo de equipamento", self.cb_tipo, obrig=True),
-                     campo(" ", self.busca)))                       # rótulo em branco alinha a busca
-        c2.add(campo("Ativo", self.cb_ativo, obrig=True))
-        lay.addWidget(c2)
 
-        # ── Card 3 — Detalhes do incidente ──
+        self.v_cliente = Valor("Cliente", self.cb_cliente, obrig=True)
+        self.v_usina = Valor("Usina", self.cb_usina, obrig=True)
+        self.v_tipo = Valor("Tipo de equipamento", self.cb_tipo, obrig=True)
+        self.v_ativo = Valor("Ativo", self.cb_ativo, obrig=True)
+        # a busca é a ÚNICA exceção da tela: fica sempre aberta, porque o filtro é por digitação
+        # e um campo que só aparece depois do clique não convida a digitar
+        self.v_busca = Valor("Pesquisar ativo", self.busca, aberto=True)
+        b2 = Bloco(2, "Ativo relacionado")
+        b2.add(grade([self.v_cliente, self.v_usina, self.v_tipo,
+                      self.v_ativo, self.v_busca, None]))
+        lay.addWidget(b2)
+
+        # ── Bloco 3 — Detalhes do incidente ──
         self.data = QDateTimeEdit(QDateTime.currentDateTime())
         self.data.setDisplayFormat("dd/MM/yyyy HH:mm"); self.data.setCalendarPopup(True)
         self.urgente = QCheckBox("É urgente?")
+        self.urgente.setObjectName("lgChk")
         self.urgente.setCursor(Qt.CursorShape.PointingHandCursor)
-        urg = QWidget(); urg.setObjectName("uiGroup"); urg.setMinimumHeight(40)
-        uh = QHBoxLayout(urg); uh.setContentsMargins(0, 0, 0, 0); uh.addWidget(self.urgente); uh.addStretch(1)
-        self.coment = QTextEdit(); self.coment.setFixedHeight(92)
+        self.coment = QTextEdit()
         self.coment.setPlaceholderText("Informações adicionais sobre o incidente…")
-        # Técnico e data pretendida: SUGESTÃO do supervisor para o PCM. A solicitação do Fracttal
+        # Técnico e data sugerida: SUGESTÃO do supervisor para o PCM. A solicitação do Fracttal
         # NÃO tem campo de técnico — verificado nas 2.500: todo campo de pessoa é de quem criou ou
         # de quem mudou o status. Então isso viaja num bloco parseável na observação, o mesmo
         # recurso que o `perf_spec` usa para a prioridade da Performance.
@@ -124,38 +140,64 @@ class SolicitacaoTab(QWidget):
         self.data_prev = QDateTimeEdit(QDateTime.currentDateTime().addDays(2))
         # data E hora: "amanha" nao diz se e antes ou depois da parada, e o PCM programa por hora
         self.data_prev.setDisplayFormat("dd/MM/yyyy HH:mm"); self.data_prev.setCalendarPopup(True)
-        c3 = Card(3, "Detalhes do incidente")
-        c3.add(Linha(campo("Data do incidente", self.data, obrig=True),
-                     campo(" ", urg), quebra=300, pesos=(3, 2)))
-        c3.add(Linha(campo("Técnico sugerido", self.cb_tecnico),
-                     campo("Data sugerida", self.data_prev), quebra=300))
-        c3.add(campo("Observação", self.coment))
 
-        # ── Card 4 — Classificação ──
+        self.v_data = Valor("Data do incidente", self.data, obrig=True)
+        self.v_data_prev = Valor("Data sugerida", self.data_prev)
+        self.v_tecnico = Valor("Técnico sugerido", self.cb_tecnico)
+        urg = QWidget()
+        # "uiGroup" e o objectName que o QSS_FORM deixa transparente. Sem ele o widget casa com a
+        # regra generica de QWidget do DARK_QSS (#090d18) e pinta um retangulo escuro dentro do
+        # bloco, que e #121a2b — foi o que apareceu no primeiro render.
+        urg.setObjectName("uiGroup")
+        uv = QVBoxLayout(urg); uv.setContentsMargins(0, 0, 0, 0); uv.setSpacing(3)
+        ur = QLabel("URGÊNCIA"); ur.setObjectName("lgRotulo")
+        uv.addWidget(ur); uv.addWidget(self.urgente)
+        self.v_obs = ValorObs("Observação", self.coment)
+        b3 = Bloco(3, "Detalhes do incidente")
+        # arranjo pedido pelo Levi: urgência ao lado da data do incidente; data sugerida logo
+        # abaixo dela, com o técnico sugerido à direita
+        b3.add(grade([self.v_data, urg,
+                      self.v_data_prev, self.v_tecnico], cols=2, hspace=32))
+        b3.add(self.v_obs)
+
+        # ── Bloco 4 — Classificação ──
         self.cb_grupo = QComboBox()
         self.cb_c1 = QComboBox()
         self.cb_c2 = QComboBox()
-        c4 = Card(4, "Classificação")
-        c4.add(campo("Grupo", self.cb_grupo, obrig=True))
-        c4.add(campo("Classificação 1", self.cb_c1, obrig=True))
-        c4.add(campo("Classificação 2", self.cb_c2))
+        self.v_grupo = Valor("Grupo", self.cb_grupo, obrig=True)
+        self.v_c1 = Valor("Classificação 1", self.cb_c1, obrig=True)
+        self.v_c2 = Valor("Classificação 2", self.cb_c2, vazio="— nenhuma —")
+        self.lbl_classif_dica = QLabel("")
+        self.lbl_classif_dica.setObjectName("lgDica")
+        self.lbl_classif_dica.setWordWrap(True)
+        self.lbl_classif_dica.setMinimumWidth(1)
+        b4 = Bloco(4, "Classificação")
+        b4.add(grade([self.v_grupo, self.v_c1, self.v_c2], cols=1))
+        b4.add(self.lbl_classif_dica)
 
-        # cards 3 e 4 lado a lado (empilham quando estreito)
-        lay.addWidget(Linha(c3, c4, quebra=720))
+        # blocos 3 e 4 lado a lado: o 3 tem duas colunas de campos e o 4 tem uma, daí a
+        # proporção. Abaixo de 1080 px eles empilham.
+        self.par34 = QWidget()
+        g34 = QGridLayout(self.par34)
+        g34.setContentsMargins(0, 0, 0, 0)
+        g34.setHorizontalSpacing(14)
+        g34.setVerticalSpacing(14)
+        g34.addWidget(b3, 0, 0)
+        g34.addWidget(b4, 0, 1)
+        g34.setColumnStretch(0, 155)
+        g34.setColumnStretch(1, 100)
+        lay.addWidget(self.par34)
 
-        # ── Card 5 — o que a OS vai pedir ──
+        # ── Bloco 5 — o que a OS vai pedir ──
         # O supervisor vê AGORA o que está pedindo, e o PCM vê a mesma lista antes de aprovar. Sem
         # isso a subtarefa só aparece depois da OS criada — e a API do Fracttal NÃO edita OS já
         # criada, então errar ali custa uma OS cancelada.
-        # A lista deixou de ser previa e virou EDITOR: o supervisor acrescenta o que o tema nao
-        # previu e tira o que nao se aplica, e o tipo de cada campo fica a vista. O tema deixa de
-        # ser camisa de forca e passa a ser ponto de partida.
         self.lbl_subs = QLabel()          # continua existindo p/ quem lia o resumo em texto
         self.lbl_subs.setVisible(False)
         self.editor_subs = EditorSubtarefas(
             "Sem tema: a OS nasce com as 3 subtarefas da base (descrição, registro fotográfico e "
             "pendência). Escolher um tema acrescenta o roteiro do serviço — e você pode editar.")
-        self.card_subs = Card(5, "O que a OS vai pedir")
+        self.card_subs = Bloco(5, "O que a OS vai pedir")
         self.card_subs.add(self.editor_subs)
         lay.addWidget(self.card_subs)
         self._sync_tema()                      # pinta o estado inicial (sem tema)
@@ -321,6 +363,18 @@ class SolicitacaoTab(QWidget):
         self._sync_titulo()
         self._sugerir_classificacao()
 
+    def _atualizar_valores(self):
+        """Reavisa os rótulos depois de a tela mexer nos combos por código.
+
+        Sem isto o valor mostrado ficaria congelado no que estava antes: a cascata de ativos, o
+        prefill do deep link e o `reset` trocam o índice do combo sem passar pelo clique da
+        pessoa, e o rótulo não tem como saber sozinho."""
+        for v in (getattr(self, n, None) for n in
+                  ("v_tema", "v_titulo", "v_cliente", "v_usina", "v_tipo", "v_ativo",
+                   "v_data", "v_data_prev", "v_tecnico", "v_obs", "v_grupo", "v_c1", "v_c2")):
+            if v is not None:
+                v.atualizar()
+
     def _sync_titulo(self):
         """Regenera o título a partir do tema + usina + ativo. Só quando o campo está vazio ou
         contém exatamente o título que esta tela gerou antes."""
@@ -357,6 +411,10 @@ class SolicitacaoTab(QWidget):
         tema = self.cb_tema.currentData() or ""
         self.editor_subs.set_itens(sp.de_api(sp.subtarefas(tema) if tema
                                              else sp.subtarefas_base()))
+        cl = sp.classificacao(tema) if tema else {}
+        self.lbl_classif_dica.setText(
+            "sugerida pelo tema: %s · domínio %s%%" % (cl.get("classif1"), cl.get("dominio"))
+            if tema and cl.get("classif1") else "")
         if not tema:
             self.lbl_subs.setText(
                 f"<span style='color:{MUTED}'>Sem tema: a OS nasce com as 3 subtarefas da base "
@@ -438,4 +496,5 @@ class SolicitacaoTab(QWidget):
             self.cb_tecnico.setCurrentIndex(0)
         self.cb_tema.setCurrentIndex(0)
         self._titulo_auto = ""          # volta a aceitar título automático
+        self._atualizar_valores()       # os rótulos voltam a mostrar o que os campos têm agora
         self._sync_tema()
