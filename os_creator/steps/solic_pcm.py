@@ -52,6 +52,28 @@ _CANCELADAS = {"cancelada", "rejeitada"}
 _REFAZER = "reaberta"
 
 
+def _clarear(hexcor, fator=0.5):
+    """Cor 50% mais clara que a dada — o caminho ate o branco, cortado no meio.
+
+    E o que o Levi pediu para a borda do status: mesma familia da fonte, so que recuada, para o
+    contorno ler como moldura e nao como um segundo texto."""
+    c = str(hexcor or "").lstrip("#")
+    if len(c) != 6:
+        return "#39405a"
+    r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+    return "#%02x%02x%02x" % tuple(int(x + (255 - x) * fator) for x in (r, g, b))
+
+
+def _ativo_curto(txt) -> str:
+    """So o nome do ativo — sem endereco, sem estado, sem lote.
+
+    O `items_description` do Fracttal traz o cadastro inteiro numa string so: "Estrutura
+    Trackers 2a Secao Colonia Tapejara, Lote N 152-Re, ...". O que identifica o ativo esta antes
+    da primeira virgula; o resto e endereco, e num cartao de fila ele so rouba altura."""
+    t = str(txt or "").split("{")[0].strip()
+    return (t.split(",")[0].strip() or t)[:46]
+
+
 def coluna_de(s: dict) -> str:
     """Em que coluna do painel esta solicitação cai.
 
@@ -88,12 +110,18 @@ class _Cartao(QFrame):
         topo.addWidget(n)
         topo.addStretch(1)
         st = QLabel(s.get("status") or "—")
-        st.setStyleSheet("color:%s;font-size:11px;font-weight:600;background:transparent;"
-                         % (s.get("cor_status") or MUTED))
+        cor = s.get("cor_status") or MUTED
+        st.setStyleSheet("color:%s;font-size:10.5px;font-weight:600;background:transparent;"
+                         "border:1px solid %s;border-radius:9px;padding:1px 8px;"
+                         % (cor, _clarear(cor)))
         topo.addWidget(st)
         v.addLayout(topo)
 
-        ativo = QLabel(str(s.get("ativo") or "—"))
+        # ATIVO · USINA, e so isso. Antes vinha o `items_description` cru, com endereco e
+        # estado, que ocupava duas ou tres linhas do cartao sem dizer nada que ajude a decidir.
+        alvo = " · ".join(x for x in (_ativo_curto(s.get("ativo")), str(s.get("usina") or ""))
+                          if x and x != "—")
+        ativo = QLabel(alvo or "—")
         ativo.setStyleSheet(f"color:{MUTED};font-size:12px;")
         ativo.setWordWrap(True)
         ativo.setMinimumWidth(1)     # sem isto o rotulo com wordWrap nao encolhe e estoura a coluna
@@ -132,11 +160,21 @@ class _Cartao(QFrame):
 
         rod = QHBoxLayout()
         rod.setContentsMargins(0, 4, 0, 0)
-        quem = QLabel(f"{s.get('criado_por') or '—'} · {(s.get('data') or '')[:10]}")
+        # nome e data lado a lado, e o nome NAO quebra linha: "Singrid Vieira" virava duas
+        # linhas e esticava o cartao inteiro. Nome longo e aparado com "…", e o inteiro fica no
+        # tooltip — aparar sem tooltip esconderia quem pediu.
+        quem = QLabel()
         quem.setStyleSheet(f"color:{MUTED};font-size:11px;background:transparent;")
-        quem.setWordWrap(True)
+        quem.setWordWrap(False)
         quem.setMinimumWidth(1)
+        quem.setToolTip(str(s.get("criado_por") or ""))
+        fm = quem.fontMetrics()
+        quem.setText(fm.elidedText(str(s.get("criado_por") or "—"),
+                                   Qt.TextElideMode.ElideRight, 168))
         rod.addWidget(quem)
+        data = QLabel(_data_br(s.get("data")).split(" ")[0])
+        data.setStyleSheet(f"color:{MUTED};font-size:11px;background:transparent;")
+        rod.addWidget(data)
         rod.addStretch(1)
         if on_analisar:
             b = QPushButton("Analisar")
@@ -352,8 +390,10 @@ class _CartaoFila(QFrame):
         topo.addWidget(n)
         topo.addStretch(1)
         st = QLabel(str(s.get("status") or ""))
-        st.setStyleSheet("color:%s;font-size:10.5px;font-weight:600;background:transparent;"
-                         % (s.get("cor_status") or MUTED))
+        cor = s.get("cor_status") or MUTED
+        st.setStyleSheet("color:%s;font-size:10px;font-weight:600;background:transparent;"
+                         "border:1px solid %s;border-radius:8px;padding:1px 7px;"
+                         % (cor, _clarear(cor)))
         topo.addWidget(st)
         v.addLayout(topo)
 
@@ -412,6 +452,132 @@ class _CartaoFila(QFrame):
             self._on_click(self.dados)
 
 
+class _CardEtiquetas(QFrame):
+    """As etiquetas que a OS vai levar, ao lado da sugestao do supervisor.
+
+    A etiqueta e o que faz a OS aparecer (ou sumir) nos acompanhamentos depois — e hoje ela e
+    posta a mao, no Fracttal web, depois da OS criada. Aqui ela entra na aprovacao, junto com o
+    resto, e a regra da Performance e aplicada sozinha.
+    """
+
+    def __init__(self, on_mudou=None):
+        super().__init__()
+        self.setObjectName("boxSug")
+        self._on_mudou = on_mudou
+        self._catalogo = []
+        self._sel = []                  # [{'id','description'}]
+        self._forcada = False           # PERFORMANCE entrou pela regra, nao pela escolha
+        v = QVBoxLayout(self)
+        v.setContentsMargins(16, 13, 16, 14)
+        v.setSpacing(9)
+
+        cab = QLabel("ETIQUETAS DA OS")
+        cab.setStyleSheet("color:%s;font-size:10.5px;font-weight:700;letter-spacing:0.8px;"
+                          "background:transparent;" % GREEN)
+        v.addWidget(cab)
+
+        self.fila_chips = QHBoxLayout()
+        self.fila_chips.setSpacing(6)
+        self.fila_chips.addStretch(1)
+        v.addLayout(self.fila_chips)
+
+        self.cb = QComboBox()
+        self.cb.setObjectName("campoInline")
+        self.cb.addItem("+ adicionar etiqueta", None)
+        self.cb.activated.connect(self._escolheu)
+        v.addWidget(self.cb)
+
+        self.aviso = QLabel("")
+        self.aviso.setStyleSheet("color:%s;font-size:11.5px;background:transparent;" % MUTED)
+        self.aviso.setWordWrap(True)
+        self.aviso.setMinimumWidth(1)
+        v.addWidget(self.aviso)
+        v.addStretch(1)
+
+    # ── catalogo ──
+    def set_catalogo(self, itens):
+        self._catalogo = list(itens or [])
+        self._encher_combo()
+
+    def _encher_combo(self):
+        escolhidas = {x["id"] for x in self._sel}
+        self.cb.blockSignals(True)
+        self.cb.clear()
+        self.cb.addItem("+ adicionar etiqueta", None)
+        for e in self._catalogo:
+            if e.get("id") not in escolhidas:
+                self.cb.addItem(str(e.get("description") or ""), e.get("id"))
+        self.cb.setCurrentIndex(0)
+        self.cb.blockSignals(False)
+
+    def _escolheu(self, i):
+        idl = self.cb.itemData(i)
+        if idl is None:
+            return
+        self._sel.append({"id": idl, "description": self.cb.itemText(i)})
+        self._pintar()
+
+    def _remover(self, idl):
+        self._sel = [x for x in self._sel if x["id"] != idl]
+        self._pintar()
+
+    # ── a regra ──
+    def aplicar_regra(self, tema, ativo):
+        """Poe (ou tira) a PERFORMANCE conforme o tema, o ativo e as etiquetas escolhidas."""
+        nomes = [x["description"] for x in self._sel]
+        precisa = sp.exige_performance(tema, ativo, nomes)
+        tem = any(x["description"].strip().upper() == sp.ETIQUETA_PERFORMANCE for x in self._sel)
+        if precisa and not tem:
+            alvo = next((e for e in self._catalogo
+                         if str(e.get("description") or "").strip().upper()
+                         == sp.ETIQUETA_PERFORMANCE), None)
+            if alvo:
+                self._sel.append({"id": alvo["id"], "description": alvo["description"]})
+                self._forcada = True
+        elif not precisa and self._forcada and tem:
+            # a regra deixou de valer (trocaram o tema): a etiqueta que ELA pos sai junto
+            self._sel = [x for x in self._sel
+                         if x["description"].strip().upper() != sp.ETIQUETA_PERFORMANCE]
+            self._forcada = False
+        self._pintar(regra=precisa)
+
+    def _pintar(self, regra=None):
+        while self.fila_chips.count() > 1:
+            it = self.fila_chips.takeAt(0)
+            w = it.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
+        for e in self._sel:
+            perf = e["description"].strip().upper() == sp.ETIQUETA_PERFORMANCE
+            c = QPushButton(("%s  ×" % e["description"]) if not (perf and self._forcada)
+                            else ("%s  (regra)" % e["description"]))
+            c.setObjectName("chipEtq" if not perf else "chipEtqPerf")
+            c.setCursor(Qt.CursorShape.PointingHandCursor)
+            if perf and self._forcada:
+                c.setEnabled(False)
+                c.setToolTip("Tracker, ETM e garantia sempre levam PERFORMANCE")
+            else:
+                c.clicked.connect(lambda _=False, i=e["id"]: self._remover(i))
+            self.fila_chips.insertWidget(self.fila_chips.count() - 1, c)
+        self._encher_combo()
+        if regra:
+            self.aviso.setText("PERFORMANCE entra sozinha: é tracker, ETM ou garantia.")
+        elif not self._sel:
+            self.aviso.setText("Nenhuma etiqueta — a OS nasce sem marcação.")
+        else:
+            self.aviso.setText("")
+        if self._on_mudou:
+            self._on_mudou()
+
+    def limpar(self):
+        self._sel, self._forcada = [], False
+        self._pintar()
+
+    def ids(self):
+        return [x["id"] for x in self._sel]
+
+
 class _CampoClicavel(QWidget):
     """Mostra um VALOR; ao clicar, vira o campo de edicao no mesmo lugar.
 
@@ -430,6 +596,7 @@ class _CampoClicavel(QWidget):
         self.lbl.setObjectName("valorEditavel")
         self.lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl.setToolTip("clique para editar")
+        editor.setObjectName("campoInline")
         self._pilha.addWidget(self.lbl)
         self._pilha.addWidget(editor)
         self._pilha.setCurrentIndex(0)
@@ -444,8 +611,11 @@ class _CampoClicavel(QWidget):
     def abrir(self):
         self._pilha.setCurrentIndex(1)
         self.editor.setFocus(Qt.FocusReason.MouseFocusReason)
+        # singleShot: o widget acabou de aparecer na pilha, e chamar showPopup no mesmo ciclo
+        # abre a lista com a geometria antiga — em alguns casos ela nem aparece, que foi o
+        # "mesmo clicando no campo de técnico não está carregando" que o Levi viu.
         if isinstance(self.editor, QComboBox):
-            self.editor.showPopup()
+            QTimer.singleShot(0, self.editor.showPopup)
 
     def fechar(self):
         self._pilha.setCurrentIndex(0)
@@ -594,12 +764,23 @@ class _Fila(QWidget):
         return l
 
     def _montar_detalhe(self):
+        # 26 px = 30% acima dos 20 anteriores. O sol verde antes do título marca onde começa a
+        # solicitação escolhida, num painel que é todo texto corrido.
+        tit_lin = QHBoxLayout()
+        tit_lin.setSpacing(10)
+        self.ico_sol = QLabel()
+        self.ico_sol.setPixmap(icone_pix("sol", GREEN, 22))
+        self.ico_sol.setFixedWidth(22)
+        self.ico_sol.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.ico_sol.setStyleSheet("background:transparent;")
+        tit_lin.addWidget(self.ico_sol)
         self.lbl_titulo = QLabel("Selecione uma solicitação na fila.")
-        self.lbl_titulo.setStyleSheet("color:%s;font-size:20px;font-weight:600;"
+        self.lbl_titulo.setStyleSheet("color:%s;font-size:26px;font-weight:600;"
                                       "background:transparent;" % TEXT)
         self.lbl_titulo.setWordWrap(True)
         self.lbl_titulo.setMinimumWidth(1)
-        self.det.addWidget(self.lbl_titulo)
+        tit_lin.addWidget(self.lbl_titulo, 1)
+        self.det.addLayout(tit_lin)
 
         self.lbl_orig = QLabel("")
         self.lbl_orig.setStyleSheet("color:%s;font-size:12px;background:transparent;" % MUTED)
@@ -623,7 +804,7 @@ class _Fila(QWidget):
                               (2, "Ativo", self.v_ativo)):
             ficha.addWidget(self._rotulo(rot), 0, col)
             ficha.addWidget(val, 1, col)
-        ficha.setRowMinimumHeight(2, 24)   # +5 px: "usina" estava colada no solicitante
+        ficha.setRowMinimumHeight(2, 34)   # +15 px do pedido do Levi (03/09)
         ficha.addWidget(self._rotulo("Usina"), 2, 0)
         ficha.addWidget(self.v_usina, 3, 0, 1, 3)
         # as tres colunas dividem a largura por igual. Antes so a ultima esticava, entao
@@ -683,7 +864,12 @@ class _Fila(QWidget):
         # continua existindo para quem lia o resumo em texto (e para os testes)
         self.lbl_sug = QLabel("")
         self.lbl_sug.setVisible(False)
-        self.det.addWidget(cx)
+        self.etiquetas = _CardEtiquetas()
+        par = QHBoxLayout()
+        par.setSpacing(12)
+        par.addWidget(cx, 3)
+        par.addWidget(self.etiquetas, 2)
+        self.det.addLayout(par)
 
         # ── tema ──
         topo_t = QHBoxLayout()
@@ -826,6 +1012,8 @@ class _Fila(QWidget):
         self._pre_selecionar_responsavel(tec)
         self._habilitar(True)
         self._pintar_subs(do_bloco=bloco.get("subtarefas"))
+        self.etiquetas.limpar()
+        self.etiquetas.aplicar_regra(tema, s.get("ativo") or "")
 
     def set_responsaveis(self, pessoas):
         """Lista de quem pode receber a OS. Acessoria: sem ela o PCM ainda ve a fila, mas nao
@@ -871,6 +1059,9 @@ class _Fila(QWidget):
         self.cb_tema.setProperty("temado", "1" if tema else "0")
         self.cb_tema.style().unpolish(self.cb_tema)
         self.cb_tema.style().polish(self.cb_tema)
+        # trocar o tema pode ligar ou desligar a regra da PERFORMANCE
+        if getattr(self, "etiquetas", None) is not None and self._sel:
+            self.etiquetas.aplicar_regra(tema, (self._sel or {}).get("ativo") or "")
         cl = sp.classificacao(tema) if tema else {}
         self.lbl_classif.setText(
             ("Classificação 1: <b style='color:%s'>%s</b>&nbsp;&nbsp;"
@@ -944,7 +1135,8 @@ class _Fila(QWidget):
         # tarefa (unique_violation por solicitação) e a solicitação ficaria presa para sempre.
         self._w = ApiWorker(api.aprovar_solicitacao, asset, titulo, subs, s.get("id_code"),
                             idr, self.cb_resp.currentText(),
-                            note=str(s.get("observacao") or ""))
+                            note=str(s.get("observacao") or ""),
+                            etiqueta_ids=self.etiquetas.ids())
         self._w.ok.connect(self._os_ok)
         self._w.erro.connect(self._os_err)
         self._w.start()
@@ -1423,6 +1615,21 @@ QLabel#valorEditavel:hover { color:#ffffff; border-bottom:1px dashed #8fce3f; }
 QLabel#valorEditavel:disabled { color:#5a6072; border-bottom:1px dashed #262d42; }
 /* tema escolhido = borda verde: e o campo que decide o checklist da OS */
 QComboBox#cbTema[temado="1"] { border:1px solid #8fce3f; }
+QPushButton#chipEtq { background:rgba(138,144,162,0.14); color:#c9d0e0; border:1px solid #39405a;
+  border-radius:9px; padding:2px 9px; font-size:10.5px; font-weight:600; min-height:0; }
+QPushButton#chipEtq:hover { border-color:#e05555; color:#ffffff; }
+QPushButton#chipEtqPerf { background:rgba(166,226,46,0.16); color:#A6E22E;
+  border:1px solid rgba(166,226,46,0.55); border-radius:9px; padding:2px 9px; font-size:10.5px;
+  font-weight:700; min-height:0; }
+QPushButton#chipEtqPerf:disabled { color:#A6E22E; }
+/* o campo aberto dentro do _CampoClicavel: só o risco verde embaixo. A moldura inteira comia
+   os minutos da hora, porque a regra genérica do formulário traz padding e raio. */
+QDateTimeEdit#campoInline, QComboBox#campoInline {
+  background:transparent; border:none; border-bottom:1px solid #8fce3f; border-radius:0;
+  color:#e8ebf2; font-size:13px; min-height:24px; max-height:24px; padding:0 2px; }
+QDateTimeEdit#campoInline::drop-down, QComboBox#campoInline::drop-down { border:none; width:0px; }
+QComboBox#campoInline QAbstractItemView { background:#161d30; color:#e8ebf2;
+  border:1px solid #222c43; selection-background-color:rgba(143,206,63,0.18); outline:none; }
 /* Os dois botoes da fila NAO tem o mesmo peso: aprovar e a decisao, devolver e a excecao.
    Dois retangulos iguais lado a lado obrigam a ler os dois toda vez. O primario ganha altura,
    raio maior e um assentamento (borda inferior mais escura) que o levanta do fundo; o outro
@@ -1446,6 +1653,7 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
 """)
         self._assets = []
         self._wresp = None   # a thread precisa de dono vivo (ver steps/CLAUDE.md)
+        self._wetq = None
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
@@ -1515,6 +1723,10 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
             # reaproveita a lista de pessoas que o formulário já buscou — uma chamada em vez de duas
             pessoas = self._pessoas()
             self.fila.set_responsaveis(pessoas)
+            if not self.fila.etiquetas._catalogo:
+                self._wetq = ApiWorker(api.get_labels)
+                self._wetq.ok.connect(self.fila.etiquetas.set_catalogo)
+                self._wetq.start()
             if not pessoas:
                 # 20 s e o tempo medido do carregamento inicial. Sem dizer isso, o campo aparece
                 # vazio e a pessoa conclui que nao ha tecnico cadastrado — foi o que aconteceu.

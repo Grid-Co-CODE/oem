@@ -397,6 +397,44 @@ def _limpa_ativo(ativo: str) -> str:
     return re.sub(r"\s+", " ", nome).strip()
 
 
+# ── Etiquetas obrigatorias ───────────────────────────────────────────────────
+# Regra do Levi (03/09): toda OS de TRACKER, de ETM ou de GARANTIA leva tambem a etiqueta
+# PERFORMANCE. O motivo e de processo, nao de sistema: sao os tres assuntos que a Performance
+# acompanha depois, e uma OS sem a etiqueta nao entra no relatorio dela.
+#
+# O gatilho NAO e uma etiqueta: no Fracttal nao existe etiqueta "Tracker" nem "ETM" (conferido
+# nas 42 do catalogo em 03/09). Tracker e ETM vem do TEMA ou do ATIVO; garantia, sim, e etiqueta.
+ETIQUETA_PERFORMANCE = "PERFORMANCE"
+_GATILHO_ATIVO = ("tracker", "tcu", "estacao meteo", "estação meteo", "meteorolog",
+                  "piranometro", "piranômetro", "etm")
+
+
+def exige_performance(tema: str = "", ativo: str = "", etiquetas=()) -> bool:
+    """True quando esta solicitacao tem de sair com a etiqueta PERFORMANCE."""
+    import unicodedata
+
+    def _n(x):
+        x = unicodedata.normalize("NFKD", str(x or "").lower())
+        return "".join(c for c in x if not unicodedata.combining(c))
+
+    if str(tema or "").startswith("tracker"):
+        return True
+    alvo = _n(ativo)
+    if any(g in alvo for g in (_n(x) for x in _GATILHO_ATIVO)):
+        return True
+    return any("garantia" in _n(e) for e in (etiquetas or ()))
+
+
+def motivo(tema: str) -> str:
+    """So o motivo do tema — "Inject na TCU", "Roçagem e supressão vegetal".
+
+    E o titulo que a SOLICITACAO passa a usar (decisao do Levi, 03/09). O padrao completo
+    `[Usina][Ativo] - Motivo` continua existindo em `titulo()`, mas migra para o painel do PCM:
+    quem padroniza e quem aprova, e o padrao ainda vai ser definido por ele. Pedir o padrao ao
+    supervisor era pedir que ele decorasse a forma; o motivo ele ja sabe dizer."""
+    return (TEMAS.get(tema) or {}).get("motivo") or ""
+
+
 def titulo(usina: str, ativo: str, tema: str) -> str:
     """Título no padrão `[Usina][Ativo] - Motivo`, o mesmo que as OS já usam.
 

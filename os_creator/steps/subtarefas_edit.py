@@ -167,10 +167,11 @@ class EditorSubtarefas(QWidget):
 
         rod = QHBoxLayout()
         rod.setContentsMargins(4, 8, 0, 2)
-        self.b_add = QPushButton("Adicionar subtarefa")
+        # "+" e nao um "check": o simbolo tem de dizer ACRESCENTAR. O check vinha de quando o
+        # botao foi copiado do rodape da fila, e dizia a coisa errada. Nao ha icone de mais no
+        # conjunto do app, entao o glifo vai no proprio texto do botao.
+        self.b_add = QPushButton("+   Adicionar subtarefa")
         self.b_add.setObjectName("subAdd")
-        self.b_add.setIcon(QIcon(icone_pix("check", GREEN, 13)))
-        self.b_add.setIconSize(QSize(13, 13))
         self.b_add.setCursor(Qt.CursorShape.PointingHandCursor)
         self.b_add.clicked.connect(self.adicionar)
         rod.addWidget(self.b_add)

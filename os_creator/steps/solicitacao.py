@@ -14,7 +14,7 @@ from workers import ApiWorker
 from steps.step1 import ALLOWED_TIPOS          # mesmos tipos de equipamento do Criar OS
 from steps.searchcombo import tornar_pesquisavel
 from steps.subtarefas_edit import EditorSubtarefas
-from steps.light import Bloco, Valor, ValorObs, grade, QSS as QSS_LIGHT
+from steps.light import Aviso, Bloco, Valor, ValorObs, grade, QSS as QSS_LIGHT
 from steps.ui import QSS_FORM, Card, Dica, campo, Linha, icone_pix, GREEN, GREEN_INK, MUTED
 
 CLIENTES_OCULTOS = {"almoxarifado", "teste - pa"}
@@ -83,10 +83,11 @@ class SolicitacaoTab(QWidget):
         # que vira campo ao clique. Quase tudo aqui já vem respondido pelo tema e pela cascata de
         # ativos — a pessoa confere mais do que digita, e um formulário de caixas de 40 px dizia
         # o contrário.
-        self.v_tema = Valor("Tema", self.cb_tema,
-                            dica="O tema preenche o título no padrão, sugere a classificação e "
-                                 "define as subtarefas que a OS vai pedir. Sem tema, a OS nasce "
-                                 "só com a base.")
+        self.v_tema = Valor("Tema", self.cb_tema)
+        # a dica saiu de baixo do campo e virou card ao lado: embaixo ela empurrava o título
+        # para longe do tema, que é justamente o par que a pessoa lê junto
+        self.aviso_tema = Aviso("O tema preenche o título, sugere a classificação e define as "
+                                "subtarefas que a OS vai pedir. Sem tema, a OS nasce só com a base.")
         # o título é o único campo maior: 2 px acima dos outros valores, porque é o que o PCM lê
         # primeiro — e foi o tamanho que o Levi escolheu na simulação
         self.v_titulo = Valor("Título", self.desc, obrig=True, grande=True,
@@ -94,7 +95,7 @@ class SolicitacaoTab(QWidget):
                               dica="preenchido pelo tema no padrão [Usina][Ativo] - Motivo; dá "
                                    "para reescrever")
         b1 = Bloco(1, "Tema e título")
-        b1.add(grade([self.v_tema, None, None]))
+        b1.add(grade([self.v_tema, self.aviso_tema, None]))
         b1.add(self.v_titulo)
         lay.addWidget(b1)
 
@@ -107,21 +108,18 @@ class SolicitacaoTab(QWidget):
         self.busca = QLineEdit(); self.busca.setPlaceholderText("Pesquisar ativo por código ou nome…")
         self.busca.addAction(QIcon(icone_pix("search", MUTED, 15)), QLineEdit.ActionPosition.LeadingPosition)
         self.busca.textChanged.connect(self._refresh_ativos)
-        self.cb_ativo = QComboBox()
-        # o título depende de usina + ativo, então trocar o ativo o regenera (respeitando o
-        # título escrito à mão, que o `_sync_titulo` protege)
+        self.cb_ativo = QComboBox(); tornar_pesquisavel(self.cb_ativo)
+        # O Ativo passou a ser o PRÓPRIO campo de busca: digitar nele filtra a lista. O campo
+        # "Pesquisar ativo" separado saiu, e o "Tipo de equipamento" também — os dois existiam
+        # para estreitar a lista antes de escolher, e um combo pesquisável faz isso sozinho.
+        # Os objetos continuam vivos porque `_refresh_ativos` lê os dois; ficam neutros.
         self.cb_ativo.currentIndexChanged.connect(self._sync_titulo)
 
         self.v_cliente = Valor("Cliente", self.cb_cliente, obrig=True)
         self.v_usina = Valor("Usina", self.cb_usina, obrig=True)
-        self.v_tipo = Valor("Tipo de equipamento", self.cb_tipo, obrig=True)
-        self.v_ativo = Valor("Ativo", self.cb_ativo, obrig=True)
-        # a busca é a ÚNICA exceção da tela: fica sempre aberta, porque o filtro é por digitação
-        # e um campo que só aparece depois do clique não convida a digitar
-        self.v_busca = Valor("Pesquisar ativo", self.busca, aberto=True)
+        self.v_ativo = Valor("Ativo", self.cb_ativo, obrig=True, vazio="Pesquisar ativo")
         b2 = Bloco(2, "Ativo relacionado")
-        b2.add(grade([self.v_cliente, self.v_usina, self.v_tipo,
-                      self.v_ativo, self.v_busca, None]))
+        b2.add(grade([self.v_cliente, self.v_usina, self.v_ativo]))
         lay.addWidget(b2)
 
         # ── Bloco 3 — Detalhes do incidente ──
@@ -370,7 +368,7 @@ class SolicitacaoTab(QWidget):
         prefill do deep link e o `reset` trocam o índice do combo sem passar pelo clique da
         pessoa, e o rótulo não tem como saber sozinho."""
         for v in (getattr(self, n, None) for n in
-                  ("v_tema", "v_titulo", "v_cliente", "v_usina", "v_tipo", "v_ativo",
+                  ("v_tema", "v_titulo", "v_cliente", "v_usina", "v_ativo",
                    "v_data", "v_data_prev", "v_tecnico", "v_obs", "v_grupo", "v_c1", "v_c2")):
             if v is not None:
                 v.atualizar()
@@ -382,13 +380,16 @@ class SolicitacaoTab(QWidget):
         atual = self.desc.toPlainText().strip()
         if not tema or (atual and self._titulo_auto is None):
             return
-        asset = self.cb_ativo.currentData() or {}
-        novo = sp.titulo(self._usi() or "", (asset.get("description") or "").strip(), tema)
+        novo = sp.motivo(tema)
         if not novo:
             return
         self.desc.blockSignals(True)            # não disparar _marcar_titulo_manual na própria escrita
         self.desc.setPlainText(novo)
         self.desc.blockSignals(False)
+        # O rótulo do campo escuta `textChanged`, que o blockSignals acima acabou de silenciar:
+        # sem este aviso explícito o texto entrava no campo e a tela continuava mostrando o
+        # placeholder. Foi exatamente o "o tema não está preenchendo o título" que o Levi viu.
+        self.v_titulo.atualizar()
         self._titulo_auto = novo
 
     def _sugerir_classificacao(self):

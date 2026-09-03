@@ -13,12 +13,12 @@ as regras do editor de subtarefas moravam no SolicPcmTab, o SolicitacaoTab — q
 próprio — engolia a regra de QLineEdit e os campos apareciam como caixas preenchidas numa tela e
 como texto na outra. Estilo que viaja com o widget não tem esse problema.
 """
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QFrame,
                              QComboBox, QLineEdit, QTextEdit, QDateTimeEdit, QDateEdit,
                              QStackedLayout, QSizePolicy)
 
-from steps.ui import GREEN, MUTED, TEXT, CARD
+from steps.ui import icone_pix, GREEN, MUTED, TEXT, CARD
 
 RISCO = "#222c43"
 PONTILHADO = "#39405a"
@@ -75,6 +75,12 @@ QCheckBox#lgChk::indicator {{ width:14px; height:14px; border:1px solid {PONTILH
   border-radius:3px; background:transparent; }}
 QCheckBox#lgChk::indicator:hover {{ border-color:{GREEN}; }}
 QCheckBox#lgChk::indicator:checked {{ background:{GREEN}; border-color:{GREEN}; }}
+
+/* card de aviso: verde translucido, o mesmo tratamento do quadrado do ícone no hub */
+QFrame#lgAviso {{ background:rgba(143,206,63,0.07); border:1px solid rgba(143,206,63,0.28);
+  border-radius:9px; }}
+QLabel#lgAvisoTxt {{ color:{MUTED}; font-size:12px; background:transparent; }}
+QLabel#lgAvisoIco {{ background:transparent; }}
 """
 
 
@@ -192,8 +198,13 @@ class Valor(QWidget):
             return
         self.pilha.setCurrentIndex(1)
         self.editor.setFocus(Qt.FocusReason.MouseFocusReason)
-        if isinstance(self.editor, QComboBox) and not self.editor.isEditable():
-            self.editor.showPopup()
+        # A lista abre no PRIMEIRO clique, inclusive nos combos pesquisáveis (cliente, usina,
+        # ativo). Antes o `showPopup` era só para os não-editáveis: nos outros o primeiro clique
+        # apenas trocava o rótulo pelo campo, e era preciso clicar de novo para ver as opções.
+        # O singleShot é necessário porque o widget acabou de aparecer na pilha — chamar
+        # showPopup no mesmo ciclo abre a lista com a geometria antiga.
+        if isinstance(self.editor, QComboBox):
+            QTimer.singleShot(0, self.editor.showPopup)
 
     def fechar(self):
         if self._sempre_aberto:
@@ -285,3 +296,28 @@ def grade(itens, cols=3, hspace=36, vspace=14):
     for c in range(cols):
         g.setColumnStretch(c, 1)
     return g
+
+
+class Aviso(QFrame):
+    """Recado curto ao lado do campo, com ícone de alerta.
+
+    Existe porque a dica embaixo do campo empurrava o que vem depois para longe: no bloco 1 ela
+    separava o tema do título, que é justamente o par que a pessoa lê junto."""
+
+    def __init__(self, texto):
+        super().__init__()
+        self.setObjectName("lgAviso")
+        h = QHBoxLayout(self)
+        h.setContentsMargins(12, 10, 12, 10)
+        h.setSpacing(9)
+        ico = QLabel()
+        ico.setObjectName("lgAvisoIco")
+        ico.setPixmap(icone_pix("alert", GREEN, 15))
+        ico.setFixedWidth(15)
+        ico.setAlignment(Qt.AlignmentFlag.AlignTop)
+        h.addWidget(ico)
+        t = QLabel(texto)
+        t.setObjectName("lgAvisoTxt")
+        t.setWordWrap(True)
+        t.setMinimumWidth(1)
+        h.addWidget(t, 1)

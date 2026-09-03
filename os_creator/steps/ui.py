@@ -106,6 +106,7 @@ _LUCIDE = {
     "send":   '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/>',
     "x":      '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     "bulb":   '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.8.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+    "sol":    '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
     "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     "layers": '<path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
     # ramificação (lucide git-branch) — o "ícone de raiz" que abre o fluxo da OS

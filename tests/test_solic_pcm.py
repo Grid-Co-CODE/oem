@@ -377,3 +377,57 @@ def test_o_editor_carrega_o_proprio_estilo(qapp):
     ed = EditorSubtarefas()
     assert "QLineEdit#subTexto" in ed.styleSheet()
     assert "QCheckBox#subAnexo" in ed.styleSheet()
+
+
+# ── a regra das etiquetas (03/09) ────────────────────────────────────────────
+def test_tracker_etm_e_garantia_sempre_levam_performance():
+    """Regra de processo do Levi: são os três assuntos que a Performance acompanha depois, e uma
+    OS sem a etiqueta não entra no relatório dela.
+
+    O gatilho NÃO é uma etiqueta: no catálogo do Fracttal não existe "Tracker" nem "ETM"
+    (conferidas as 42 em 03/09). Tracker e ETM saem do tema ou do ativo; garantia, sim, é
+    etiqueta — e é por isso que a função olha os três lugares."""
+    assert sp.exige_performance("tracker_inject", "Nobreak 1") is True
+    assert sp.exige_performance("nobreak", "Estrutura Trackers 2ª Seção") is True
+    assert sp.exige_performance("nobreak", "Piranômetro da Usina") is True     # ETM por outro nome
+    assert sp.exige_performance("nobreak", "ETM Tucano 1") is True
+    assert sp.exige_performance("nobreak", "Nobreak 1", ["Chamado Garantia"]) is True
+    # e o contrário: sem nenhum dos três, não força nada
+    assert sp.exige_performance("nobreak", "Nobreak 1") is False
+    assert sp.exige_performance("vegetacao", "Roçadeira", ["Aguardando Limpeza"]) is False
+
+
+def test_a_performance_posta_pela_regra_sai_quando_a_regra_deixa_de_valer(qapp):
+    """Trocar o tema de tracker para outro tira a etiqueta que a REGRA pôs — mas não tiraria uma
+    que a pessoa tivesse escolhido à mão."""
+    from steps.solic_pcm import _CardEtiquetas
+    c = _CardEtiquetas()
+    c.set_catalogo([{"id": 4660, "description": "PERFORMANCE"},
+                    {"id": 4821, "description": "Chamado Garantia"}])
+    c.aplicar_regra("tracker_motor", "Tracker 12")
+    assert 4660 in c.ids() and c._forcada is True
+    c.aplicar_regra("nobreak", "Nobreak 1")
+    assert 4660 not in c.ids() and c._forcada is False
+    # escolhida à mão, sobrevive
+    c._sel.append({"id": 4660, "description": "PERFORMANCE"})
+    c.aplicar_regra("nobreak", "Nobreak 1")
+    assert 4660 in c.ids()
+
+
+def test_o_ativo_no_cartao_perde_o_endereco(qapp):
+    """O `items_description` do Fracttal traz o cadastro inteiro numa string só — no cartão da
+    fila isso virava três linhas de endereço sem ajudar a decidir."""
+    from steps.solic_pcm import _ativo_curto
+    assert _ativo_curto("Estrutura Trackers 2ª Seção Colônia Tapejara, Lote N 152-Re, PR") \
+        == "Estrutura Trackers 2ª Seção Colônia Tapejara"
+    assert _ativo_curto("Nobreak 1   { SEMP-TCN100-NBRK1 }") == "Nobreak 1"
+    assert _ativo_curto("") == ""
+
+
+def test_a_borda_do_status_e_mais_clara_que_a_fonte(qapp):
+    """Metade do caminho até o branco: mesma família da cor da fonte, só recuada, para o
+    contorno ler como moldura e não como um segundo texto."""
+    from steps.solic_pcm import _clarear
+    assert _clarear("#000000") == "#7f7f7f"
+    assert _clarear("#ec4c77") == "#f5a5bb"
+    assert _clarear("nao-e-cor") == "#39405a"      # entrada inválida não quebra a tela

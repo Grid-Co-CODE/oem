@@ -1968,6 +1968,9 @@ def get_os_detalhes(id_work_order) -> dict:
     if (det.get("id_status_work_order") or t0.get("id_status_work_order")) == 4:
         canc = cancelamento_da_os(t0.get("wo_folio"))
     return {"folio": t0.get("wo_folio"),
+            # 1 Em Processo · 2 Em Verificação · 3 Concluída · 4 Cancelada. Sai daqui p/ o card saber,
+            # ANTES de a pessoa digitar, que uma OS fechada não aceita mais editar a observação.
+            "status_id": det.get("id_status_work_order") or t0.get("id_status_work_order"),
             "cancel_motivo": canc["motivo"], "cancel_nota": canc["nota"],
             "descricao": str(t0.get("tasks_description") or "").strip(),
             "tipo": str(t0.get("tasks_types_main_description") or "").strip(),
@@ -3562,6 +3565,48 @@ def mudar_responsavel(id_work_order, id_personnel, nota=None) -> dict:
     return {"ok": True, "raw": res}
 
 
+_ERRO_WO_FECHADA = "ERROR_WO_FINISHED_BY_OTHER_USER"
+
+
+def editar_nota_os(id_work_order, nota: str) -> dict:
+    """Reescreve a NOTA (observação) de uma OS já criada. → {'ok'} | {'ok':False,'erro'}.
+
+    Sondado ao vivo em 02/09 (OS 12728, marcador escrito e desfeito). Três coisas que só o teste
+    contra a API revelou, e que a chamada precisa respeitar:
+
+    1. O `work_orders_update` GRAVA a nota de verdade — não era garantido: o mesmo endpoint aceita
+       `id_parent_wo`, responde ACTION_DONE e grava None (ver `_work_order_insert`). Aqui persiste.
+    2. Em OS CONCLUÍDA ele recusa com ERROR_WO_FINISHED_BY_OTHER_USER — apesar do nome, não é
+       conflito entre usuários, é a OS estar fechada. A mensagem crua não ajudaria ninguém.
+    3. Ele exige `id_assigned_user` junto. Mandar sem, ou com o valor errado, mexeria no
+       RESPONSÁVEL de tabela — por isso lemos o atual e devolvemos o mesmo, sem tocar nele.
+
+    A nota fica na TAREFA, não no cabeçalho da OS (o `note` do work_order_details_new vem sempre
+    None); é por isso que a leitura confere pelo `work_orders_tasks_new_list`."""
+    if not id_work_order:
+        return {"ok": False, "erro": "OS sem id."}
+    try:
+        r = _rpc_call(RPC_WO_TASKS, {"page": 1, "limit": 50, "start": 0,
+                                     "id_work_order": id_work_order})
+        d = r.get("data") if isinstance(r, dict) else r
+        t0 = d[0] if isinstance(d, list) and d else {}
+    except Exception as e:                                   # noqa: BLE001
+        return {"ok": False, "erro": "não consegui ler a OS antes de gravar (%s)" % str(e)[:70]}
+    if not t0:
+        return {"ok": False, "erro": "não achei a tarefa desta OS."}
+    res = _rpc_call(RPC_WO_UPDATE, {"page": 1, "limit": 200, "start": 0, "append": True,
+                                    "id": id_work_order, "type_user": "HUMAN_RESOURCES",
+                                    "id_assigned_user": t0.get("id_assigned_user"),
+                                    "note": str(nota or "")})
+    if isinstance(res, dict) and res.get("success") is False:
+        msg = str(res.get("message") or "")
+        if _ERRO_WO_FECHADA in msg:
+            return {"ok": False, "erro": "Esta OS já está concluída — o Fracttal não aceita mais "
+                                         "editar a observação dela."}
+        return {"ok": False, "erro": msg or "o Fracttal recusou a edição da observação."}
+    return {"ok": True, "nota": str(nota or "").strip()}      # a API apara os espaços das pontas
+
+
 RPC_WO_CHANGE_STATUS = "tasks.work_orders_change_status"        # muda o status da WO (1..4)
 RPC_WO_RECALCULATE   = "tasks.work_orders_recalculate_new"     # confirma o fechamento (irreversível)
 
@@ -4142,7 +4187,7 @@ def _tarefa_da_solicitacao(id_request):
 
 def aprovar_solicitacao(asset: dict, descricao: str, subtarefas: list, id_request,
                         id_responsible, responsible_name: str = "", note: str = "",
-                        tipo: str = "Corretiva") -> dict:
+                        tipo: str = "Corretiva", etiqueta_ids: list = None) -> dict:
     """Converte a solicitacao em OS NUMERADA. Mesmo envelope do `clonar_os`.
 
     Aguenta ser chamada duas vezes: se a tentativa anterior parou no meio (tarefa criada, OS
@@ -4168,12 +4213,19 @@ def aprovar_solicitacao(asset: dict, descricao: str, subtarefas: list, id_reques
     if rec is None:
         return clonar_os([{"asset": asset, "tipo": tipo, "descricao": descricao,
                            "subtarefas": subtarefas or []}],
-                         id_responsible, responsible_name, note=note, id_request=id_request)
+                         id_responsible, responsible_name, etiqueta_ids=etiqueta_ids,
+                         note=note, id_request=id_request)
     if not id_responsible:
         return {"ok": False, "erro": "Escolha o responsavel: sem ele a tarefa nao vira OS numerada.",
                 "n_tarefas": 1, "n_criadas": 0}
     wo = _work_order_insert([rec], id_responsible, responsible_name)
     idwo = wo.get("id_work_order")
+    # na retomada a fase 3 tambem tem de acontecer: a tarefa orfa nunca recebeu etiqueta
+    if idwo and etiqueta_ids:
+        try:
+            apply_labels(idwo, etiqueta_ids)
+        except FracttalError:
+            pass                       # a OS existe; a etiqueta o PCM poe no Fracttal se faltar
     return {"ok": bool(idwo),
             "os": {"id_work_order": idwo, "wo_folio": wo.get("wo_folio"),
                    "id_tasks": [rec.get("id_task")]} if idwo else None,
