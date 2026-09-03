@@ -10,6 +10,7 @@ pelo JWT do LOGIN (sessão do usuário), colado em fracttal_login.txt (gitignore
 As leituras (ativos/pessoal) continuam pelo OAuth client_credentials. IDs centralizados em CONFIG.
 """
 import os
+import re
 import sys
 import json
 import time
@@ -4229,6 +4230,12 @@ def _req_status_label(st_raw, id_status=None):
     return f"Status {id_status}" if id_status is not None else "—"
 
 
+def _cor_de(path_image):
+    """'color: #01C0DD' -> '#01C0DD'. None quando o Fracttal nao mandar cor."""
+    m = re.search(r"#[0-9A-Fa-f]{6}", str(path_image or ""))
+    return m.group(0) if m else None
+
+
 def _req_row_to_d(r, loc):
     """Linha crua do requests_list → dict do card de solicitação (cliente/usina/ativo/descrição/etc.)."""
     item = str(r.get("items_description") or "")
@@ -4246,6 +4253,10 @@ def _req_row_to_d(r, loc):
         # uma solicitação da TESTE - PA (visto ao aprovar a 3534 em 02/09). Errar aqui não quebra
         # nada — cria a OS na usina errada, no sistema do cliente.
         "id_item": r.get("id_item"), "code": code,
+        # A cor do status vem do PROPRIO Fracttal, no `status_path_image` ("color: #01C0DD").
+        # Copiar a paleta para ca criaria duas verdades: no dia em que eles trocassem a cor de
+        # um status, o app seguiria pintando a antiga sem ninguem perceber.
+        "cor_status": _cor_de(r.get("status_path_image")),
         "tipo": tipo or "—",
         "descricao": (desc_full[:90] or "—"),
         "descricao_full": desc_full,

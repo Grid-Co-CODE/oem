@@ -37,8 +37,13 @@ from steps.historico_solic import HistoricoSolic
 # As três colunas do painel, na ordem do Fracttal. A régua de cada uma sai do que foi medido:
 # "pendente" é a solicitação SEM OS vinculada e não cancelada — e não um id_status fixo, porque
 # quem decide o status é o servidor (a criação manda 0 e volta 1 ou 7, conforme o caminho).
-PENDENTE, ANDAMENTO, FINALIZADA = "pendente", "andamento", "finalizada"
+PENDENTE, ANDAMENTO, FINALIZADA, FORA = "pendente", "andamento", "finalizada", "fora"
 _CANCELADAS = {"cancelada", "rejeitada"}
+# "Reaberta (refazer)" (AGAIN_REQUEST_TODO) sai do quadro por decisao do Levi (03/09): sao 60
+# pedidos que voltaram para o supervisor refazer, e enquanto ele nao refizer nao ha o que o PCM
+# aprovar. Deixa-las na coluna Pendentes enchia a fila com 60 itens sobre os quais ele nao pode
+# agir — o oposto do que este painel existe para fazer. Continuam visiveis no Historico.
+_REFAZER = "reaberta"
 
 
 def coluna_de(s: dict) -> str:
@@ -50,6 +55,8 @@ def coluna_de(s: dict) -> str:
     st = (s.get("status") or "").strip().lower()
     if any(c in st for c in _CANCELADAS):
         return FINALIZADA
+    if _REFAZER in st and not s.get("id_work_order"):
+        return FORA
     if not s.get("id_work_order"):
         return PENDENTE
     return FINALIZADA if "conclu" in st or "resolvid" in st else ANDAMENTO
@@ -74,7 +81,8 @@ class _Cartao(QFrame):
         topo.addWidget(n)
         topo.addStretch(1)
         st = QLabel(s.get("status") or "—")
-        st.setStyleSheet(f"color:{MUTED};font-size:11px;")
+        st.setStyleSheet("color:%s;font-size:11px;font-weight:600;background:transparent;"
+                         % (s.get("cor_status") or MUTED))
         topo.addWidget(st)
         v.addLayout(topo)
 
@@ -90,34 +98,46 @@ class _Cartao(QFrame):
         d.setMinimumWidth(1)
         v.addWidget(d)
 
-        rod = QHBoxLayout()
-        quem = QLabel(f"{s.get('criado_por') or '—'} · {(s.get('data') or '')[:10]}")
-        quem.setStyleSheet(f"color:{MUTED};font-size:11px;")
-        rod.addWidget(quem)
-        rod.addStretch(1)
         # O TEMA é o que o Fracttal não mostra — e é a razão de existir este painel.
         tema = (sp.parse(s.get("observacao")) or {}).get("tema") or ""
-        if tema:
-            nome = (sp.TEMAS.get(tema) or {}).get("nome") or tema
-            t = QLabel(nome)
-            t.setStyleSheet(f"color:{GREEN};font-size:11px;font-weight:600;")
-            rod.addWidget(t)
-        elif on_analisar:
-            t = QLabel("sem tema")
-            t.setStyleSheet(f"color:{MUTED};font-size:11px;")
-            rod.addWidget(t)
-        elif s.get("os_folio"):
-            t = QLabel(f"OS {s['os_folio']}")
-            t.setStyleSheet(f"color:{MUTED};font-size:11px;")
-            rod.addWidget(t)
-        v.addLayout(rod)
+        if tema or on_analisar or s.get("os_folio"):
+            if tema:
+                txt, cor, peso = (sp.TEMAS.get(tema) or {}).get("nome") or tema, GREEN, "600"
+            elif s.get("os_folio"):
+                txt, cor, peso = f"OS {s['os_folio']}", MUTED, "400"
+            else:
+                txt, cor, peso = "sem tema", MUTED, "400"
+            t = QLabel(txt)
+            t.setStyleSheet(f"color:{cor};font-size:11px;font-weight:{peso};"
+                            "background:transparent;")
+            t.setWordWrap(True)
+            t.setMinimumWidth(1)
+            v.addWidget(t)
 
+        # Uma linha separa a informação da ação. O Analisar vira texto verde no canto: o botão
+        # cheio dava a um item de lista o mesmo peso visual do "Aprovar e gerar OS", que é a
+        # decisão de verdade — e eram vários na tela ao mesmo tempo.
+        risco = QFrame()
+        risco.setFixedHeight(1)
+        risco.setStyleSheet(f"background:{BORDER};border:none;")
+        v.addSpacing(3)
+        v.addWidget(risco)
+
+        rod = QHBoxLayout()
+        rod.setContentsMargins(0, 4, 0, 0)
+        quem = QLabel(f"{s.get('criado_por') or '—'} · {(s.get('data') or '')[:10]}")
+        quem.setStyleSheet(f"color:{MUTED};font-size:11px;background:transparent;")
+        quem.setWordWrap(True)
+        quem.setMinimumWidth(1)
+        rod.addWidget(quem)
+        rod.addStretch(1)
         if on_analisar:
             b = QPushButton("Analisar")
-            b.setObjectName("btnPrimary")
+            b.setObjectName("btnLink")
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(lambda: on_analisar(s))
-            v.addWidget(b, 0, Qt.AlignmentFlag.AlignRight)
+            rod.addWidget(b)
+        v.addLayout(rod)
 
 
 class _Painel(QWidget):
@@ -133,9 +153,18 @@ class _Painel(QWidget):
         v.setContentsMargins(16, 12, 16, 12)
         v.setSpacing(10)
 
-        topo = QHBoxLayout()
-        self.lbl = QLabel("carregando solicitações…")
-        self.lbl.setStyleSheet(f"color:{MUTED};font-size:12.5px;")
+        cab = QFrame()
+        cab.setObjectName("filaCab")
+        topo = QHBoxLayout(cab)
+        topo.setContentsMargins(14, 9, 14, 9)
+        topo.setSpacing(12)
+        tit = QLabel("Solicitações")
+        tit.setStyleSheet(f"color:{TEXT};font-size:15px;font-weight:600;background:transparent;")
+        topo.addWidget(tit)
+        # a contagem NAO fica aqui: ela vive no cabecalho de cada coluna, ao lado do nome dela.
+        # Repetir os tres numeros em cima seria dizer duas vezes a mesma coisa.
+        self.lbl = QLabel("carregando…")
+        self.lbl.setStyleSheet(f"color:{MUTED};font-size:12px;background:transparent;")
         topo.addWidget(self.lbl)
         topo.addStretch(1)
         self.busca = QLineEdit()
@@ -144,24 +173,40 @@ class _Painel(QWidget):
         self.busca.textChanged.connect(self._pintar)
         topo.addWidget(self.busca)
         b = QPushButton("Atualizar")
-        b.setObjectName("btnGhost")
+        b.setObjectName("btnVoltar")
         b.setCursor(Qt.CursorShape.PointingHandCursor)
         b.clicked.connect(lambda: self.carregar(True))
         topo.addWidget(b)
-        v.addLayout(topo)
+        v.addWidget(cab)
 
         self.cols = {}
         grade = QHBoxLayout()
         grade.setSpacing(12)
-        for chave, titulo in ((PENDENTE, "Pendentes"), (ANDAMENTO, "Em andamento"),
-                              (FINALIZADA, "Finalizadas")):
+        for chave, titulo, cor in ((PENDENTE, "Pendentes", "#8fce3f"),
+                                   (ANDAMENTO, "Em andamento", "#e8a33d"),
+                                   (FINALIZADA, "Finalizadas", "#6FA8DC")):
             box = QWidget()
             bv = QVBoxLayout(box)
             bv.setContentsMargins(0, 0, 0, 0)
             bv.setSpacing(8)
+            # nome a esquerda, contagem a direita — a barrinha colorida e o que deixa as tres
+            # colunas distinguiveis de relance, sem depender de ler o titulo.
+            lin = QHBoxLayout()
+            lin.setSpacing(8)
+            barra = QFrame()
+            barra.setFixedSize(3, 15)
+            barra.setStyleSheet(f"background:{cor};border-radius:1px;")
+            lin.addWidget(barra)
             cab = QLabel(titulo)
-            cab.setStyleSheet(f"color:{TEXT};font-weight:600;font-size:14px;")
-            bv.addWidget(cab)
+            cab.setStyleSheet(f"color:{TEXT};font-weight:600;font-size:14px;"
+                              "background:transparent;")
+            lin.addWidget(cab)
+            lin.addStretch(1)
+            cnt = QLabel("")
+            cnt.setStyleSheet(f"color:{cor};font-size:13px;font-weight:600;"
+                              "background:transparent;")
+            lin.addWidget(cnt)
+            bv.addLayout(lin)
             sc = QScrollArea()
             sc.setWidgetResizable(True)
             sc.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -178,7 +223,7 @@ class _Painel(QWidget):
             sc.setWidget(inner)
             bv.addWidget(sc, 1)
             grade.addWidget(box, 1)
-            self.cols[chave] = (cab, titulo, iv)
+            self.cols[chave] = (cnt, titulo, iv)
         v.addLayout(grade, 1)
 
     def carregar(self, force=False):
@@ -207,12 +252,17 @@ class _Painel(QWidget):
     def _pintar(self):
         q = (self.busca.text() or "").strip().lower()
         por = {PENDENTE: [], ANDAMENTO: [], FINALIZADA: []}
+        fora = 0
         for s in self._rows:
             if q and q not in (" ".join(str(s.get(k) or "") for k in
                                         ("usina", "ativo", "descricao", "criado_por")).lower()):
                 continue
-            por[coluna_de(s)].append(s)
-        for chave, (cab, titulo, iv) in self.cols.items():
+            col = coluna_de(s)
+            if col == FORA:                    # devolvidas para refazer: nao ha o que aprovar
+                fora += 1
+                continue
+            por[col].append(s)
+        for chave, (cnt, titulo, iv) in self.cols.items():
             while iv.count() > 1:                      # mantém o addStretch do fim
                 it = iv.takeAt(0)
                 w = it.widget()
@@ -220,12 +270,13 @@ class _Painel(QWidget):
                     w.setParent(None)
                     w.deleteLater()
             lista = por[chave]
-            cab.setText(f"{titulo}  ({len(lista)})")
+            cnt.setText(f"{len(lista):,}".replace(",", "."))
             for s in lista[:40]:
                 iv.insertWidget(iv.count() - 1,
                                 _Cartao(s, self._on_analisar if chave == PENDENTE else None))
-        self.lbl.setText(f"{len(por[PENDENTE])} pendentes · {len(por[ANDAMENTO])} em andamento · "
-                         f"{len(por[FINALIZADA])} finalizadas")
+        # o unico numero que sobra em cima e o que NAO esta no quadro — se ele sumisse de vez,
+        # 60 pedidos parados com o supervisor viravam invisiveis para todo mundo.
+        self.lbl.setText(f"· {fora} devolvidas para refazer, fora do quadro" if fora else "")
 
 
 def _hoje_iso():
@@ -286,7 +337,8 @@ class _CartaoFila(QFrame):
         topo.addWidget(n)
         topo.addStretch(1)
         st = QLabel(str(s.get("status") or ""))
-        st.setStyleSheet("color:%s;font-size:10.5px;background:transparent;" % MUTED)
+        st.setStyleSheet("color:%s;font-size:10.5px;font-weight:600;background:transparent;"
+                         % (s.get("cor_status") or MUTED))
         topo.addWidget(st)
         v.addLayout(topo)
 
@@ -1120,6 +1172,10 @@ QLabel#valorEditavel:hover { color:#ffffff; border-bottom:1px dashed #8fce3f; }
 QLabel#valorEditavel:disabled { color:#5a6072; border-bottom:1px dashed #262d42; }
 /* tema escolhido = borda verde: e o campo que decide o checklist da OS */
 QComboBox#cbTema[temado="1"] { border:1px solid #8fce3f; }
+/* acao secundaria dentro de um item de lista: texto, nao botao */
+QPushButton#btnLink { background:transparent; border:none; color:#8fce3f; font-size:12px;
+  font-weight:600; padding:0 2px; min-height:0; text-align:right; }
+QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
 """)
         self._assets = []
         self._wresp = None   # a thread precisa de dono vivo (ver steps/CLAUDE.md)

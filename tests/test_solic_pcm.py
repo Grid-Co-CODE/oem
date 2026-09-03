@@ -9,17 +9,29 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import solic_spec as sp
-from steps.solic_pcm import SolicPcmTab, coluna_de, PENDENTE, ANDAMENTO, FINALIZADA
+from steps.solic_pcm import (SolicPcmTab, coluna_de, PENDENTE, ANDAMENTO,
+                             FINALIZADA, FORA)
 
 
 def test_sem_OS_vinculada_e_pendente():
     assert coluna_de({"id_work_order": None, "status": "Aberta"}) == PENDENTE
 
 
-def test_reaberta_sem_OS_tambem_e_pendente():
-    """As 60 reabertas medidas em 02/09 estao exatamente nesse estado: pedido devolvido para
-    refazer, sem OS, sem dono. Sao elas que enchem a fila no primeiro dia."""
-    assert coluna_de({"id_work_order": None, "status": "Reaberta (refazer)"}) == PENDENTE
+def test_reaberta_fica_FORA_do_quadro():
+    """Decisao do Levi (03/09), e ela inverte a regra anterior.
+
+    As 60 reabertas nao tem OS e nao estao canceladas, entao caiam em Pendentes. So que
+    "reaberta" quer dizer devolvida ao supervisor para refazer: enquanto ele nao refizer, nao
+    ha o que o PCM aprovar. Sessenta itens sobre os quais ele nao pode agir enchiam justamente
+    a coluna que este painel existe para deixar acionavel. Continuam no Historico, e o painel
+    diz quantas sao — some-las de vez esconderia pedido parado de todo mundo."""
+    assert coluna_de({"id_work_order": None, "status": "Reaberta (refazer)"}) == FORA
+
+
+def test_reaberta_QUE_VIROU_OS_volta_para_o_quadro():
+    """FORA vale so enquanto nao ha OS: refeita e convertida, ela e uma solicitacao como as
+    outras e precisa aparecer no acompanhamento."""
+    assert coluna_de({"id_work_order": 9, "status": "Reaberta (refazer)"}) == ANDAMENTO
 
 
 def test_cancelada_nunca_e_pendente():
