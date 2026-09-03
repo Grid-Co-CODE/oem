@@ -220,3 +220,43 @@ def test_o_chip_do_tema_nunca_quebra_linha(qapp):
         nome = (sp.TEMAS.get(tema) or {}).get("nome") or "sem tema"
         assert c._chip.toolTip() == nome          # nada se perde ao aparar
         assert c._chip.text() == nome or c._chip.text().endswith("…")
+
+
+# ── técnico e data como valor que vira campo ao clicar ───────────────────────
+def test_tecnico_e_data_aparecem_como_texto_e_viram_campo(qapp):
+    """Nesta tela o técnico e a data quase sempre só precisam ser CONFIRMADOS — o supervisor já
+    escreveu. Combo e date picker abertos dão a uma conferência o peso de um formulário."""
+    t = SolicPcmTab()
+    obs = sp.observacao_com_bloco("x", {"tema": "nobreak", "tecnico": "João Vieira",
+                                        "data": "05/09/2026"})
+    t.fila.set_responsaveis([{"name": "João Vieira", "id_personnel": 7}])
+    t.fila.set_itens([{"id_code": 1, "usina": "U", "ativo": "A", "descricao": "x",
+                       "observacao": obs, "id_work_order": None, "status": "Aberta"}], [])
+    assert t.fila.ed_tecnico.lbl.text() == "João Vieira"
+    assert t.fila.ed_data.lbl.text() == "05/09/2026"
+    assert t.fila.cb_resp.currentData() == 7          # o sugerido já é o responsável
+    t.fila.ed_tecnico.abrir()
+    assert t.fila.ed_tecnico._pilha.currentIndex() == 1
+    t.fila.ed_tecnico.fechar()
+    assert t.fila.ed_tecnico._pilha.currentIndex() == 0
+
+
+def test_tecnico_sugerido_fora_do_cadastro_continua_visivel(qapp):
+    """Sumir com o nome faria parecer que o supervisor não sugeriu ninguém, quando ele sugeriu
+    alguém que não está cadastrado — que é uma informação diferente, e útil."""
+    t = SolicPcmTab()
+    t.fila.set_responsaveis([{"name": "Ana", "id_personnel": 1}])
+    t.fila._pre_selecionar_responsavel("Fulano de Tal")
+    assert t.fila.cb_resp.currentData() is None
+    assert t.fila.ed_tecnico.lbl.text() == "Fulano de Tal"
+
+
+def test_o_tema_escolhido_marca_o_campo(qapp):
+    """A borda verde do combo: é o campo que decide o checklist da OS."""
+    t = SolicPcmTab()
+    base = {"id_code": 1, "usina": "U", "ativo": "A", "descricao": "x",
+            "id_work_order": None, "status": "Aberta"}
+    t.fila.set_itens([dict(base, observacao=sp.observacao_com_bloco("x", {"tema": "nobreak"}))], [])
+    assert t.fila.cb_tema.property("temado") == "1"
+    t.fila.set_itens([dict(base, observacao="")], [])
+    assert t.fila.cb_tema.property("temado") == "0"

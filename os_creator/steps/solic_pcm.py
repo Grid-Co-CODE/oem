@@ -16,12 +16,13 @@ O QUE ESTE FLUXO CONSERTA (medido em 02/09 sobre 2.500 solicitações e 414 OS):
 
 A aprovação aqui NÃO cria um passo novo: dá lugar melhor a um passo que já acontece fora do app.
 """
-from PyQt6.QtCore import (Qt, QSize, QTimer, QPoint, QEasingCurve, QPropertyAnimation,
+from PyQt6.QtCore import (Qt, QSize, QTimer, QPoint, QDate, QEasingCurve, QPropertyAnimation,
                           QParallelAnimationGroup)
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QStackedWidget, QScrollArea, QFrame, QMessageBox, QComboBox,
-                             QGridLayout, QLineEdit, QGraphicsOpacityEffect, QSizePolicy)
+                             QGridLayout, QLineEdit, QGraphicsOpacityEffect, QSizePolicy,
+                             QDateEdit, QStackedLayout)
 
 from datetime import datetime
 
@@ -378,6 +379,64 @@ class _LinhaSub(QFrame):
         h.addWidget(t, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
 
 
+class _CampoClicavel(QWidget):
+    """Mostra um VALOR; ao clicar, vira o campo de edicao no mesmo lugar.
+
+    Por que nao deixar o campo aberto sempre: nesta tela o tecnico e a data quase sempre so
+    precisam ser CONFIRMADOS — o supervisor ja escreveu. Combo e date picker abertos dao a uma
+    conferencia o peso visual de um formulario a preencher. Clicou, edita; saiu, volta a ser
+    texto."""
+
+    def __init__(self, editor, vazio="—"):
+        super().__init__()
+        self._vazio = vazio
+        self.editor = editor
+        self._pilha = QStackedLayout(self)
+        self._pilha.setContentsMargins(0, 0, 0, 0)
+        self.lbl = QLabel(vazio)
+        self.lbl.setObjectName("valorEditavel")
+        self.lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lbl.setToolTip("clique para editar")
+        self._pilha.addWidget(self.lbl)
+        self._pilha.addWidget(editor)
+        self._pilha.setCurrentIndex(0)
+        editor.installEventFilter(self)
+        if isinstance(editor, QComboBox):
+            editor.activated.connect(lambda _=0: self.fechar())
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self.isEnabled():
+            self.abrir()
+
+    def abrir(self):
+        self._pilha.setCurrentIndex(1)
+        self.editor.setFocus(Qt.FocusReason.MouseFocusReason)
+        if isinstance(self.editor, QComboBox):
+            self.editor.showPopup()
+
+    def fechar(self):
+        self._pilha.setCurrentIndex(0)
+        self.atualizar()
+
+    def eventFilter(self, obj, ev):
+        # sair do campo fecha: sem isto o editor ficaria aberto ate a proxima selecao, e a
+        # linha perderia o formato limpo que e a razao de ele existir.
+        if obj is self.editor and ev.type() == ev.Type.FocusOut:
+            self.fechar()
+        return False
+
+    def atualizar(self):
+        if isinstance(self.editor, QComboBox):
+            txt = self.editor.currentText() if self.editor.currentData() else ""
+        else:
+            txt = self.editor.date().toString("dd/MM/yyyy")
+        self.lbl.setText(txt or self._vazio)
+
+    def setEnabled(self, on):
+        super().setEnabled(on)
+        self.lbl.setEnabled(on)
+
+
 class _Fila(QWidget):
     """Fila do PCM: a lista à esquerda, o detalhe à direita, e a OS nascendo na aprovação."""
 
@@ -391,9 +450,16 @@ class _Fila(QWidget):
         v.setContentsMargins(16, 12, 16, 12)
         v.setSpacing(10)
 
-        topo = QHBoxLayout()
-        b = QPushButton("← Voltar ao painel")
-        b.setObjectName("btnGhost")
+        # O cabecalho e uma FAIXA pintada, nao uma linha solta de widgets: ele separa
+        # "onde estou" de "o que estou decidindo", e o Voltar perde a borda para nao competir
+        # com o botao de aprovar, que e a unica acao de verdade desta tela.
+        cab = QFrame()
+        cab.setObjectName("filaCab")
+        topo = QHBoxLayout(cab)
+        topo.setContentsMargins(14, 9, 16, 9)
+        topo.setSpacing(12)
+        b = QPushButton("← Voltar")
+        b.setObjectName("btnVoltar")
         b.setCursor(Qt.CursorShape.PointingHandCursor)
         b.clicked.connect(on_voltar)
         topo.addWidget(b)
@@ -405,7 +471,7 @@ class _Fila(QWidget):
         self.lbl_cont.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_cont.setStyleSheet(f"color:{MUTED};font-size:12.5px;background:transparent;")
         topo.addWidget(self.lbl_cont)
-        v.addLayout(topo)
+        v.addWidget(cab)
 
         corpo = QHBoxLayout()
         corpo.setSpacing(14)
@@ -462,11 +528,20 @@ class _Fila(QWidget):
 
     # ── detalhe ──
     # ── detalhe ──
-    def _rotulo(self, txt):
-        """Rótulo em caixa alta pequena: dá hierarquia sem gastar mais uma cor."""
+    def _rotulo(self, txt, cor=MUTED):
+        """Rótulo em caixa alta pequena: dá hierarquia sem gastar mais uma cor.
+
+        O verde é reservado para o que o supervisor escreveu — é a informação que o PCM está
+        ali para conferir, e ela precisa saltar do resto da ficha."""
         l = QLabel(txt.upper())
         l.setStyleSheet("color:%s;font-size:10.5px;font-weight:700;letter-spacing:0.8px;"
-                        "background:transparent;" % MUTED)
+                        "background:transparent;" % cor)
+        return l
+
+    def _fixo(self, txt):
+        """A palavra que rotula um valor editável na mesma linha ('Técnico:', 'Data:')."""
+        l = QLabel(txt)
+        l.setStyleSheet("color:%s;font-size:13px;font-weight:600;background:transparent;" % TEXT)
         return l
 
     def _valor(self, txt=""):
@@ -498,6 +573,7 @@ class _Fila(QWidget):
         ficha.setVerticalSpacing(3)
         self.v_solicitante = self._valor()
         self.v_aberta = self._valor()
+        self.v_aberta.setWordWrap(False)      # "02/09/2026 20:16" em duas linhas nao ajuda ninguem
         self.v_ativo = self._valor()
         self.v_usina = self._valor()
         for col, rot, val in ((0, "Solicitante", self.v_solicitante),
@@ -507,7 +583,10 @@ class _Fila(QWidget):
             ficha.addWidget(val, 1, col)
         ficha.addWidget(self._rotulo("Usina"), 2, 0)
         ficha.addWidget(self.v_usina, 3, 0, 1, 3)
-        ficha.setColumnStretch(2, 1)
+        # as tres colunas dividem a largura por igual. Antes so a ultima esticava, entao
+        # SOLICITANTE e ABERTA EM ficavam espremidos na esquerda e a data quebrava em duas linhas.
+        for c in (0, 1, 2):
+            ficha.setColumnStretch(c, 1)
         self.det.addLayout(ficha)
 
         # ── o que o supervisor sugeriu, e que o PCM confirma ou troca ──
@@ -516,25 +595,38 @@ class _Fila(QWidget):
         cxv = QVBoxLayout(cx)
         cxv.setContentsMargins(16, 13, 16, 14)
         cxv.setSpacing(9)
-        cxv.addWidget(self._rotulo("Sugerido pelo supervisor"))
-        self.lbl_sug = QLabel("")
-        self.lbl_sug.setStyleSheet("color:%s;font-size:13px;background:transparent;" % TEXT)
-        self.lbl_sug.setWordWrap(True)
-        self.lbl_sug.setMinimumWidth(1)
-        self.lbl_sug.setTextFormat(Qt.TextFormat.RichText)
-        cxv.addWidget(self.lbl_sug)
+        cxv.addWidget(self._rotulo("Sugerido pelo supervisor", GREEN))
+
+        # Uma linha só, e cada valor vira campo ao ser clicado. O responsável da OS É o técnico
+        # sugerido — tê-los em dois campos distantes fazia parecer decisões diferentes, e o
+        # combo aberto o tempo todo dava peso de formulário a algo que quase sempre é só
+        # confirmar o que o supervisor já escreveu.
         lin = QHBoxLayout()
-        lin.setSpacing(10)
-        r = self._rotulo("Responsável da OS *")
-        r.setFixedWidth(150)
-        lin.addWidget(r)
-        # O responsável é OBRIGATÓRIO para a OS nascer numerada (fase 2 do work_order_insert).
-        # Fica AQUI, dentro da sugestão, porque ele nasce do técnico que o supervisor indicou —
-        # separar os dois em campos distantes faria parecer que são decisões diferentes.
+        lin.setSpacing(8)
+        lin.addWidget(self._fixo("Técnico:"))
         self.cb_resp = QComboBox()
         self.cb_resp.addItem("— selecione —", None)
-        lin.addWidget(self.cb_resp, 1)
+        self.cb_resp.setMinimumWidth(210)
+        self.ed_tecnico = _CampoClicavel(self.cb_resp, "—")
+        lin.addWidget(self.ed_tecnico)
+        lin.addSpacing(14)
+        lin.addWidget(self._fixo("Data pretendida:"))
+        self.de_data = QDateEdit()
+        self.de_data.setCalendarPopup(True)
+        self.de_data.setDisplayFormat("dd/MM/yyyy")
+        self.de_data.setDate(QDate.currentDate())
+        self.ed_data = _CampoClicavel(self.de_data, "—")
+        lin.addWidget(self.ed_data)
+        lin.addSpacing(10)
+        amb = QLabel("ambos editáveis")
+        amb.setStyleSheet("color:%s;font-size:11.5px;background:transparent;" % MUTED)
+        lin.addWidget(amb)
+        lin.addStretch(1)
         cxv.addLayout(lin)
+
+        # continua existindo para quem lia o resumo em texto (e para os testes)
+        self.lbl_sug = QLabel("")
+        self.lbl_sug.setVisible(False)
         self.det.addWidget(cx)
 
         # ── tema ──
@@ -548,6 +640,7 @@ class _Fila(QWidget):
         self.det.addLayout(topo_t)
 
         self.cb_tema = QComboBox()
+        self.cb_tema.setObjectName("cbTema")
         self.cb_tema.addItem("— sem tema —", "")
         for chave, nome in sp.temas():
             self.cb_tema.addItem(nome, chave)
@@ -598,6 +691,8 @@ class _Fila(QWidget):
         self.b_devolver.setEnabled(on)
         self.cb_tema.setEnabled(on)
         self.cb_resp.setEnabled(on)
+        self.ed_tecnico.setEnabled(on)
+        self.ed_data.setEnabled(on)
 
     # ── carga ──
     def set_itens(self, itens, assets, selecionar=None):
@@ -632,6 +727,8 @@ class _Fila(QWidget):
                 l.setText("")
             for l in (self.v_solicitante, self.v_aberta, self.v_ativo, self.v_usina):
                 l.setText("—")
+            self.ed_tecnico.lbl.setText("—")
+            self.ed_data.lbl.setText("—")
             self._habilitar(False)
             self._pintar_subs()
             return
@@ -655,12 +752,10 @@ class _Fila(QWidget):
         self.v_ativo.setText(str(s.get("ativo") or "—"))
         self.v_usina.setText(str(s.get("usina") or "—"))
         tec, dt = bloco.get("tecnico"), bloco.get("data")
-        self.lbl_sug.setText(
-            ("Técnico: <b>%s</b>&nbsp;&nbsp;&nbsp;&nbsp;Data pretendida: <b>%s</b>"
-             "&nbsp;&nbsp;<span style='color:%s'>ambos editáveis</span>"
-             % (tec or "—", dt or "—", MUTED))
-            if (tec or dt) else
-            "<span style='color:%s'>Sem sugestão de técnico ou data.</span>" % MUTED)
+        self.lbl_sug.setText("Técnico: %s · Data pretendida: %s" % (tec or "—", dt or "—"))
+        d = QDate.fromString(str(dt or ""), "dd/MM/yyyy")
+        self.de_data.setDate(d if d.isValid() else QDate.currentDate())
+        self.ed_data.lbl.setText(dt if d.isValid() else "—")
         self._pre_selecionar_responsavel(tec)
         self._habilitar(True)
         self._pintar_subs()
@@ -683,12 +778,17 @@ class _Fila(QWidget):
         alvo = (nome or "").strip().lower()
         if not alvo:
             self.cb_resp.setCurrentIndex(0)
+            self.ed_tecnico.atualizar()
             return
         for i in range(self.cb_resp.count()):
             if self.cb_resp.itemText(i).strip().lower() == alvo:
                 self.cb_resp.setCurrentIndex(i)
+                self.ed_tecnico.atualizar()
                 return
         self.cb_resp.setCurrentIndex(0)
+        # o nome sugerido aparece mesmo sem casar na lista: some-lo faria parecer que o
+        # supervisor nao sugeriu ninguem, quando ele sugeriu alguem que nao esta cadastrado
+        self.ed_tecnico.lbl.setText(nome or "—")
 
     def _pintar_subs(self):
         while self.subs_v.count():
@@ -698,6 +798,9 @@ class _Fila(QWidget):
                 w.setParent(None)
                 w.deleteLater()
         tema = self.cb_tema.currentData() or ""
+        self.cb_tema.setProperty("temado", "1" if tema else "0")
+        self.cb_tema.style().unpolish(self.cb_tema)
+        self.cb_tema.style().polish(self.cb_tema)
         cl = sp.classificacao(tema) if tema else {}
         self.lbl_classif.setText(
             ("Classificação 1: <b style='color:%s'>%s</b>&nbsp;&nbsp;"
@@ -868,6 +971,7 @@ class _Hub(QWidget):
         self._ir = ir
         self._anims = []
         self._aberto = False
+        self._entrou = False
         v = QVBoxLayout(self)
         v.setContentsMargins(28, 26, 28, 26)
         v.setSpacing(16)
@@ -919,28 +1023,46 @@ class _Hub(QWidget):
         self.sub.setVisible(True)
         QTimer.singleShot(0, self._animar)
 
-    def _animar(self):
-        """Sobe 14 px e aparece. Guarda a referencia do grupo: animacao sem dono e coletada no
-        meio e o widget congela na posicao inicial."""
-        self._anims = []
-        for k, c in enumerate(self._subcards):
+    # A referencia do anime.js que o Levi mandou: createTimeline().add(..., stagger(100)).
+    # Aqui e Qt, entao o equivalente e um grupo paralelo por card disparado com atraso crescente.
+    # Os numeros vem de la: 100 ms de stagger, e o deslocamento em Y como movimento principal.
+    STAGGER = 100
+    DUR = 340
+    SOBE = 22
+
+    def _animar(self, cards=None):
+        """Entra subindo, com um leve passar do ponto no fim (OutBack).
+
+        Guarda a referencia do grupo: animacao sem dono e coletada no meio do caminho e o widget
+        congela na posicao inicial — some da tela sem erro nenhum."""
+        for k, c in enumerate(cards or self._subcards):
             ef = QGraphicsOpacityEffect(c)
             c.setGraphicsEffect(ef)
             fim = c.pos()
             g = QParallelAnimationGroup(c)
             a1 = QPropertyAnimation(ef, b"opacity", g)
-            a1.setDuration(220)
+            a1.setDuration(self.DUR)
             a1.setStartValue(0.0)
             a1.setEndValue(1.0)
+            a1.setEasingCurve(QEasingCurve.Type.OutCubic)
             a2 = QPropertyAnimation(c, b"pos", g)
-            a2.setDuration(220)
-            a2.setStartValue(QPoint(fim.x(), fim.y() + 14))
+            a2.setDuration(self.DUR)
+            a2.setStartValue(QPoint(fim.x(), fim.y() + self.SOBE))
             a2.setEndValue(fim)
-            a2.setEasingCurve(QEasingCurve.Type.OutCubic)
+            # OutBack passa alguns pixels do destino e volta — e o que da a sensacao de peso
+            # que a curva puramente desacelerada nao tem.
+            a2.setEasingCurve(QEasingCurve.Type.OutBack)
             g.addAnimation(a1)
             g.addAnimation(a2)
-            QTimer.singleShot(k * 60, g.start)
+            QTimer.singleShot(k * self.STAGGER, g.start)
             self._anims.append(g)
+
+    def showEvent(self, e):
+        """Os dois cards de cima tambem entram animados, uma vez por abertura do hub."""
+        super().showEvent(e)
+        if not self._entrou:
+            self._entrou = True
+            QTimer.singleShot(0, lambda: self._animar([self.c_nova, self.c_pcm]))
 
     def recolher(self):
         self._aberto = False
@@ -986,6 +1108,18 @@ QLabel#subsCab { color:#8a90a2; font-size:11.5px; padding:10px 14px;
   border-bottom:1px solid #212840; background:transparent; }
 QFrame#subLinha { border-bottom:1px solid #1b2235; background:transparent; }
 QFrame#subLinha[ultima="1"] { border-bottom:none; }
+
+QFrame#filaCab { background:#141b2c; border:1px solid #232a3d; border-radius:10px; }
+QPushButton#btnVoltar { background:transparent; border:none; color:#8a90a2; font-size:13px;
+  font-weight:600; padding:2px 4px; min-height:0; }
+QPushButton#btnVoltar:hover { color:#e6e8ef; }
+/* valor que vira campo ao clicar: sublinhado pontilhado e o convite, sem virar botao */
+QLabel#valorEditavel { color:#e8ebf2; font-size:13px; background:transparent;
+  border-bottom:1px dashed #39405a; padding:1px 2px; }
+QLabel#valorEditavel:hover { color:#ffffff; border-bottom:1px dashed #8fce3f; }
+QLabel#valorEditavel:disabled { color:#5a6072; border-bottom:1px dashed #262d42; }
+/* tema escolhido = borda verde: e o campo que decide o checklist da OS */
+QComboBox#cbTema[temado="1"] { border:1px solid #8fce3f; }
 """)
         self._assets = []
         self._wresp = None   # a thread precisa de dono vivo (ver steps/CLAUDE.md)
