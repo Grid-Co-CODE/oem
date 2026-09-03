@@ -308,11 +308,31 @@ class _CartaoFila(QFrame):
         v.addWidget(quem)
 
         tema = (sp.parse(s.get("observacao")) or {}).get("tema") or ""
-        chip = QLabel((sp.TEMAS.get(tema) or {}).get("nome") or tema if tema else "sem tema")
-        chip.setObjectName("chipTema" if tema else "chipVazio")
-        chip.setWordWrap(True)
-        chip.setMinimumWidth(1)
-        v.addWidget(chip, 0, Qt.AlignmentFlag.AlignLeft)
+        # O chip NAO quebra linha: ele tem fundo arredondado com padding desenhado para UMA
+        # linha, e "Protecao — transformador e cabine" virava duas (28 px contra 15) — o fundo
+        # ficava torto e passava por cima da borda do cartao. Texto longo e aparado com "…".
+        self._chip = QLabel()
+        self._chip_txt = ((sp.TEMAS.get(tema) or {}).get("nome") or tema) if tema else "sem tema"
+        self._chip.setObjectName("chipTema" if tema else "chipVazio")
+        self._chip.setWordWrap(False)
+        self._chip.setMinimumWidth(1)
+        self._chip.setToolTip(self._chip_txt)
+        f = self._chip.font()
+        f.setPixelSize(11)
+        self._chip.setFont(f)
+        v.addWidget(self._chip, 0, Qt.AlignmentFlag.AlignLeft)
+        self._aparar_chip()
+
+    def _aparar_chip(self):
+        """Apara o nome do tema na largura que sobra. O padding do chip (8 px de cada lado) e a
+        margem do cartao entram na conta — sem isso o texto encosta na borda."""
+        disp = max(40, self.width() - 26 - 20)
+        fm = self._chip.fontMetrics()
+        self._chip.setText(fm.elidedText(self._chip_txt, Qt.TextElideMode.ElideRight, disp))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._aparar_chip()
 
     def marcar(self, ativo: bool):
         self.setProperty("sel", "1" if ativo else "0")
@@ -953,10 +973,13 @@ QFrame#filaCard { background:#141b2c; border:1px solid #212840; border-radius:9p
 QFrame#filaCard:hover { border-color:#2c3550; }
 QFrame#filaCard[sel="1"] { background:#18203a; border-left:3px solid #8fce3f;
   border-top-color:#2c3550; }
+/* sem font-size aqui de proposito: o QSS venceria o setFont e o fontMetrics() do rotulo
+   passaria a mentir — media 403 px num texto que pinta com 150, e o elide comia o nome do
+   tema sem necessidade. O tamanho vai por setFont, em _CartaoFila. */
 QLabel#chipTema { background:rgba(143,206,63,0.14); color:#a9d96a; border-radius:5px;
-  padding:2px 8px; font-size:10.5px; font-weight:600; }
+  padding:2px 8px; font-weight:600; }
 QLabel#chipVazio { background:rgba(138,144,162,0.12); color:#8a90a2; border-radius:5px;
-  padding:2px 8px; font-size:10.5px; }
+  padding:2px 8px; }
 QFrame#boxSug { background:#141b2c; border:1px solid #232a3d; border-radius:10px; }
 QFrame#boxSubs { background:#141b2c; border:1px solid #232a3d; border-radius:10px; }
 QLabel#subsCab { color:#8a90a2; font-size:11.5px; padding:10px 14px;

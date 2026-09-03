@@ -201,3 +201,22 @@ def test_a_fila_reaproveita_os_tecnicos_do_formulario(qapp):
     t = SolicPcmTab()
     t.nova._set_tecnicos(PESSOAS)
     assert t._pessoas() == PESSOAS
+
+
+# ── o chip do tema no cartão da fila ─────────────────────────────────────────
+def test_o_chip_do_tema_nunca_quebra_linha(qapp):
+    """O chip tem fundo arredondado com padding desenhado para UMA linha. "Proteção —
+    transformador e cabine" virava duas (28 px contra 15), o fundo saía torto e passava por cima
+    da borda do cartão. Nome que não cabe é aparado com "…", e o nome inteiro fica no tooltip —
+    aparar sem tooltip esconderia informação."""
+    from steps.solic_pcm import _CartaoFila
+    for tema in ("", "protecao_transformador", "vegetacao", "nobreak"):
+        obs = sp.observacao_com_bloco("x", {"tema": tema}) if tema else ""
+        c = _CartaoFila({"id_code": 1, "usina": "UFV Tucano", "ativo": "Nobreak 1",
+                         "descricao": "x", "observacao": obs, "criado_por": "F",
+                         "data": "2026-09-02", "status": "Aberta"}, lambda *_: None)
+        assert c._chip.wordWrap() is False
+        assert "\n" not in c._chip.text()
+        nome = (sp.TEMAS.get(tema) or {}).get("nome") or "sem tema"
+        assert c._chip.toolTip() == nome          # nada se perde ao aparar
+        assert c._chip.text() == nome or c._chip.text().endswith("…")
