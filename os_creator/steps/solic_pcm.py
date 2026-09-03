@@ -16,13 +16,13 @@ O QUE ESTE FLUXO CONSERTA (medido em 02/09 sobre 2.500 solicitações e 414 OS):
 
 A aprovação aqui NÃO cria um passo novo: dá lugar melhor a um passo que já acontece fora do app.
 """
-from PyQt6.QtCore import (Qt, QSize, QTimer, QPoint, QDate, QEasingCurve, QPropertyAnimation,
+from PyQt6.QtCore import (Qt, QSize, QTimer, QPoint, QRect, QDate, QEasingCurve, QPropertyAnimation,
                           QParallelAnimationGroup)
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QColor
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QStackedWidget, QScrollArea, QFrame, QMessageBox, QComboBox,
                              QGridLayout, QLineEdit, QGraphicsOpacityEffect, QSizePolicy,
-                             QDateEdit, QStackedLayout)
+                             QDateEdit, QStackedLayout, QGraphicsDropShadowEffect)
 
 from datetime import datetime
 
@@ -1021,40 +1021,115 @@ class _Fila(QWidget):
             "conta do PCM antes de entrar.")
 
 
+class _Elevavel(QWidget):
+    """Moldura que segura UM card e deixa ele se mover dentro dela.
+
+    Existe por uma razao unica e chata: em Qt, mexer na posicao de um widget que esta dentro de
+    um QLayout nao adianta — a cada ciclo o layout devolve o widget para o lugar calculado, e a
+    animacao roda por baixo sem aparecer (foi assim que 28 quadros gravados sairam identicos).
+    Quem entra no layout e ESTA moldura; o card mora aqui dentro, sem layout nenhum, e por isso
+    pode subir no hover, afundar no clique e entrar deslizando sem ninguem contrariar.
+
+    A folga de RESERVA px embaixo e o espaco para onde o card sobe — sem ela a elevacao seria
+    cortada pela borda da moldura."""
+
+    RESERVA = 6
+
+    def __init__(self, card):
+        super().__init__()
+        self.card = card
+        card.setParent(self)
+        self._elevado = False
+        self._anim = None
+
+    def sizeHint(self):
+        h = self.card.sizeHint()
+        return QSize(h.width(), h.height() + self.RESERVA)
+
+    def minimumSizeHint(self):
+        h = self.card.minimumSizeHint()
+        return QSize(h.width(), h.height() + self.RESERVA)
+
+    def _repouso(self):
+        return QRect(0, self.RESERVA, self.width(), max(0, self.height() - self.RESERVA))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self._anim is None or self._anim.state() != QPropertyAnimation.State.Running:
+            self.card.setGeometry(self._repouso())
+
+    def _mover(self, destino, ms, curva=QEasingCurve.Type.OutCubic):
+        a = QPropertyAnimation(self.card, b"geometry", self)
+        a.setDuration(ms)
+        a.setStartValue(self.card.geometry())
+        a.setEndValue(destino)
+        a.setEasingCurve(curva)
+        self._anim = a
+        a.start()
+
+    # ── hover: sobe 4 px e acende o brilho verde ──
+    def elevar(self, on):
+        if on == self._elevado:
+            return
+        self._elevado = on
+        r = self._repouso()
+        self._mover(r.translated(0, -4) if on else r, 300)
+        if on:
+            g = QGraphicsDropShadowEffect(self.card)
+            g.setBlurRadius(24)
+            g.setOffset(0, 8)
+            g.setColor(QColor(138, 224, 0, 38))     # o verde neon da borda, a 15%
+            self.card.setGraphicsEffect(g)
+        else:
+            self.card.setGraphicsEffect(None)
+
+    # ── clique: afunda 3%, como o scale(0.97) ──
+    def afundar(self, on):
+        r = self._repouso()
+        if self._elevado:
+            r = r.translated(0, -4)
+        if on:
+            dx, dy = int(r.width() * 0.015), int(r.height() * 0.015)
+            r = r.adjusted(dx, dy, -dx, -dy)
+        self._mover(r, 100)
+
+
 class _CardBotao(QFrame):
     """Card-botao do hub, na MESMA linguagem dos cards da tela inicial do app: icone num quadrado
     verde translucido, titulo, subtitulo, risco verde embaixo e a seta no canto.
 
     Nao e enfeite: quem abre esta aba acabou de sair daquela tela, e repetir a forma diz "isto e
-    a mesma coisa, um nivel abaixo". A primeira versao era um retangulo cinza com texto — sem
-    cor, sem hierarquia e sem parentesco nenhum com o resto do app."""
+    a mesma coisa, um nivel abaixo"."""
 
     def __init__(self, titulo, sub, on_click, icone="grid", alto=True):
         super().__init__()
         self.setObjectName("hubCard")
         self.setProperty("alto", "1" if alto else "0")
+        self.setProperty("ativo", "0")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._on_click = on_click
+        self.moldura = None                     # preenchido pelo _Elevavel
         v = QVBoxLayout(self)
-        v.setContentsMargins(18, 16, 18, 14)
+        v.setContentsMargins(20, 18, 20, 16)
         v.setSpacing(4)
 
         topo = QHBoxLayout()
         topo.setSpacing(8)
-        sq = QLabel()
-        lado = 46 if alto else 34
-        sq.setFixedSize(lado, lado)
-        sq.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sq.setObjectName("hubIcone")
-        sq.setPixmap(icone_pix(icone, GREEN, 24 if alto else 18))
-        topo.addWidget(sq)
+        self.sq = QLabel()
+        lado = 48 if alto else 34
+        self.sq.setFixedSize(lado, lado)
+        self.sq.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sq.setObjectName("hubIcone")
+        self.sq.setPixmap(icone_pix(icone, GREEN, 26 if alto else 18))
+        topo.addWidget(self.sq)
         topo.addStretch(1)
         v.addLayout(topo)
-        v.addSpacing(8 if alto else 4)
+        v.addSpacing(10 if alto else 4)
 
         t = QLabel(titulo)
-        t.setStyleSheet("font-size:%dpx;font-weight:600;color:%s;background:transparent;"
-                        "border:none;" % (17 if alto else 14.5, TEXT))
+        t.setStyleSheet("font-size:%spx;font-weight:600;color:%s;background:transparent;"
+                        "border:none;" % ("17.5" if alto else "14.5", TEXT))
         v.addWidget(t)
         d = QLabel(sub)
         d.setWordWrap(True)
@@ -1072,27 +1147,57 @@ class _CardBotao(QFrame):
         a.setStyleSheet("background:transparent;border:none;")
         seta.addWidget(a)
         v.addLayout(seta)
+        # +32 px de altura: com dois cards so, a tela ficava vazia embaixo
         if alto:
-            self.setMinimumHeight(158)
+            self.setMinimumHeight(190)
+
+    def marcar_ativo(self, on):
+        """Estado 'este foi o que voce clicou' — a borda verde de baixo engorda e o icone acende.
+
+        Sem isso os tres cards novos brotam sem dizer de onde vieram."""
+        self.setProperty("ativo", "1" if on else "0")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    # ── eventos que a moldura traduz em movimento ──
+    def enterEvent(self, e):
+        super().enterEvent(e)
+        if self.moldura:
+            self.moldura.elevar(True)
+
+    def leaveEvent(self, e):
+        super().leaveEvent(e)
+        if self.moldura:
+            self.moldura.elevar(False)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self.moldura:
+            self.moldura.afundar(True)
 
     def mouseReleaseEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton and self._on_click:
+        if e.button() != Qt.MouseButton.LeftButton:
+            return
+        if self.moldura:
+            self.moldura.afundar(False)
+        if self.rect().contains(e.position().toPoint()) and self._on_click:
             self._on_click()
+
+
+def _com_moldura(card):
+    m = _Elevavel(card)
+    card.moldura = m
+    return m
 
 
 class _Hub(QWidget):
     """A tela de entrada da aba: dois caminhos, e o do PCM abre os tres destinos dele."""
 
-    # Os numeros e a IDEIA vem da referencia de anime.js que o Levi mandou — createScope com
-    # `mediaQueries`, e o corpo da animacao lendo `matches` para decidir o EIXO do movimento:
-    #     x: isSmall ? 0 : [...], y: isSmall ? [...] : 0
-    # Aqui nao ha CSS nem media query, entao o equivalente honesto e a propria geometria do
-    # widget: quando ele esta largo os cards estao lado a lado e o movimento natural e vertical;
-    # quando esta estreito eles empilham e o movimento passa a ser horizontal. E o mesmo
-    # principio — a animacao acompanha o formato da tela em vez de ser fixa.
-    STAGGER = 100
-    DUR = 340
-    DESLOC = 22
+    # Os numeros vem do CSS que o Levi mandou: cascata de 75 ms entre os cards, 400 ms de
+    # duracao, 15 px de deslocamento. A ideia de trocar o EIXO conforme o formato vem da doc de
+    # `mediaQueries` do anime.js — la o corpo da animacao le `matches` e decide entre x e y.
+    STAGGER = 75
+    DUR = 400
+    DESLOC = 15
     LARG_CARD = 300         # largura confortavel de um card do PCM; base do limiar de refluxo
 
     def __init__(self, ir):
@@ -1113,8 +1218,7 @@ class _Hub(QWidget):
         v.addWidget(d)
 
         # GRADE, e nao QHBoxLayout: e ela que permite o refluxo. Com layout horizontal fixo o
-        # widget tinha largura minima de 979 px e nunca chegava a ser "estreito" — o galho que
-        # troca o eixo da animacao era codigo morto.
+        # widget tinha largura minima de 979 px e nunca chegava a ser "estreito".
         self.g_topo = QGridLayout()
         self.g_topo.setSpacing(14)
         self.c_nova = _CardBotao("Criar Nova Solicitação",
@@ -1123,19 +1227,21 @@ class _Hub(QWidget):
         self.c_pcm = _CardBotao("Área PCM",
                                 "Conferir a fila, aprovar e acompanhar o que virou OS",
                                 self._abrir_pcm, icone="calcheck")
+        self.m_nova, self.m_pcm = _com_moldura(self.c_nova), _com_moldura(self.c_pcm)
         v.addLayout(self.g_topo)
 
         self.sub = QWidget()
         self.g_sub = QGridLayout(self.sub)
         self.g_sub.setContentsMargins(0, 0, 0, 0)
         self.g_sub.setSpacing(12)
-        self._subcards = []
+        self._subcards, self._submold = [], []
         for rot, txt, alvo, ico in (
                 ("Painel", "O que está pendente, em andamento e finalizado", "painel", "grid"),
                 ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema", "fila", "list"),
                 ("Histórico", "Tudo o que já passou por aqui", "hist", "clock")):
-            self._subcards.append(_CardBotao(rot, txt, lambda a=alvo: self._ir(a),
-                                             icone=ico, alto=False))
+            c = _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, alto=False)
+            self._subcards.append(c)
+            self._submold.append(_com_moldura(c))
         self.sub.setVisible(False)
         v.addWidget(self.sub)
         v.addStretch(1)
@@ -1153,11 +1259,13 @@ class _Hub(QWidget):
             self._ir("fila")
             return
         self._aberto = True
+        self.c_pcm.marcar_ativo(True)
         self.sub.setVisible(True)
         QTimer.singleShot(0, self._animar)
 
     def recolher(self):
         self._aberto = False
+        self.c_pcm.marcar_ativo(False)
         self.sub.setVisible(False)
 
     # ── refluxo ──
@@ -1165,24 +1273,23 @@ class _Hub(QWidget):
         """Coloca os cards em coluna ou em linha, conforme a largura.
 
         E a metade que faltava para a referencia de `mediaQueries` fazer sentido: la o LAYOUT
-        muda junto, e por isso trocar o eixo do movimento significa alguma coisa. Sem isto eu
-        so trocava o eixo de uma animacao numa tela que nunca mudava de forma."""
+        muda junto, e por isso trocar o eixo do movimento significa alguma coisa."""
         estreito = self._matches()["estreito"]
         if estreito == self._estreito:
             return False
         self._estreito = estreito
-        for g, itens in ((self.g_topo, [self.c_nova, self.c_pcm]),
-                         (self.g_sub, self._subcards)):
+        for g, itens in ((self.g_topo, [self.m_nova, self.m_pcm]),
+                         (self.g_sub, self._submold)):
             for w in itens:
                 g.removeWidget(w)
             for i in range(g.columnCount()):
                 g.setColumnStretch(i, 0)
             for i, w in enumerate(itens):
                 g.addWidget(w, i if estreito else 0, 0 if estreito else i)
+            # 50/50 entre os dois de cima, 1/3 para cada um dos de baixo — o espaco util
+            # dividido por igual, e nao pelo tamanho do texto de cada card
             for i in range(1 if estreito else len(itens)):
                 g.setColumnStretch(i, 1)
-            # sem o activate() as posicoes so mudam no proximo ciclo do layout, e quem olhar
-            # logo depois do resize ainda ve os cards no arranjo antigo
             g.invalidate()
             g.activate()
         return not inicial
@@ -1198,12 +1305,8 @@ class _Hub(QWidget):
     def _limiar(self):
         """A largura a partir da qual os tres cards ainda cabem lado a lado, com folga.
 
-        Sai do tamanho que os PROPRIOS cards pedem, e nao de um numero magico: um limiar fixo
-        envelhece na primeira vez que alguem mudar o texto de um card, e volta a ser o galho
-        morto que era antes."""
-        # NAO usar sizeHint(): os rotulos tem wordWrap e minimumWidth(1), entao o sizeHint do
-        # card colapsa para ~110 px e o limiar sairia em 383 — abaixo de qualquer largura real.
-        # LARG_CARD e a largura em que o card fica CONFORTAVEL, medida no proprio desenho.
+        NAO usar sizeHint(): os rotulos tem wordWrap e minimumWidth(1), entao o sizeHint do card
+        colapsa para ~110 px e o limiar sairia em 383 — abaixo de qualquer largura real."""
         return (self.LARG_CARD * len(self._subcards)
                 + self.g_sub.spacing() * (len(self._subcards) - 1) + 56)
 
@@ -1211,47 +1314,34 @@ class _Hub(QWidget):
         """O nosso `self.matches`: o que vale de verdade sobre o formato atual da tela."""
         return {"estreito": self.width() < self._limiar()}
 
-    def _animar(self, cards=None):
-        """Entra deslocando, com um leve passar do ponto no fim (OutBack).
+    def _animar(self, molduras=None):
+        """fadeSlideUp em cascata — a traducao do @keyframes que o Levi mandou.
 
-        Guarda a referencia do grupo: animacao sem dono e coletada no meio do caminho e o widget
-        congela na posicao inicial — some da tela sem erro nenhum."""
+        O card e movido DENTRO da moldura, entao nenhum layout desfaz o movimento no meio."""
         estreito = self._matches()["estreito"]
-        alvos = list(cards or self._subcards)
-        # O LAYOUT TEM DE SAIR DO CAMINHO. Animar `pos` de um widget que esta dentro de um
-        # QLayout nao funciona: a cada ciclo o layout recoloca o widget no lugar calculado, e a
-        # animacao roda "por baixo" sem nunca aparecer. Foi assim que 28 quadros gravados sairam
-        # identicos. Desligamos o layout durante a entrada e religamos no fim — meio segundo sem
-        # reposicionar nao muda nada, e e o que faz o movimento existir na tela.
-        lay = alvos[0].parentWidget().layout() if alvos and alvos[0].parentWidget() else None
-        if lay is not None:
-            lay.activate()          # posicoes finais calculadas ANTES de congelar
-            lay.setEnabled(False)
-            QTimer.singleShot(self.DUR + self.STAGGER * len(alvos) + 60,
-                              lambda: lay.setEnabled(True))
-        for k, c in enumerate(alvos):
-            ef = QGraphicsOpacityEffect(c)
-            c.setGraphicsEffect(ef)
-            fim = c.pos()
-            # eixo escolhido pelo formato, como no exemplo da doc: empilhado entra pelo lado,
-            # lado a lado entra por baixo
-            ini = (QPoint(fim.x() - self.DESLOC, fim.y()) if estreito
-                   else QPoint(fim.x(), fim.y() + self.DESLOC))
-            g = QParallelAnimationGroup(c)
+        for k, m in enumerate(molduras or self._submold):
+            m.card.setGeometry(m._repouso())
+            ef = QGraphicsOpacityEffect(m.card)
+            m.card.setGraphicsEffect(ef)
+            fim = m._repouso()
+            ini = (fim.translated(-self.DESLOC, 0) if estreito
+                   else fim.translated(0, self.DESLOC))
+            g = QParallelAnimationGroup(m)
             a1 = QPropertyAnimation(ef, b"opacity", g)
             a1.setDuration(self.DUR)
             a1.setStartValue(0.0)
             a1.setEndValue(1.0)
             a1.setEasingCurve(QEasingCurve.Type.OutCubic)
-            a2 = QPropertyAnimation(c, b"pos", g)
+            a2 = QPropertyAnimation(m.card, b"geometry", g)
             a2.setDuration(self.DUR)
             a2.setStartValue(ini)
             a2.setEndValue(fim)
-            # OutBack passa alguns pixels do destino e volta — e o que da a sensacao de peso
-            # que a curva puramente desacelerada nao tem.
-            a2.setEasingCurve(QEasingCurve.Type.OutBack)
+            a2.setEasingCurve(QEasingCurve.Type.OutCubic)
             g.addAnimation(a1)
             g.addAnimation(a2)
+            # o efeito sai no fim: um widget so aceita UM QGraphicsEffect, e o proximo a
+            # precisar dele e o brilho verde do hover
+            g.finished.connect(lambda c=m.card: c.setGraphicsEffect(None))
             QTimer.singleShot(k * self.STAGGER, g.start)
             self._anims.append(g)
 
@@ -1260,7 +1350,7 @@ class _Hub(QWidget):
         super().showEvent(e)
         if not self._entrou:
             self._entrou = True
-            QTimer.singleShot(0, lambda: self._animar([self.c_nova, self.c_pcm]))
+            QTimer.singleShot(0, lambda: self._animar([self.m_nova, self.m_pcm]))
 
 
 class SolicPcmTab(QWidget):
@@ -1285,6 +1375,11 @@ QFrame#hubCard { background:#161d30; border:1px solid #232a3d;
   border-bottom:2px solid #8fce3f; border-radius:14px; }
 QFrame#hubCard:hover { border:1px solid #8fce3f; border-bottom:2px solid #8fce3f;
   background:#18203a; }
+/* ATIVO: e o card que abriu os tres de baixo. A borda engorda e o icone acende, para o olho
+   ligar o que apareceu a quem foi clicado. */
+QFrame#hubCard[ativo="1"] { border:1px solid #8fce3f; border-bottom:4px solid #A6E22E;
+  background:#18203a; }
+QFrame#hubCard[ativo="1"] QLabel#hubIcone { background:rgba(166,226,46,0.30); }
 QLabel#hubIcone { background:rgba(143,206,63,0.14); border-radius:12px; border:none; }
 
 /* CELULA, nao cartao (decisao do Levi, 03/09). A fila e uma tabela: mesmo fundo da pagina,

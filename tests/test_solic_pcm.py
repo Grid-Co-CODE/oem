@@ -286,11 +286,13 @@ def test_o_hub_empilha_os_cards_quando_estreita(qapp):
     h.resize(1400, 700)
     h._reflow()
     assert h._matches()["estreito"] is False
-    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._subcards[1]))[:2] == (0, 1)   # linha 0, col 1
+    # quem entra na grade e a MOLDURA (_Elevavel), nao o card: o card mora dentro dela, sem
+    # layout, para poder subir no hover e afundar no clique sem o layout desfazer o movimento
+    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._submold[1]))[:2] == (0, 1)   # linha 0, col 1
     h.resize(700, 700)
     h._reflow()
     assert h._matches()["estreito"] is True
-    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._subcards[1]))[:2] == (1, 0)   # empilhado
+    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._submold[1]))[:2] == (1, 0)   # empilhado
 
 
 def test_o_limiar_do_refluxo_nao_e_numero_magico(qapp):
@@ -320,3 +322,29 @@ def test_o_stack_segue_a_pagina_visivel(qapp):
     assert t.stack.widget(t.HUB).sizePolicy().horizontalPolicy() != QSizePolicy.Policy.Ignored
     t.ir(t.HIST)
     assert t.stack.widget(t.HUB).sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+
+
+def test_o_card_clicado_fica_marcado_como_ativo(qapp):
+    """O usuário precisa saber de onde os três cards brotaram. Sem a marca, eles aparecem sem
+    ligação com o clique que os abriu."""
+    from steps.solic_pcm import _Hub
+    h = _Hub(lambda a: None)
+    assert h.c_pcm.property("ativo") == "0"
+    h._abrir_pcm()
+    assert h.c_pcm.property("ativo") == "1"
+    h.recolher()
+    assert h.c_pcm.property("ativo") == "0"
+
+
+def test_o_card_mora_na_moldura_e_pode_se_mover(qapp):
+    """A razão de existir do _Elevavel: em Qt, mover um widget que está dentro de um QLayout não
+    adianta — o layout o devolve ao lugar calculado a cada ciclo, e a animação roda por baixo
+    sem aparecer. Dentro da moldura, que não tem layout, o movimento sobrevive."""
+    from steps.solic_pcm import _Hub
+    h = _Hub(lambda a: None)
+    m = h._submold[0]
+    assert m.card is h._subcards[0]
+    assert m.card.parentWidget() is m
+    assert m.layout() is None                      # sem layout = ninguém desfaz o movimento
+    m.resize(400, 120)
+    assert m._repouso().y() == m.RESERVA           # folga para a elevação do hover
