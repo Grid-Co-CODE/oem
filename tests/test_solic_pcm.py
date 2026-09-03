@@ -350,3 +350,30 @@ def test_o_card_mora_na_moldura_e_pode_se_mover(qapp):
     assert m.layout() is None                      # sem layout = ninguém desfaz o movimento
     m.resize(400, 120)
     assert m._repouso().y() == m.RESERVA           # folga para a elevação do hover
+
+
+# ── o editor de subtarefas em formato de linha (03/09) ──
+def test_o_anexo_obrigatorio_e_checkbox_com_default_do_tema(qapp):
+    """O tema so da o DEFAULT: a linha do registro fotografico vem marcada, quem monta a lista
+    pode desmarcar, e o que vai para a OS e o que ficou na tela — nao o que o tema dizia."""
+    from steps.subtarefas_edit import EditorSubtarefas
+    ed = EditorSubtarefas()
+    ed.set_itens(sp.de_api(sp.subtarefas_base()))
+    foto = next(ln for ln in ed._linhas if "fotogr" in ln.ed.text().lower())
+    assert foto.chk.isChecked() is True                 # default do tema
+    assert [x["attachments_required"] for x in ed.para_api()].count(True) == 1
+    foto.chk.setChecked(False)                          # a pessoa decidiu que nao precisa
+    assert all(x["attachments_required"] is False for x in ed.para_api())
+    outra = next(ln for ln in ed._linhas if ln is not foto)
+    outra.chk.setChecked(True)                          # e exigiu foto em outra linha
+    assert sum(x["attachments_required"] for x in ed.para_api()) == 1
+
+
+def test_o_editor_carrega_o_proprio_estilo(qapp):
+    """Em Qt a folha do ancestral mais proximo vence. Com as regras no SolicPcmTab, o
+    SolicitacaoTab (que tem QSS_FORM proprio) engolia a regra de QLineEdit e os campos viravam
+    caixas de 40 px numa tela e texto na outra. O estilo tem de viajar com o editor."""
+    from steps.subtarefas_edit import EditorSubtarefas
+    ed = EditorSubtarefas()
+    assert "QLineEdit#subTexto" in ed.styleSheet()
+    assert "QCheckBox#subAnexo" in ed.styleSheet()

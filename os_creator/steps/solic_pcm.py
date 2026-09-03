@@ -412,40 +412,6 @@ class _CartaoFila(QFrame):
             self._on_click(self.dados)
 
 
-class _LinhaSub(QFrame):
-    """Uma subtarefa. O tipo do campo fica na direita, em cinza: e o que diz ao PCM se aquilo vai
-    pedir texto, numero, foto ou so um sim/nao — a diferenca entre checklist e campo em branco."""
-
-    _TIPO = {1: "Texto", 2: "Sim/Não", 3: "Numérico", 4: "Verificação"}
-
-    def __init__(self, i, x, ultima=False):
-        super().__init__()
-        self.setObjectName("subLinha")
-        if ultima:
-            self.setProperty("ultima", "1")
-        h = QHBoxLayout(self)
-        h.setContentsMargins(14, 9, 14, 9)
-        h.setSpacing(12)
-        n = QLabel(str(i))
-        n.setFixedWidth(16)
-        n.setStyleSheet("color:%s;font-size:11.5px;background:transparent;" % MUTED)
-        h.addWidget(n)
-        d = QLabel(str(x.get("description") or ""))
-        d.setStyleSheet("color:%s;font-size:12.5px;background:transparent;" % TEXT)
-        d.setWordWrap(True)
-        d.setMinimumWidth(1)
-        h.addWidget(d, 1)
-        if x.get("attachments_required"):
-            rot, cor = "anexo obrigatório", GREEN
-        elif not x.get("is_required"):
-            rot, cor = "opcional", MUTED
-        else:
-            rot, cor = self._TIPO.get(x.get("id_task_form_item_type"), ""), MUTED
-        t = QLabel(rot)
-        t.setStyleSheet("color:%s;font-size:10.5px;background:transparent;" % cor)
-        h.addWidget(t, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-
-
 class _CampoClicavel(QWidget):
     """Mostra um VALOR; ao clicar, vira o campo de edicao no mesmo lugar.
 
@@ -1474,20 +1440,6 @@ QPushButton#btnDevolver:hover { color:#e6e8ef; border-color:#3d4a6b; background:
 QPushButton#btnDevolver:disabled { color:#5a6072; border-color:#232a3d; }
 
 /* acao secundaria dentro de um item de lista: texto, nao botao */
-QLineEdit#subTexto { background:transparent; border:none; border-bottom:1px solid transparent;
-  color:#e8ebf2; font-size:12.5px; min-height:26px; max-height:26px; padding:0 2px; }
-QLineEdit#subTexto:hover { border-bottom:1px dashed #39405a; }
-QLineEdit#subTexto:focus { border-bottom:1px solid #8fce3f; }
-QComboBox#subTipo { min-height:26px; max-height:26px; font-size:11.5px; padding:0 8px; }
-/* o x tem de ser ENCONTRAVEL: em #5a6072 sobre #161d30 ele existia e ninguem via, o que
-   equivale a nao ter botao de remover */
-/* padding:0 e OBRIGATORIO aqui. A regra generica do DARK_QSS traz `padding:9px 14px`, e com
-   largura fixa de 26 px os 28 px de padding nao deixavam espaco NENHUM para o glifo: o botao
-   existia na arvore, respondia ao clique e nao pintava um pixel. */
-QPushButton#subRemover { background:transparent; border:1px solid transparent; color:#8a93a8;
-  font-size:17px; font-weight:700; min-height:24px; padding:0; border-radius:6px; }
-QPushButton#subRemover:hover { color:#ffffff; background:rgba(224,85,85,0.85);
-  border-color:#e05555; }
 QPushButton#btnLink { background:transparent; border:none; color:#8fce3f; font-size:12px;
   font-weight:600; padding:0 2px; min-height:0; text-align:right; }
 QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
