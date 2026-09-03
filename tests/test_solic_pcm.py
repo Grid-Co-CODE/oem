@@ -44,10 +44,39 @@ def test_a_regua_nao_usa_id_status():
     assert coluna_de(a) == coluna_de(b) == PENDENTE
 
 
-def test_a_aba_tem_as_quatro_paginas(qapp):
+def test_a_aba_tem_o_hub_e_as_quatro_paginas(qapp):
     t = SolicPcmTab()
-    assert t.stack.count() == 4
-    assert [b.text() for b in t._btns] == ["Painel", "Nova solicitação", "Fila do PCM", "Histórico"]
+    assert t.stack.count() == 5                 # hub + as quatro
+    assert t.stack.currentIndex() == t.HUB      # a aba abre no hub, nao numa das telas
+
+
+def test_a_ordem_da_navegacao_segue_o_fluxo(qapp):
+    """Nova solicitacao vem PRIMEIRO: quem abre a aba na maioria das vezes e o supervisor, para
+    pedir. A ordem antiga (Painel primeiro) era a ordem em que as telas foram escritas."""
+    t = SolicPcmTab()
+    assert [b.text() for b in t._btns] == ["Nova solicitação", "Painel", "Fila do PCM", "Histórico"]
+
+
+def test_o_hub_esconde_a_navegacao_e_a_traz_de_volta(qapp):
+    """Duas barras de navegacao na mesma tela e a pessoa perguntando qual das duas manda."""
+    t = SolicPcmTab()
+    assert not t._btns[0].isVisible() or t.stack.currentIndex() == t.HUB
+    t.ir(t.FILA)
+    assert all(b.isVisibleTo(t) for b in t._btns)
+    t.ir(t.HUB)
+    assert not any(b.isVisibleTo(t) for b in t._btns)
+
+
+def test_a_area_pcm_revela_os_tres_destinos(qapp):
+    """Os tres cards do PCM so aparecem depois do clique em Area PCM — e o segundo clique leva
+    direto para a fila, que e o destino de quem esta ali para aprovar."""
+    t = SolicPcmTab()
+    assert not t.hub.sub.isVisibleTo(t.hub)
+    t.hub._abrir_pcm()
+    assert t.hub.sub.isVisibleTo(t.hub)
+    assert len(t.hub._subcards) == 3            # Painel, Fila do PCM, Historico
+    t.hub._abrir_pcm()                          # segundo clique: vai direto para a fila
+    assert t.stack.currentIndex() == t.FILA
 
 
 def test_o_deep_link_cai_na_pagina_do_formulario(qapp):
