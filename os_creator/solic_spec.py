@@ -273,7 +273,19 @@ def classificacao(tema: str) -> dict:
 # fica FORA daqui de propósito: campo nativo é melhor que texto, e o bloco é para o que não tem
 # campo. O bloco carrega a data só como cópia legível para quem lê a observação no Fracttal web.
 MARCADOR = "[PCM]"
-_CAMPOS = [("Tema", "tema"), ("Técnico sugerido", "tecnico"), ("Data pretendida", "data")]
+# "Data sugerida" desde 03/09 (era "Data pretendida"). O parse aceita os DOIS rotulos: as
+# solicitacoes ja criadas trazem o nome antigo, e perder a data delas seria apagar informacao
+# que alguem escreveu.
+_CAMPOS = [("Tema", "tema"), ("Técnico sugerido", "tecnico"), ("Data sugerida", "data")]
+_ALIAS = {"data pretendida": "data"}
+
+# Rotulo legivel de cada tipo de campo da subtarefa. O PCM precisa saber se aquela linha vai
+# pedir texto, numero, foto ou um sim/nao — e a diferenca entre um checklist e um campo em branco.
+TIPO_ROTULO = {"texto": "Texto", "longo": "Texto", "num": "Numérico",
+               "simnao": "Sim/Não", "verif": "Verificação", "lista": "Lista"}
+_ROTULO_TIPO = {"texto": "texto", "numérico": "num", "numerico": "num",
+                "sim/não": "simnao", "sim/nao": "simnao", "verificação": "verif",
+                "verificacao": "verif", "lista": "lista"}
 
 
 def bloco(dados: dict) -> str:
@@ -284,6 +296,15 @@ def bloco(dados: dict) -> str:
         v = str((dados or {}).get(k) or "").strip()
         if v:
             linhas.append("%s: %s" % (rot, v))
+    # A LISTA vai no bloco porque o supervisor agora pode editar as subtarefas, e sem isso a
+    # edicao dele morreria aqui: o PCM abriria a fila e veria de novo a lista padrao do tema.
+    # Formato legivel de proposito — quem ler a observacao no Fracttal web entende sem manual.
+    subs = (dados or {}).get("subtarefas") or []
+    if subs:
+        linhas.append("Subtarefas:")
+        for x in subs:
+            linhas.append("- [%s] %s" % (TIPO_ROTULO.get(x.get("tipo", "texto"), "Texto"),
+                                         str(x.get("desc") or "").strip()))
     return "\n".join(linhas) if len(linhas) > 1 else ""
 
 
@@ -302,8 +323,15 @@ def parse(texto) -> dict:
         return "".join(c for c in s if not unicodedata.combining(c)).strip()
 
     rot2k = {_norm(r): k for r, k in _CAMPOS}
-    out = {}
+    rot2k.update({_norm(r): k for r, k in _ALIAS.items()})   # "Data pretendida", dos blocos antigos
+    out, subs = {}, []
     for linha in t.splitlines():
+        cru = linha.strip()
+        # "- [Tipo] descricao" e uma subtarefa; o resto sao os campos "Rotulo: valor"
+        if cru.startswith("- [") and "]" in cru:
+            rot, desc = cru[3:].split("]", 1)
+            subs.append({"tipo": _ROTULO_TIPO.get(_norm(rot), "texto"), "desc": desc.strip()})
+            continue
         if ":" not in linha:
             continue
         rot, val = linha.split(":", 1)
@@ -311,7 +339,32 @@ def parse(texto) -> dict:
         if k:
             v = val.strip()
             out[k] = "" if v in ("", "—") else v
+    if subs:
+        out["subtarefas"] = subs
     return out
+
+
+def para_api(subs: list) -> list:
+    """[{'tipo','desc'}] -> o formato que o Fracttal espera nas subtarefas da OS.
+
+    As tres da BASE continuam vindo de `subtarefas()`/`subtarefas_base()`; esta funcao existe
+    para o que a PESSOA escreveu, que nao passa pelo catalogo de temas."""
+    return [{"description": str(x.get("desc") or "").strip(),
+             "id_task_form_item_type": TIPO_ID.get(x.get("tipo", "texto"), 1),
+             "is_required": True,
+             "attachments_required": False}
+            for x in (subs or []) if str(x.get("desc") or "").strip()]
+
+
+def de_api(subs: list) -> list:
+    """O caminho inverso: o formato do Fracttal -> [{'tipo','desc','anexo'}] para o editor."""
+    inv = {}
+    for nome, i in TIPO_ID.items():
+        inv.setdefault(i, nome)
+    return [{"tipo": inv.get(x.get("id_task_form_item_type"), "texto"),
+             "desc": str(x.get("description") or ""),
+             "anexo": bool(x.get("attachments_required"))}
+            for x in (subs or [])]
 
 
 def observacao_com_bloco(observacao: str, dados: dict) -> str:

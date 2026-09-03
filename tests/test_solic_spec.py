@@ -124,7 +124,7 @@ def test_o_bloco_carrega_tema_tecnico_e_data():
     b = S.bloco({"tema": "tracker_motor", "tecnico": "João Vieira", "data": "05/09/2026"})
     assert b.startswith(S.MARCADOR)
     assert "Técnico sugerido: João Vieira" in b
-    assert "Data pretendida: 05/09/2026" in b
+    assert "Data sugerida: 05/09/2026" in b
 
 
 def test_bloco_vazio_nao_polui_a_observacao():
@@ -186,3 +186,36 @@ def test_titulo_limpa_o_codigo_e_os_espacos_do_nome_do_ativo():
 def test_titulo_sem_usina_nem_ativo_ainda_e_utilizavel():
     assert S.titulo("", "", "nobreak") == "Inspeção de nobreak"
     assert S.titulo("  ", "{ SO-CODIGO }", "nobreak") == "Inspeção de nobreak"
+
+
+# ── a lista de subtarefas viaja no bloco (03/09) ──
+def test_o_bloco_leva_as_subtarefas_editadas():
+    """O supervisor passou a poder editar a lista, e sem isso a edicao dele morreria na
+    criacao: o PCM abriria a fila e veria de novo a lista padrao do tema. O formato e legivel
+    de proposito — quem abre a observacao no Fracttal web entende sem manual."""
+    b = S.bloco({"tema": "nobreak", "subtarefas": [
+        {"tipo": "verif", "desc": "Verificar fixação"},
+        {"tipo": "num", "desc": "Tensão em V"}]})
+    assert "- [Verificação] Verificar fixação" in b
+    assert "- [Numérico] Tensão em V" in b
+    volta = S.parse(b)["subtarefas"]
+    assert [x["desc"] for x in volta] == ["Verificar fixação", "Tensão em V"]
+    assert [x["tipo"] for x in volta] == ["verif", "num"]
+
+
+def test_o_rotulo_antigo_da_data_continua_sendo_lido():
+    """"Data pretendida" virou "Data sugerida" em 03/09. As solicitacoes ja criadas trazem o
+    nome antigo, e perder a data delas seria apagar informacao que alguem escreveu."""
+    velho = "[PCM]" + chr(10) + "Data pretendida: 01/09/2026"
+    novo = "[PCM]" + chr(10) + "Data sugerida: 01/09/2026 14:30"
+    assert S.parse(velho)["data"] == "01/09/2026"
+    assert S.parse(novo)["data"] == "01/09/2026 14:30"
+
+
+def test_para_api_e_de_api_sao_inversos():
+    """O editor fala em {'tipo','desc'}; o Fracttal fala em id_task_form_item_type. As duas
+    conversoes tem de fechar, senao a subtarefa muda de tipo no caminho."""
+    orig = [{"tipo": "simnao", "desc": "Atividade concluida?", "anexo": False},
+            {"tipo": "num", "desc": "Tensao em V", "anexo": False}]
+    volta = S.de_api(S.para_api(orig))
+    assert [(x["tipo"], x["desc"]) for x in volta] == [(x["tipo"], x["desc"]) for x in orig]

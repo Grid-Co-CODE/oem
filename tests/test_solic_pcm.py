@@ -245,7 +245,9 @@ def test_tecnico_e_data_aparecem_como_texto_e_viram_campo(qapp):
     t.fila.set_itens([{"id_code": 1, "usina": "U", "ativo": "A", "descricao": "x",
                        "observacao": obs, "id_work_order": None, "status": "Aberta"}], [])
     assert t.fila.ed_tecnico.lbl.text() == "João Vieira"
-    assert t.fila.ed_data.lbl.text() == "05/09/2026"
+    # 08:00 e o horario que a data SEM hora recebe: os blocos criados antes de 03/09 trazem so
+    # o dia, e assumir o comeco do turno e melhor que assumir meia-noite, que leria como "ontem"
+    assert t.fila.ed_data.lbl.text() == "05/09/2026 08:00"
     assert t.fila.cb_resp.currentData() == 7          # o sugerido já é o responsável
     t.fila.ed_tecnico.abrir()
     assert t.fila.ed_tecnico._pilha.currentIndex() == 1

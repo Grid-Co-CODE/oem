@@ -16,13 +16,13 @@ O QUE ESTE FLUXO CONSERTA (medido em 02/09 sobre 2.500 solicitações e 414 OS):
 
 A aprovação aqui NÃO cria um passo novo: dá lugar melhor a um passo que já acontece fora do app.
 """
-from PyQt6.QtCore import (Qt, QSize, QTimer, QPoint, QRect, QDate, QEasingCurve, QPropertyAnimation,
+from PyQt6.QtCore import (Qt, QSize, QTimer, QPoint, QRect, QDate, QDateTime, QTime, QEasingCurve, QPropertyAnimation,
                           QParallelAnimationGroup)
 from PyQt6.QtGui import QIcon, QColor
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QStackedWidget, QScrollArea, QFrame, QMessageBox, QComboBox,
                              QGridLayout, QLineEdit, QGraphicsOpacityEffect, QSizePolicy,
-                             QDateEdit, QStackedLayout, QGraphicsDropShadowEffect)
+                             QDateTimeEdit, QStackedLayout, QGraphicsDropShadowEffect)
 
 from datetime import datetime
 
@@ -31,6 +31,7 @@ import solic_spec as sp
 from workers import ApiWorker, slot_seguro
 from steps.ui import (QSS_FORM, Card, campo, icone_pix, GREEN, GREEN_INK, MUTED, TEXT,
                       CARD, BORDER, BG, INPUT)
+from steps.subtarefas_edit import EditorSubtarefas
 from steps.solicitacao import SolicitacaoTab
 from steps.historico_solic import HistoricoSolic
 
@@ -495,7 +496,7 @@ class _CampoClicavel(QWidget):
         if isinstance(self.editor, QComboBox):
             txt = self.editor.currentText() if self.editor.currentData() else ""
         else:
-            txt = self.editor.date().toString("dd/MM/yyyy")
+            txt = self.editor.dateTime().toString("dd/MM/yyyy HH:mm")
         self.lbl.setText(txt or self._vazio)
 
     def setEnabled(self, on):
@@ -698,11 +699,12 @@ class _Fila(QWidget):
         self.ed_tecnico = _CampoClicavel(self.cb_resp, "—")
         lin.addWidget(self.ed_tecnico)
         lin.addSpacing(14)
-        lin.addWidget(self._fixo("Data pretendida:"))
-        self.de_data = QDateEdit()
+        lin.addWidget(self._fixo("Data sugerida:"))
+        # data E hora: "amanha" nao diz se e antes ou depois da parada, e o PCM programa por hora
+        self.de_data = QDateTimeEdit()
         self.de_data.setCalendarPopup(True)
-        self.de_data.setDisplayFormat("dd/MM/yyyy")
-        self.de_data.setDate(QDate.currentDate())
+        self.de_data.setDisplayFormat("dd/MM/yyyy HH:mm")
+        self.de_data.setDateTime(QDateTime.currentDateTime())
         self.ed_data = _CampoClicavel(self.de_data, "—")
         lin.addWidget(self.ed_data)
         lin.addSpacing(10)
@@ -744,12 +746,14 @@ class _Fila(QWidget):
         self.det.addWidget(self.lbl_classif)
 
         # ── as subtarefas, como lista numerada ──
-        self.box_subs = QFrame()
-        self.box_subs.setObjectName("boxSubs")
-        self.subs_v = QVBoxLayout(self.box_subs)
-        self.subs_v.setContentsMargins(0, 0, 0, 0)
-        self.subs_v.setSpacing(0)
-        self.det.addWidget(self.box_subs)
+        # O PCM edita a lista tambem. Ele e quem conhece o ativo e a equipe: o tema acerta o
+        # roteiro geral, e o ajuste fino — "neste inversor tem de medir tambem X" — so quem
+        # aprova sabe. Sem isso ele voltaria a montar a OS na mao no Fracttal web, que e
+        # exatamente o passo que esta tela existe para eliminar.
+        self.editor_subs = EditorSubtarefas(
+            "Sem tema: a OS nasce com as 3 subtarefas da base. Da para aprovar assim, e da para "
+            "acrescentar o que faltar.")
+        self.det.addWidget(self.editor_subs)
         self.lbl_subs = QLabel("")          # continua existindo p/ quem lia o resumo em texto
         self.lbl_subs.setVisible(False)
 
@@ -782,6 +786,7 @@ class _Fila(QWidget):
         self.cb_resp.setEnabled(on)
         self.ed_tecnico.setEnabled(on)
         self.ed_data.setEnabled(on)
+        self.editor_subs.set_editavel(on)
 
     # ── carga ──
     def set_itens(self, itens, assets, selecionar=None):
@@ -845,17 +850,27 @@ class _Fila(QWidget):
         self.v_usina.setText(str(s.get("usina") or "—"))
         tec, dt = bloco.get("tecnico"), bloco.get("data")
         self.lbl_sug.setText("Técnico: %s · Data pretendida: %s" % (tec or "—", dt or "—"))
-        d = QDate.fromString(str(dt or ""), "dd/MM/yyyy")
-        self.de_data.setDate(d if d.isValid() else QDate.currentDate())
-        self.ed_data.lbl.setText(dt if d.isValid() else "—")
+        # aceita os DOIS formatos: as solicitacoes ja criadas trazem so a data
+        d = QDateTime.fromString(str(dt or ""), "dd/MM/yyyy HH:mm")
+        if not d.isValid():
+            so_dia = QDate.fromString(str(dt or ""), "dd/MM/yyyy")
+            d = QDateTime(so_dia, QTime(8, 0)) if so_dia.isValid() else QDateTime()
+        self.de_data.setDateTime(d if d.isValid() else QDateTime.currentDateTime())
+        self.ed_data.lbl.setText(d.toString("dd/MM/yyyy HH:mm") if d.isValid() else "—")
         self._pre_selecionar_responsavel(tec)
         self._habilitar(True)
-        self._pintar_subs()
+        self._pintar_subs(do_bloco=bloco.get("subtarefas"))
 
     def set_responsaveis(self, pessoas):
         """Lista de quem pode receber a OS. Acessoria: sem ela o PCM ainda ve a fila, mas nao
         consegue aprovar — por isso o botao avisa em vez de falhar calado."""
         atual = self.cb_resp.currentText()
+        if not pessoas:
+            self.cb_resp.blockSignals(True)
+            self.cb_resp.clear()
+            self.cb_resp.addItem("carregando técnicos…", None)
+            self.cb_resp.blockSignals(False)
+            return
         self.cb_resp.blockSignals(True)
         self.cb_resp.clear()
         self.cb_resp.addItem("— selecione —", None)
@@ -882,13 +897,10 @@ class _Fila(QWidget):
         # supervisor nao sugeriu ninguem, quando ele sugeriu alguem que nao esta cadastrado
         self.ed_tecnico.lbl.setText(nome or "—")
 
-    def _pintar_subs(self):
-        while self.subs_v.count():
-            it = self.subs_v.takeAt(0)
-            w = it.widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+    def _pintar_subs(self, do_bloco=None):
+        """Carrega a lista no editor. `do_bloco` tem PRECEDENCIA sobre o tema: se o supervisor
+        editou as subtarefas na solicitacao, o que ele escreveu e o ponto de partida — trocar
+        pela lista padrao do tema desfaria o trabalho dele sem avisar."""
         tema = self.cb_tema.currentData() or ""
         self.cb_tema.setProperty("temado", "1" if tema else "0")
         self.cb_tema.style().unpolish(self.cb_tema)
@@ -899,18 +911,12 @@ class _Fila(QWidget):
              "<span style='color:%s'>domínio %s%%</span>"
              % (TEXT, cl.get("classif1") or "—", MUTED, cl.get("dominio")))
             if tema and cl.get("classif1") else "")
-        subs = sp.subtarefas(tema) if tema else sp.subtarefas_base()
-        cab = QLabel("A OS vai nascer com <b>%d subtarefas</b>%s"
-                     % (len(subs), (" · %d do tema, 3 da base" % (len(subs) - 3)) if tema
-                        else " — só a base, porque não há tema"))
-        cab.setObjectName("subsCab")
-        cab.setTextFormat(Qt.TextFormat.RichText)
-        cab.setWordWrap(True)
-        cab.setMinimumWidth(1)
-        self.subs_v.addWidget(cab)
-        for i, x in enumerate(subs, 1):
-            self.subs_v.addWidget(_LinhaSub(i, x, i == len(subs)))
-        self.lbl_subs.setText("%d subtarefas" % len(subs))
+        if do_bloco:
+            self.editor_subs.set_itens(do_bloco)
+        else:
+            self.editor_subs.set_itens(
+                sp.de_api(sp.subtarefas(tema) if tema else sp.subtarefas_base()))
+        self.lbl_subs.setText("%d subtarefas" % len(self.editor_subs.itens()))
 
     # ── ações ──
     def _asset_da(self, s):
@@ -944,7 +950,8 @@ class _Fila(QWidget):
                                                "Recarregue os ativos e tente de novo.")
             return
         tema = self.cb_tema.currentData() or ""
-        subs = sp.subtarefas(tema) if tema else sp.subtarefas_base()
+        # o que vai para a OS e o que esta NA TELA, nao o padrao do tema: o PCM acabou de editar
+        subs = self.editor_subs.para_api() or sp.subtarefas_base()
         titulo = sp.titulo(s.get("usina") or "", s.get("ativo") or "", tema) if tema else \
             str(s.get("descricao_full") or s.get("descricao") or "")
         n = len(subs)
@@ -1195,8 +1202,14 @@ class _Hub(QWidget):
     # Os numeros vem do CSS que o Levi mandou: cascata de 75 ms entre os cards, 400 ms de
     # duracao, 15 px de deslocamento. A ideia de trocar o EIXO conforme o formato vem da doc de
     # `mediaQueries` do anime.js — la o corpo da animacao le `matches` e decide entre x e y.
-    STAGGER = 75
-    DUR = 400
+    # Tempos pedidos pelo Levi (03/09): 2 s na entrada dos cards de cima e 3 s no conjunto
+    # dos tres do PCM. O stagger sai da CONTA, nao do chute: 700 de atraso x 2 cards + 1600 de
+    # duracao fecha exatamente 3000 ms no ultimo card. Mexer num numero sem o outro quebra a
+    # conta, por isso os dois ficam juntos aqui.
+    STAGGER = 700           # entre um card do PCM e o proximo
+    DUR = 1600              # de cada card do PCM      -> 700*2 + 1600 = 3000 ms
+    STAGGER_TOPO = 250      # entre os dois cards de cima
+    DUR_TOPO = 1750         # de cada card de cima     -> 250 + 1750 = 2000 ms
     DESLOC = 15
     LARG_CARD = 300         # largura confortavel de um card do PCM; base do limiar de refluxo
 
@@ -1314,11 +1327,13 @@ class _Hub(QWidget):
         """O nosso `self.matches`: o que vale de verdade sobre o formato atual da tela."""
         return {"estreito": self.width() < self._limiar()}
 
-    def _animar(self, molduras=None):
+    def _animar(self, molduras=None, dur=None, stagger=None):
         """fadeSlideUp em cascata — a traducao do @keyframes que o Levi mandou.
 
         O card e movido DENTRO da moldura, entao nenhum layout desfaz o movimento no meio."""
         estreito = self._matches()["estreito"]
+        dur = self.DUR if dur is None else dur
+        stagger = self.STAGGER if stagger is None else stagger
         for k, m in enumerate(molduras or self._submold):
             m.card.setGeometry(m._repouso())
             ef = QGraphicsOpacityEffect(m.card)
@@ -1328,12 +1343,12 @@ class _Hub(QWidget):
                    else fim.translated(0, self.DESLOC))
             g = QParallelAnimationGroup(m)
             a1 = QPropertyAnimation(ef, b"opacity", g)
-            a1.setDuration(self.DUR)
+            a1.setDuration(dur)
             a1.setStartValue(0.0)
             a1.setEndValue(1.0)
             a1.setEasingCurve(QEasingCurve.Type.OutCubic)
             a2 = QPropertyAnimation(m.card, b"geometry", g)
-            a2.setDuration(self.DUR)
+            a2.setDuration(dur)
             a2.setStartValue(ini)
             a2.setEndValue(fim)
             a2.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -1342,15 +1357,19 @@ class _Hub(QWidget):
             # o efeito sai no fim: um widget so aceita UM QGraphicsEffect, e o proximo a
             # precisar dele e o brilho verde do hover
             g.finished.connect(lambda c=m.card: c.setGraphicsEffect(None))
-            QTimer.singleShot(k * self.STAGGER, g.start)
+            QTimer.singleShot(k * stagger, g.start)
             self._anims.append(g)
 
     def showEvent(self, e):
-        """Os dois cards de cima tambem entram animados, uma vez por abertura do hub."""
+        """A entrada roda A CADA vez que o hub aparece — pedido do Levi (03/09).
+
+        Antes era uma vez por sessao (`_entrou`), e quem saia para a fila e voltava encontrava a
+        tela estatica. Reiniciar e o que faz a animacao ser parte da tela e nao um detalhe do
+        primeiro segundo do dia."""
         super().showEvent(e)
-        if not self._entrou:
-            self._entrou = True
-            QTimer.singleShot(0, lambda: self._animar([self.m_nova, self.m_pcm]))
+        QTimer.singleShot(0, lambda: self._animar([self.m_nova, self.m_pcm],
+                                                  dur=self.DUR_TOPO,
+                                                  stagger=self.STAGGER_TOPO))
 
 
 class SolicPcmTab(QWidget):
@@ -1439,6 +1458,20 @@ QPushButton#btnDevolver:hover { color:#e6e8ef; border-color:#3d4a6b; background:
 QPushButton#btnDevolver:disabled { color:#5a6072; border-color:#232a3d; }
 
 /* acao secundaria dentro de um item de lista: texto, nao botao */
+QLineEdit#subTexto { background:transparent; border:none; border-bottom:1px solid transparent;
+  color:#e8ebf2; font-size:12.5px; min-height:26px; max-height:26px; padding:0 2px; }
+QLineEdit#subTexto:hover { border-bottom:1px dashed #39405a; }
+QLineEdit#subTexto:focus { border-bottom:1px solid #8fce3f; }
+QComboBox#subTipo { min-height:26px; max-height:26px; font-size:11.5px; padding:0 8px; }
+/* o x tem de ser ENCONTRAVEL: em #5a6072 sobre #161d30 ele existia e ninguem via, o que
+   equivale a nao ter botao de remover */
+/* padding:0 e OBRIGATORIO aqui. A regra generica do DARK_QSS traz `padding:9px 14px`, e com
+   largura fixa de 26 px os 28 px de padding nao deixavam espaco NENHUM para o glifo: o botao
+   existia na arvore, respondia ao clique e nao pintava um pixel. */
+QPushButton#subRemover { background:transparent; border:1px solid transparent; color:#8a93a8;
+  font-size:17px; font-weight:700; min-height:24px; padding:0; border-radius:6px; }
+QPushButton#subRemover:hover { color:#ffffff; background:rgba(224,85,85,0.85);
+  border-color:#e05555; }
 QPushButton#btnLink { background:transparent; border:none; color:#8fce3f; font-size:12px;
   font-weight:600; padding:0 2px; min-height:0; text-align:right; }
 QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
@@ -1492,6 +1525,10 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
                  "fila": self.FILA, "hist": self.HIST}[alvo])
 
     def ir(self, i):
+        # sair do hub RECOLHE os tres do PCM: voltando, o clique em Area PCM roda a cascata
+        # inteira outra vez, em vez de encontrar os cards ja abertos e parados
+        if i != self.HUB and self.stack.currentIndex() == self.HUB:
+            self.hub.recolher()
         self.stack.setCurrentIndex(i)
         for k in range(self.stack.count()):
             w = self.stack.widget(k)
@@ -1510,6 +1547,10 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
             # reaproveita a lista de pessoas que o formulário já buscou — uma chamada em vez de duas
             pessoas = self._pessoas()
             self.fila.set_responsaveis(pessoas)
+            if not pessoas:
+                # 20 s e o tempo medido do carregamento inicial. Sem dizer isso, o campo aparece
+                # vazio e a pessoa conclui que nao ha tecnico cadastrado — foi o que aconteceu.
+                self.fila.ed_tecnico.lbl.setText("carregando técnicos…")
             if not pessoas and self._wresp is None:
                 # o PCM pode abrir a fila antes de o formulário terminar de carregar; sem
                 # responsável não sai OS numerada, então buscamos aqui também.

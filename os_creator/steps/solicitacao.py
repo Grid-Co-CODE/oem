@@ -13,6 +13,7 @@ import solic_spec as sp
 from workers import ApiWorker
 from steps.step1 import ALLOWED_TIPOS          # mesmos tipos de equipamento do Criar OS
 from steps.searchcombo import tornar_pesquisavel
+from steps.subtarefas_edit import EditorSubtarefas
 from steps.ui import QSS_FORM, Card, Dica, campo, Linha, icone_pix, GREEN, GREEN_INK, MUTED
 
 CLIENTES_OCULTOS = {"almoxarifado", "teste - pa"}
@@ -121,12 +122,13 @@ class SolicitacaoTab(QWidget):
         # recurso que o `perf_spec` usa para a prioridade da Performance.
         self.cb_tecnico = QComboBox(); tornar_pesquisavel(self.cb_tecnico)
         self.data_prev = QDateTimeEdit(QDateTime.currentDateTime().addDays(2))
-        self.data_prev.setDisplayFormat("dd/MM/yyyy"); self.data_prev.setCalendarPopup(True)
+        # data E hora: "amanha" nao diz se e antes ou depois da parada, e o PCM programa por hora
+        self.data_prev.setDisplayFormat("dd/MM/yyyy HH:mm"); self.data_prev.setCalendarPopup(True)
         c3 = Card(3, "Detalhes do incidente")
         c3.add(Linha(campo("Data do incidente", self.data, obrig=True),
                      campo(" ", urg), quebra=300, pesos=(3, 2)))
         c3.add(Linha(campo("Técnico sugerido", self.cb_tecnico),
-                     campo("Data pretendida", self.data_prev), quebra=300))
+                     campo("Data sugerida", self.data_prev), quebra=300))
         c3.add(campo("Observação", self.coment))
 
         # ── Card 4 — Classificação ──
@@ -145,12 +147,16 @@ class SolicitacaoTab(QWidget):
         # O supervisor vê AGORA o que está pedindo, e o PCM vê a mesma lista antes de aprovar. Sem
         # isso a subtarefa só aparece depois da OS criada — e a API do Fracttal NÃO edita OS já
         # criada, então errar ali custa uma OS cancelada.
-        self.lbl_subs = QLabel()
-        self.lbl_subs.setObjectName("hint")
-        self.lbl_subs.setWordWrap(True)
-        self.lbl_subs.setTextFormat(Qt.TextFormat.RichText)
+        # A lista deixou de ser previa e virou EDITOR: o supervisor acrescenta o que o tema nao
+        # previu e tira o que nao se aplica, e o tipo de cada campo fica a vista. O tema deixa de
+        # ser camisa de forca e passa a ser ponto de partida.
+        self.lbl_subs = QLabel()          # continua existindo p/ quem lia o resumo em texto
+        self.lbl_subs.setVisible(False)
+        self.editor_subs = EditorSubtarefas(
+            "Sem tema: a OS nasce com as 3 subtarefas da base (descrição, registro fotográfico e "
+            "pendência). Escolher um tema acrescenta o roteiro do serviço — e você pode editar.")
         self.card_subs = Card(5, "O que a OS vai pedir")
-        self.card_subs.add(self.lbl_subs)
+        self.card_subs.add(self.editor_subs)
         lay.addWidget(self.card_subs)
         self._sync_tema()                      # pinta o estado inicial (sem tema)
 
@@ -347,8 +353,10 @@ class SolicitacaoTab(QWidget):
                 return
 
     def _sync_tema(self):
-        """Pinta a prévia das subtarefas do tema escolhido."""
+        """Carrega no editor as subtarefas do tema — e a partir daí quem manda é o editor."""
         tema = self.cb_tema.currentData() or ""
+        self.editor_subs.set_itens(sp.de_api(sp.subtarefas(tema) if tema
+                                             else sp.subtarefas_base()))
         if not tema:
             self.lbl_subs.setText(
                 f"<span style='color:{MUTED}'>Sem tema: a OS nasce com as 3 subtarefas da base "
@@ -386,7 +394,10 @@ class SolicitacaoTab(QWidget):
         obs = sp.observacao_com_bloco(self.coment.toPlainText(), {
             "tema": self.cb_tema.currentData() or "",
             "tecnico": self.cb_tecnico.currentText() if self.cb_tecnico.currentIndex() > 0 else "",
-            "data": self.data_prev.dateTime().toString("dd/MM/yyyy"),
+            "data": self.data_prev.dateTime().toString("dd/MM/yyyy HH:mm"),
+            # a lista EDITADA vai junto: sem isso o ajuste do supervisor morreria aqui e o PCM
+            # veria de novo a lista padrao do tema
+            "subtarefas": self.editor_subs.itens(),
         })
         self._wc = ApiWorker(api.create_solicitacao, asset, desc, c1, self.cb_grupo.currentData(),
                              self.cb_c2.currentData(), obs, di,
