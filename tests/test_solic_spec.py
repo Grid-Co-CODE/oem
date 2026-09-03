@@ -115,7 +115,10 @@ def test_titulo_no_padrao_das_OS():
 
 def test_temas_saem_ordenados_por_volume():
     ordem = [k for k, _ in S.temas()]
-    assert ordem[0].startswith("tracker"), ordem     # 312 solicitações
+    # INVERSOR passou a encabeçar em 03/09: são 751 solicitações no corpus, contra as 468 de
+    # tracker. Antes o primeiro era tracker, porque inversor não tinha tema nenhum — e era
+    # justamente a maior família da operação sem roteiro.
+    assert ordem[0].startswith("inversor"), ordem    # 751 solicitações
     assert ordem[-1] == "nobreak", ordem             # 50, o menor dos quatro
 
 
@@ -219,3 +222,39 @@ def test_para_api_e_de_api_sao_inversos():
             {"tipo": "num", "desc": "Tensao em V", "anexo": False}]
     volta = S.de_api(S.para_api(orig))
     assert [(x["tipo"], x["desc"]) for x in volta] == [(x["tipo"], x["desc"]) for x in orig]
+
+
+# ── inversor e tracker (03/09) ───────────────────────────────────────────────
+def test_os_temas_novos_saem_do_corpus_e_nao_de_palpite():
+    """As quatro famílias que faltavam, e a maior delas primeiro.
+
+    Inversor era 30% das 2.500 solicitações e não tinha tema nenhum. E não tinha porque o
+    corpus também não tinha procedimento: nas 90 OS de inversor lidas, as duas subtarefas mais
+    comuns eram "Procedimento" (46) e "Descreva a atividade realizada" (46) — campo em branco com
+    nome —, e todo o resto aparecia UMA vez. Estes temas fecham esse buraco com o vocabulário que
+    os próprios técnicos escreveram."""
+    for chave in ("inversor_inspecao", "inversor_substituicao", "inversor_garantia",
+                  "tracker_chamado"):
+        assert S.existe(chave), chave
+        assert S.subtarefas(chave), chave
+        assert S.classificacao(chave)["classif1"], chave
+
+
+def test_o_inversor_leva_as_travas_de_seguranca_primeiro():
+    """LOTO e descarga de capacitores abrem a lista nos dois temas em que se abre o equipamento.
+
+    Os dois textos vieram literalmente das OS reais — ninguém de fora da operação escreveria
+    "aguardar o tempo de descarga dos capacitores internos conforme manual do fabricante"."""
+    for chave in ("inversor_inspecao", "inversor_substituicao"):
+        subs = [x["description"].lower() for x in S.subtarefas(chave)]
+        assert "loto" in subs[0], chave
+        assert "capacitores" in subs[1], chave
+
+
+def test_tracker_chamado_cobre_o_que_os_tres_especificos_nao_cobriam():
+    """Reset, inject e troca de motor somam 6 solicitações no corpus; 'tracker' em geral são 468.
+    O tema genérico é o que serve as outras — e pede o MAC da TCU, que é o que o fabricante
+    cobra na abertura do chamado."""
+    subs = [x["description"].lower() for x in S.subtarefas("tracker_chamado")]
+    assert any("mac" in x for x in subs)
+    assert any("comunica" in x for x in subs)

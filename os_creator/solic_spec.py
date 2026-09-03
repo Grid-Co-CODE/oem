@@ -263,6 +263,92 @@ def classificacao(tema: str) -> dict:
             "dominio": t.get("dominio")}
 
 
+
+# ── Inversor e tracker (03/09/2026) ──────────────────────────────────────────
+# DE ONDE VEIO CADA LINHA: colhida das OS que ja existem, nao escrita por mim. Foram lidas 220
+# solicitacoes de inversor que viraram OS (295 subtarefas distintas, fora as genericas) e 90 de
+# tracker (71 distintas). O que eu fiz foi agrupar e ordenar; o texto e o tipo de campo saem de
+# la — inclusive o vocabulario de seguranca (LOTO, descarga de capacitores) e de medicao
+# (termografia, MC4, polaridade), que ninguem de fora da operacao escreveria assim.
+#
+# POR QUE INVERSOR NAO TINHA TEMA ATE HOJE: porque o corpus tambem nao tinha procedimento. As
+# duas subtarefas mais comuns das OS de inversor sao "Procedimento" (46 de 90) e "Descreva a
+# atividade realizada" (46 de 90) — campo em branco com nome. Todo o resto aparece UMA vez: cada
+# tecnico escreveu o seu. E exatamente o buraco que estes temas fecham.
+POR_TEMA["inversor_inspecao"] = [
+    _s("Confirmar bloqueio e etiquetagem (LOTO) do inversor antes de iniciar", "verif", anexo=True),
+    _s("Aguardar o tempo de descarga dos capacitores internos conforme manual do fabricante", "verif"),
+    _s("Abrir tampas e inspecionar conexões da placa DC (aperto, oxidação, sinais de calor)", "verif"),
+    _s("Comparar temperatura do inversor com a ambiente (termômetro IV / câmera térmica)", "verif"),
+    _s("Temperatura medida no inversor, em °C", "num"),
+    _s("Verificar ventoinhas e filtros — quantas estão com problema", "num"),
+    _s("Medir tensão de cada string conectada, em V", "num"),
+    _s("Medir corrente de cada string conectada, em A", "num"),
+    _s("Verificar conectores MC4 e polaridade dos cabos CC", "verif"),
+    _s("Anexar registros de temperatura, fotos da inspeção e medições de tensão de string",
+       "texto", anexo=True),
+]
+
+POR_TEMA["inversor_substituicao"] = [
+    _s("Confirmar bloqueio e etiquetagem (LOTO) e ausência de tensão antes de iniciar",
+       "verif", anexo=True),
+    _s("Aguardar o tempo de descarga dos capacitores internos conforme manual do fabricante", "verif"),
+    _s("Registrar número de série (SN) do inversor retirado", "texto"),
+    _s("Registrar número de série (SN) do inversor instalado", "texto"),
+    _s("Conferir polaridade dos cabos CC (positivo/negativo) antes da conexão ao inversor", "verif"),
+    _s("Configurar parâmetros do inversor substituto conforme o projeto", "verif"),
+    _s("Solicitar ao COS a autorização para o restabelecimento do sistema", "simnao"),
+    _s("Confirmar geração após o restabelecimento", "simnao"),
+    _s("Anexar fotos do antes e depois da intervenção", "texto", anexo=True),
+]
+
+POR_TEMA["inversor_garantia"] = [
+    _s("Identificação do equipamento (inversor, string box, TCU do tracker)", "texto"),
+    _s("Número de série (SN) do equipamento", "texto"),
+    _s("Tipo de erro apresentado (código no display ou no portal)", "texto"),
+    _s("Coletar os logs do equipamento / smartlogger", "texto", anexo=True),
+    _s("Anexar os logs para abertura do chamado", "texto", anexo=True),
+    _s("Anexar relatório de serviço ou termo de conclusão assinado", "verif", anexo=True),
+]
+
+POR_TEMA["tracker_chamado"] = [
+    _s("Verificar alarmes ativos e status de comunicação na TCU antes da intervenção", "verif"),
+    _s("Endereço MAC da TCU", "texto"),
+    _s("ID do rastreador (para equipamentos Soltec)", "texto"),
+    _s("Testar a movimentação nos modos manual e automático", "verif"),
+    _s("Validar o sincronismo, o alinhamento e a ausência de falhas no supervisório", "verif"),
+    _s("Registrar fotos, parâmetros de operação e evidências de liberação do equipamento",
+       "texto", anexo=True),
+]
+
+# A classificacao de cada um saiu da DISTRIBUICAO real das solicitacoes da familia, e nao de
+# palpite: inversor em geral 27% "Nao Para o Ativo"; substituicao espalhada, com 21% em "Leve";
+# garantia 35% "Moderado"; tracker 44% "Leve". O dominio abaixo e essa porcentagem.
+TEMAS["inversor_inspecao"] = {
+    "nome": "Inversor — inspeção e medição",
+    "motivo": "Inspeção e medição de inversor",
+    "classif1": "Não Para o Ativo", "dominio": 27,
+    "tipo": "Elétrica", "solicitacoes": 751,
+}
+TEMAS["inversor_substituicao"] = {
+    "nome": "Inversor — substituição",
+    "motivo": "Substituição de inversor",
+    "classif1": "Leve (Não Parou o Ativo, mas Afetou a Eficiência)", "dominio": 21,
+    "tipo": "Elétrica", "solicitacoes": 178,
+}
+TEMAS["inversor_garantia"] = {
+    "nome": "Inversor — chamado de garantia",
+    "motivo": "Abertura de chamado de garantia",
+    "classif1": "Moderado (Impacto Parcial no Ativo)", "dominio": 35,
+    "tipo": "Elétrica", "solicitacoes": 173,
+}
+TEMAS["tracker_chamado"] = {
+    "nome": "Tracker — chamado e comunicação da TCU",
+    "motivo": "Chamado de tracker",
+    "classif1": "Leve (Não Parou o Ativo, mas Afetou a Eficiência)", "dominio": 44,
+    "tipo": "", "solicitacoes": 468,
+}
+
 # ── O bloco da sugestão, na observação ───────────────────────────────────────
 # A solicitação do Fracttal NÃO tem campo de técnico. Verificado nas 2.500: todos os campos de
 # pessoa são de quem CRIOU (`accounts_name`, `id_user`, `id_personnel_log`) ou de quem mudou o
