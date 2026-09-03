@@ -37,6 +37,11 @@ from steps.historico_solic import HistoricoSolic
 # As três colunas do painel, na ordem do Fracttal. A régua de cada uma sai do que foi medido:
 # "pendente" é a solicitação SEM OS vinculada e não cancelada — e não um id_status fixo, porque
 # quem decide o status é o servidor (a criação manda 0 e volta 1 ou 7, conforme o caminho).
+# Cores desta tela, definidas pelo Levi em 03/09. Ficam nomeadas porque nao saem da paleta
+# de steps/ui.py: la o CARD e #121A2B e a BORDER e #2A3550, e ele quis outro par aqui.
+SUPERFICIE = "#161d30"      # cabecalhos e celulas
+RISCO      = "#222c43"      # as linhas da tabela
+
 PENDENTE, ANDAMENTO, FINALIZADA, FORA = "pendente", "andamento", "finalizada", "fora"
 _CANCELADAS = {"cancelada", "rejeitada"}
 # "Reaberta (refazer)" (AGAIN_REQUEST_TODO) sai do quadro por decisao do Levi (03/09): sao 60
@@ -69,7 +74,8 @@ class _Cartao(QFrame):
         super().__init__()
         self.setObjectName("solCard")
         self.setStyleSheet(
-            f"QFrame#solCard{{background:{CARD};border:1px solid {BORDER};border-radius:7px;}}"
+            f"QFrame#solCard{{background:{SUPERFICIE};border:1px solid {RISCO};"
+            "border-radius:7px;}"
             f"QFrame#solCard QLabel{{background:transparent;border:none;}}")
         v = QVBoxLayout(self)
         v.setContentsMargins(13, 11, 13, 11)
@@ -119,7 +125,7 @@ class _Cartao(QFrame):
         # decisão de verdade — e eram vários na tela ao mesmo tempo.
         risco = QFrame()
         risco.setFixedHeight(1)
-        risco.setStyleSheet(f"background:{BORDER};border:none;")
+        risco.setStyleSheet(f"background:{RISCO};border:none;")
         v.addSpacing(3)
         v.addWidget(risco)
 
@@ -227,6 +233,11 @@ class _Painel(QWidget):
             bv.addWidget(sc, 1)
             grade.addWidget(box, 1)
             self.cols[chave] = (cnt, titulo, iv)
+            if chave != FINALIZADA:          # linha entre as colunas, menos depois da ultima
+                d = QFrame()
+                d.setObjectName("divisorV")
+                d.setFixedWidth(1)
+                grade.addWidget(d)
         v.addLayout(grade, 1)
 
     def carregar(self, force=False):
@@ -712,6 +723,7 @@ class _Fila(QWidget):
         topo_t.addWidget(self._rotulo("Tema"))
         self.chip_tema = QLabel("")
         self.chip_tema.setObjectName("chipTema")
+        self.chip_tema.setVisible(False)
         topo_t.addWidget(self.chip_tema)
         topo_t.addStretch(1)
         self.det.addLayout(topo_t)
@@ -744,13 +756,13 @@ class _Fila(QWidget):
         acoes = QHBoxLayout()
         acoes.setSpacing(10)
         self.b_aprovar = QPushButton("Aprovar e gerar OS")
-        self.b_aprovar.setObjectName("btnPrimary")
+        self.b_aprovar.setObjectName("btnAprovar")
         self.b_aprovar.setIcon(QIcon(icone_pix("check", GREEN_INK, 16)))
         self.b_aprovar.setIconSize(QSize(16, 16))
         self.b_aprovar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.b_aprovar.clicked.connect(self._aprovar)
         self.b_devolver = QPushButton("Devolver ao supervisor")
-        self.b_devolver.setObjectName("btnGhost")
+        self.b_devolver.setObjectName("btnDevolver")
         self.b_devolver.setCursor(Qt.CursorShape.PointingHandCursor)
         self.b_devolver.clicked.connect(self._devolver)
         acoes.addWidget(self.b_aprovar)
@@ -802,6 +814,7 @@ class _Fila(QWidget):
             self.lbl_titulo.setText("Nada na fila.")
             for l in (self.lbl_orig, self.lbl_sug, self.lbl_classif, self.chip_tema):
                 l.setText("")
+            self.chip_tema.setVisible(False)
             for l in (self.v_solicitante, self.v_aberta, self.v_ativo, self.v_usina):
                 l.setText("—")
             self.ed_tecnico.lbl.setText("—")
@@ -815,7 +828,9 @@ class _Fila(QWidget):
         self.cb_tema.blockSignals(True)
         self.cb_tema.setCurrentIndex(i)
         self.cb_tema.blockSignals(False)
+        # o chip tem fundo proprio: vazio ele pinta um retangulo verde sem texto dentro
         self.chip_tema.setText("sugerido pela descrição" if tema else "")
+        self.chip_tema.setVisible(bool(tema))
 
         novo = sp.titulo(s.get("usina") or "", s.get("ativo") or "", tema) if tema else ""
         orig = str(s.get("descricao_full") or s.get("descricao") or "")
@@ -1078,7 +1093,7 @@ class _Hub(QWidget):
     STAGGER = 100
     DUR = 340
     DESLOC = 22
-    ESTREITO = 900          # abaixo disto os cards empilham: e o nosso "(max-width: ...)"
+    LARG_CARD = 300         # largura confortavel de um card do PCM; base do limiar de refluxo
 
     def __init__(self, ir):
         super().__init__()
@@ -1097,33 +1112,35 @@ class _Hub(QWidget):
         d.setStyleSheet(f"color:{MUTED};font-size:13px;")
         v.addWidget(d)
 
-        topo = QHBoxLayout()
-        topo.setSpacing(14)
+        # GRADE, e nao QHBoxLayout: e ela que permite o refluxo. Com layout horizontal fixo o
+        # widget tinha largura minima de 979 px e nunca chegava a ser "estreito" — o galho que
+        # troca o eixo da animacao era codigo morto.
+        self.g_topo = QGridLayout()
+        self.g_topo.setSpacing(14)
         self.c_nova = _CardBotao("Criar Nova Solicitação",
                                  "Pedir serviço já com tema, técnico sugerido e data pretendida",
                                  lambda: self._ir("nova"), icone="send")
         self.c_pcm = _CardBotao("Área PCM",
                                 "Conferir a fila, aprovar e acompanhar o que virou OS",
                                 self._abrir_pcm, icone="calcheck")
-        topo.addWidget(self.c_nova, 1)
-        topo.addWidget(self.c_pcm, 1)
-        v.addLayout(topo)
+        v.addLayout(self.g_topo)
 
         self.sub = QWidget()
-        sv = QHBoxLayout(self.sub)
-        sv.setContentsMargins(0, 0, 0, 0)
-        sv.setSpacing(12)
+        self.g_sub = QGridLayout(self.sub)
+        self.g_sub.setContentsMargins(0, 0, 0, 0)
+        self.g_sub.setSpacing(12)
         self._subcards = []
         for rot, txt, alvo, ico in (
                 ("Painel", "O que está pendente, em andamento e finalizado", "painel", "grid"),
                 ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema", "fila", "list"),
                 ("Histórico", "Tudo o que já passou por aqui", "hist", "clock")):
-            c = _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, alto=False)
-            sv.addWidget(c, 1)
-            self._subcards.append(c)
+            self._subcards.append(_CardBotao(rot, txt, lambda a=alvo: self._ir(a),
+                                             icone=ico, alto=False))
         self.sub.setVisible(False)
         v.addWidget(self.sub)
         v.addStretch(1)
+        self._estreito = None
+        self._reflow(inicial=True)
 
     # ── navegacao ──
     def _abrir_pcm(self):
@@ -1143,10 +1160,56 @@ class _Hub(QWidget):
         self._aberto = False
         self.sub.setVisible(False)
 
+    # ── refluxo ──
+    def _reflow(self, inicial=False):
+        """Coloca os cards em coluna ou em linha, conforme a largura.
+
+        E a metade que faltava para a referencia de `mediaQueries` fazer sentido: la o LAYOUT
+        muda junto, e por isso trocar o eixo do movimento significa alguma coisa. Sem isto eu
+        so trocava o eixo de uma animacao numa tela que nunca mudava de forma."""
+        estreito = self._matches()["estreito"]
+        if estreito == self._estreito:
+            return False
+        self._estreito = estreito
+        for g, itens in ((self.g_topo, [self.c_nova, self.c_pcm]),
+                         (self.g_sub, self._subcards)):
+            for w in itens:
+                g.removeWidget(w)
+            for i in range(g.columnCount()):
+                g.setColumnStretch(i, 0)
+            for i, w in enumerate(itens):
+                g.addWidget(w, i if estreito else 0, 0 if estreito else i)
+            for i in range(1 if estreito else len(itens)):
+                g.setColumnStretch(i, 1)
+            # sem o activate() as posicoes so mudam no proximo ciclo do layout, e quem olhar
+            # logo depois do resize ainda ve os cards no arranjo antigo
+            g.invalidate()
+            g.activate()
+        return not inicial
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        # o escopo do anime.js REEXECUTA quando a media query muda; aqui, quando o formato muda,
+        # o layout se refaz e a entrada roda de novo no eixo novo
+        if self._reflow() and self._aberto:
+            QTimer.singleShot(0, self._animar)
+
     # ── animacao ──
+    def _limiar(self):
+        """A largura a partir da qual os tres cards ainda cabem lado a lado, com folga.
+
+        Sai do tamanho que os PROPRIOS cards pedem, e nao de um numero magico: um limiar fixo
+        envelhece na primeira vez que alguem mudar o texto de um card, e volta a ser o galho
+        morto que era antes."""
+        # NAO usar sizeHint(): os rotulos tem wordWrap e minimumWidth(1), entao o sizeHint do
+        # card colapsa para ~110 px e o limiar sairia em 383 — abaixo de qualquer largura real.
+        # LARG_CARD e a largura em que o card fica CONFORTAVEL, medida no proprio desenho.
+        return (self.LARG_CARD * len(self._subcards)
+                + self.g_sub.spacing() * (len(self._subcards) - 1) + 56)
+
     def _matches(self):
         """O nosso `self.matches`: o que vale de verdade sobre o formato atual da tela."""
-        return {"estreito": self.width() < self.ESTREITO}
+        return {"estreito": self.width() < self._limiar()}
 
     def _animar(self, cards=None):
         """Entra deslocando, com um leve passar do ponto no fim (OutBack).
@@ -1154,7 +1217,19 @@ class _Hub(QWidget):
         Guarda a referencia do grupo: animacao sem dono e coletada no meio do caminho e o widget
         congela na posicao inicial — some da tela sem erro nenhum."""
         estreito = self._matches()["estreito"]
-        for k, c in enumerate(cards or self._subcards):
+        alvos = list(cards or self._subcards)
+        # O LAYOUT TEM DE SAIR DO CAMINHO. Animar `pos` de um widget que esta dentro de um
+        # QLayout nao funciona: a cada ciclo o layout recoloca o widget no lugar calculado, e a
+        # animacao roda "por baixo" sem nunca aparecer. Foi assim que 28 quadros gravados sairam
+        # identicos. Desligamos o layout durante a entrada e religamos no fim — meio segundo sem
+        # reposicionar nao muda nada, e e o que faz o movimento existir na tela.
+        lay = alvos[0].parentWidget().layout() if alvos and alvos[0].parentWidget() else None
+        if lay is not None:
+            lay.activate()          # posicoes finais calculadas ANTES de congelar
+            lay.setEnabled(False)
+            QTimer.singleShot(self.DUR + self.STAGGER * len(alvos) + 60,
+                              lambda: lay.setEnabled(True))
+        for k, c in enumerate(alvos):
             ef = QGraphicsOpacityEffect(c)
             c.setGraphicsEffect(ef)
             fim = c.pos()
@@ -1217,9 +1292,9 @@ QLabel#hubIcone { background:rgba(143,206,63,0.14); border-radius:12px; border:n
    com borda e respiro fazia cada solicitacao parecer um objeto solto; aqui elas sao linhas de
    uma lista, que e o que sao. A barra verde da esquerda marca a selecionada. */
 QFrame#filaCard { background:transparent; border:none;
-  border-bottom:1px solid #1b2235; border-left:3px solid transparent; }
-QFrame#filaCard:hover { background:#111828; }
-QFrame#filaCard[sel="1"] { background:#141b2c; border-left:3px solid #8fce3f; }
+  border-bottom:1px solid #222c43; border-left:3px solid transparent; }
+QFrame#filaCard:hover { background:#161d30; }
+QFrame#filaCard[sel="1"] { background:#161d30; border-left:3px solid #8fce3f; }
 /* sem font-size aqui de proposito: o QSS venceria o setFont e o fontMetrics() do rotulo
    passaria a mentir — media 403 px num texto que pinta com 150, e o elide comia o nome do
    tema sem necessidade. O tamanho vai por setFont, em _CartaoFila. */
@@ -1236,11 +1311,12 @@ QFrame#subLinha[ultima="1"] { border-bottom:none; }
 
 /* o cabecalho e a PRIMEIRA LINHA da tabela: sem cantos e sem bordas laterais, so o risco de
    baixo, que atravessa a largura inteira e amarra o titulo as celulas da lista e do detalhe. */
-QFrame#filaCab { background:transparent; border:none; border-bottom:1px solid #232a3d; }
-QFrame#divisorV { background:#232a3d; }
-QFrame#riscoParcial { background:#232a3d; border:none; }
+QFrame#filaCab { background:#161d30; border:none; border-bottom:1px solid #222c43; }
+QFrame#divisorV { background:#222c43; }
+QFrame#riscoParcial { background:#222c43; border:none; }
+QLabel#cabColBar { background:#161d30; }
 QLabel#cabCol { color:#8a90a2; font-size:10.5px; font-weight:700; letter-spacing:0.8px;
-  background:transparent; }
+  background:#0b1020; border-bottom:1px solid #222c43; }
 QPushButton#btnVoltar { background:transparent; border:none; color:#8a90a2; font-size:13px;
   font-weight:600; padding:2px 4px; min-height:0; }
 QPushButton#btnVoltar:hover { color:#e6e8ef; }
@@ -1251,6 +1327,22 @@ QLabel#valorEditavel:hover { color:#ffffff; border-bottom:1px dashed #8fce3f; }
 QLabel#valorEditavel:disabled { color:#5a6072; border-bottom:1px dashed #262d42; }
 /* tema escolhido = borda verde: e o campo que decide o checklist da OS */
 QComboBox#cbTema[temado="1"] { border:1px solid #8fce3f; }
+/* Os dois botoes da fila NAO tem o mesmo peso: aprovar e a decisao, devolver e a excecao.
+   Dois retangulos iguais lado a lado obrigam a ler os dois toda vez. O primario ganha altura,
+   raio maior e um assentamento (borda inferior mais escura) que o levanta do fundo; o outro
+   perde o preenchimento e vira contorno discreto. */
+QPushButton#btnAprovar { background:#A6E22E; color:#0B1020; border:none;
+  border-bottom:2px solid #6d9c14; border-radius:11px; min-height:44px; padding:0 22px;
+  font-size:13.5px; font-weight:700; }
+QPushButton#btnAprovar:hover { background:#b8f03f; border-bottom:2px solid #7fae1c; }
+QPushButton#btnAprovar:pressed { background:#8fce3f; border-bottom:2px solid #6d9c14;
+  margin-top:2px; }
+QPushButton#btnAprovar:disabled { background:#2c3142; color:#6b7080; border-bottom:2px solid #232a3d; }
+QPushButton#btnDevolver { background:transparent; color:#9aa3b8; border:1px solid #222c43;
+  border-radius:11px; min-height:44px; padding:0 18px; font-size:13px; font-weight:600; }
+QPushButton#btnDevolver:hover { color:#e6e8ef; border-color:#3d4a6b; background:#141b2c; }
+QPushButton#btnDevolver:disabled { color:#5a6072; border-color:#232a3d; }
+
 /* acao secundaria dentro de um item de lista: texto, nao botao */
 QPushButton#btnLink { background:transparent; border:none; color:#8fce3f; font-size:12px;
   font-weight:600; padding:0 2px; min-height:0; text-align:right; }

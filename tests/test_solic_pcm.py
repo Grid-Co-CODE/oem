@@ -272,3 +272,32 @@ def test_o_tema_escolhido_marca_o_campo(qapp):
     assert t.fila.cb_tema.property("temado") == "1"
     t.fila.set_itens([dict(base, observacao="")], [])
     assert t.fila.cb_tema.property("temado") == "0"
+
+
+# ── refluxo do hub ───────────────────────────────────────────────────────────
+def test_o_hub_empilha_os_cards_quando_estreita(qapp):
+    """A metade que faltava para a referência de `mediaQueries` fazer sentido.
+
+    Antes o hub usava QHBoxLayout fixo: largura mínima de 979 px, `_matches()` nunca devolvia
+    "estreito" e o galho que troca o eixo da animação era código morto. Com grade, a mínima caiu
+    para 485 e o layout muda de verdade — e só aí trocar o eixo do movimento significa algo."""
+    from steps.solic_pcm import _Hub
+    h = _Hub(lambda a: None)
+    h.resize(1400, 700)
+    h._reflow()
+    assert h._matches()["estreito"] is False
+    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._subcards[1]))[:2] == (0, 1)   # linha 0, col 1
+    h.resize(700, 700)
+    h._reflow()
+    assert h._matches()["estreito"] is True
+    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._subcards[1]))[:2] == (1, 0)   # empilhado
+
+
+def test_o_limiar_do_refluxo_nao_e_numero_magico(qapp):
+    """Sai da largura confortável do card. Usar `sizeHint()` daria 383 px — os rótulos têm
+    wordWrap e minimumWidth(1), então o hint colapsa e o limiar ficaria abaixo de qualquer
+    largura real, que é como o galho morre sem ninguém ver."""
+    from steps.solic_pcm import _Hub
+    h = _Hub(lambda a: None)
+    assert h._limiar() == h.LARG_CARD * 3 + h.g_sub.spacing() * 2 + 56
+    assert h._limiar() > 900

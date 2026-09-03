@@ -4216,6 +4216,13 @@ REQ_STATUS = {
     "SOLVED_WITH_OT_STATUS":    "Resolvida com OS",
     "SOLVED_WITHOUT_OT_STATUS": "Resolvida sem OS",
     "AGAIN_REQUEST_TODO":       "Reaberta (refazer)",
+    # Estes tres o Fracttal manda e o mapa nao tinha. Sem eles o fallback "humaniza" o
+    # codigo e devolve PALAVRA EM INGLES na tela: REQUEST_TODO virava "Request",
+    # PROCESS_STATUS virava "Process" e REJECTED virava "Rejected" — num app que e todo
+    # em pt-BR. Os tres foram medidos nas 2.500 solicitacoes em 02/09.
+    "REQUEST_TODO":             "Pendente",
+    "PROCESS_STATUS":           "Em processo",
+    "REJECTED":                 "Rejeitada",
 }
 
 
