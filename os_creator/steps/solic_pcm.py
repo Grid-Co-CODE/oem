@@ -150,8 +150,10 @@ class _Painel(QWidget):
         self._rows = []
         self._w = None
         v = QVBoxLayout(self)
-        v.setContentsMargins(16, 12, 16, 12)
-        v.setSpacing(10)
+        # zero margem e zero espaco: o cabecalho tem de ser a primeira LINHA do quadro, nao uma
+        # faixa flutuando acima dele. O respiro vai por dentro, nas colunas.
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
 
         cab = QFrame()
         cab.setObjectName("filaCab")
@@ -181,6 +183,7 @@ class _Painel(QWidget):
 
         self.cols = {}
         grade = QHBoxLayout()
+        grade.setContentsMargins(14, 10, 14, 12)
         grade.setSpacing(12)
         for chave, titulo, cor in ((PENDENTE, "Pendentes", "#8fce3f"),
                                    (ANDAMENTO, "Em andamento", "#e8a33d"),
@@ -499,8 +502,10 @@ class _Fila(QWidget):
         self._assets = []
         self._w = None
         v = QVBoxLayout(self)
-        v.setContentsMargins(16, 12, 16, 12)
-        v.setSpacing(10)
+        # zero margem: as linhas da tabela tem de encostar nas bordas da area, senao o
+        # cabecalho vira uma faixa flutuando em vez da primeira linha do conjunto.
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
 
         # O cabecalho e uma FAIXA pintada, nao uma linha solta de widgets: ele separa
         # "onde estou" de "o que estou decidindo", e o Voltar perde a borda para nao competir
@@ -526,15 +531,15 @@ class _Fila(QWidget):
         v.addWidget(cab)
 
         corpo = QHBoxLayout()
-        corpo.setSpacing(14)
+        corpo.setSpacing(0)          # o divisor vertical faz o papel do espaco
 
         # esquerda: a fila
         col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
-        col.setSpacing(7)
+        col.setSpacing(0)
         cab_col = QLabel("AGUARDANDO APROVAÇÃO")
-        cab_col.setStyleSheet(f"color:{MUTED};font-size:10.5px;font-weight:700;"
-                              "letter-spacing:0.8px;background:transparent;")
+        cab_col.setObjectName("cabCol")
+        cab_col.setContentsMargins(14, 10, 14, 9)
         col.addWidget(cab_col)
         esq = QScrollArea()
         esq.setWidgetResizable(True)
@@ -550,8 +555,8 @@ class _Fila(QWidget):
                           "QScrollArea > QWidget > QWidget{background:transparent;}")
         inner = QWidget()
         self.lista = QVBoxLayout(inner)
-        self.lista.setContentsMargins(0, 0, 6, 0)
-        self.lista.setSpacing(8)
+        self.lista.setContentsMargins(0, 0, 0, 0)
+        self.lista.setSpacing(0)      # sem respiro: quem separa uma celula da outra e a linha
         self.lista.addStretch(1)
         esq.setWidget(inner)
         col.addWidget(esq, 1)
@@ -559,6 +564,12 @@ class _Fila(QWidget):
         cw.setLayout(col)
         cw.setFixedWidth(460)
         corpo.addWidget(cw)
+        # a linha que separa a lista do detalhe, de cima a baixo — e o que faz os dois lados
+        # lerem como duas colunas de uma tabela, e nao como dois blocos independentes
+        div = QFrame()
+        div.setObjectName("divisorV")
+        div.setFixedWidth(1)
+        corpo.addWidget(div)
 
         # direita: o detalhe
         dir_sc = QScrollArea()
@@ -569,8 +580,9 @@ class _Fila(QWidget):
                              "QScrollArea > QWidget > QWidget{background:transparent;}")
         d = QWidget()
         self.det = QVBoxLayout(d)
-        # margem a direita para a borda dos cartoes nao ficar embaixo da barra de rolagem
-        self.det.setContentsMargins(0, 0, 12, 0)
+        # o respiro saiu da area e veio para dentro do detalhe: assim as linhas da tabela
+        # encostam nas bordas e o conteudo continua com margem para respirar
+        self.det.setContentsMargins(20, 16, 20, 14)
         self.det.setSpacing(12)
         dir_sc.setWidget(d)
         corpo.addWidget(dir_sc, 1)
@@ -633,6 +645,7 @@ class _Fila(QWidget):
                               (2, "Ativo", self.v_ativo)):
             ficha.addWidget(self._rotulo(rot), 0, col)
             ficha.addWidget(val, 1, col)
+        ficha.setRowMinimumHeight(2, 24)   # +5 px: "usina" estava colada no solicitante
         ficha.addWidget(self._rotulo("Usina"), 2, 0)
         ficha.addWidget(self.v_usina, 3, 0, 1, 3)
         # as tres colunas dividem a largura por igual. Antes so a ultima esticava, entao
@@ -642,6 +655,18 @@ class _Fila(QWidget):
         self.det.addLayout(ficha)
 
         # ── o que o supervisor sugeriu, e que o PCM confirma ou troca ──
+        # Linha PARCIAL: nao encosta nas laterais de proposito. Uma linha de ponta a ponta
+        # separaria SECOES da tela; esta separa dois blocos da MESMA ficha — o que o Fracttal
+        # informou e o que o supervisor sugeriu.
+        risco = QWidget()
+        rl = QHBoxLayout(risco)
+        rl.setContentsMargins(40, 14, 40, 8)
+        r1 = QFrame()
+        r1.setObjectName("riscoParcial")
+        r1.setFixedHeight(1)
+        rl.addWidget(r1, 1)
+        self.det.addWidget(risco)
+
         cx = QFrame()
         cx.setObjectName("boxSug")
         cxv = QVBoxLayout(cx)
@@ -982,30 +1007,58 @@ class _Fila(QWidget):
 
 
 class _CardBotao(QFrame):
-    """Card-botao do hub. Existe porque a entrada da aba passou a ser uma ESCOLHA e nao uma
-    barra de abas: quem cria solicitacao (supervisor) e quem aprova (PCM) sao pessoas
-    diferentes, e cada uma so quer o seu lado."""
+    """Card-botao do hub, na MESMA linguagem dos cards da tela inicial do app: icone num quadrado
+    verde translucido, titulo, subtitulo, risco verde embaixo e a seta no canto.
 
-    def __init__(self, titulo, sub, on_click, alto=True):
+    Nao e enfeite: quem abre esta aba acabou de sair daquela tela, e repetir a forma diz "isto e
+    a mesma coisa, um nivel abaixo". A primeira versao era um retangulo cinza com texto — sem
+    cor, sem hierarquia e sem parentesco nenhum com o resto do app."""
+
+    def __init__(self, titulo, sub, on_click, icone="grid", alto=True):
         super().__init__()
         self.setObjectName("hubCard")
+        self.setProperty("alto", "1" if alto else "0")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._on_click = on_click
         v = QVBoxLayout(self)
-        v.setContentsMargins(20, 18, 20, 18)
-        v.setSpacing(6)
+        v.setContentsMargins(18, 16, 18, 14)
+        v.setSpacing(4)
+
+        topo = QHBoxLayout()
+        topo.setSpacing(8)
+        sq = QLabel()
+        lado = 46 if alto else 34
+        sq.setFixedSize(lado, lado)
+        sq.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sq.setObjectName("hubIcone")
+        sq.setPixmap(icone_pix(icone, GREEN, 24 if alto else 18))
+        topo.addWidget(sq)
+        topo.addStretch(1)
+        v.addLayout(topo)
+        v.addSpacing(8 if alto else 4)
+
         t = QLabel(titulo)
-        t.setStyleSheet(f"color:{TEXT};font-size:{'17' if alto else '14.5'}px;font-weight:600;"
-                        "background:transparent;")
+        t.setStyleSheet("font-size:%dpx;font-weight:600;color:%s;background:transparent;"
+                        "border:none;" % (17 if alto else 14.5, TEXT))
         v.addWidget(t)
-        if sub:
-            d = QLabel(sub)
-            d.setStyleSheet(f"color:{MUTED};font-size:12.5px;background:transparent;")
-            d.setWordWrap(True)
-            v.addWidget(d)
+        d = QLabel(sub)
+        d.setWordWrap(True)
+        d.setMinimumWidth(1)
+        d.setStyleSheet("font-size:%dpx;color:%s;background:transparent;border:none;"
+                        % (13 if alto else 12, MUTED))
+        v.addWidget(d)
+        v.addStretch(1)
+
+        seta = QHBoxLayout()
+        seta.setContentsMargins(0, 6, 0, 0)
+        seta.addStretch(1)
+        a = QLabel()
+        a.setPixmap(icone_pix("arrow", GREEN, 20 if alto else 16))
+        a.setStyleSheet("background:transparent;border:none;")
+        seta.addWidget(a)
+        v.addLayout(seta)
         if alto:
-            v.addStretch(1)
-            self.setMinimumHeight(132)
+            self.setMinimumHeight(158)
 
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton and self._on_click:
@@ -1013,10 +1066,19 @@ class _CardBotao(QFrame):
 
 
 class _Hub(QWidget):
-    """A tela de entrada da aba: dois caminhos, e o do PCM abre os tres destinos dele.
+    """A tela de entrada da aba: dois caminhos, e o do PCM abre os tres destinos dele."""
 
-    A animacao e curta de proposito (220 ms): ela existe para o olho perceber que apareceu
-    coisa nova abaixo, nao para enfeitar."""
+    # Os numeros e a IDEIA vem da referencia de anime.js que o Levi mandou — createScope com
+    # `mediaQueries`, e o corpo da animacao lendo `matches` para decidir o EIXO do movimento:
+    #     x: isSmall ? 0 : [...], y: isSmall ? [...] : 0
+    # Aqui nao ha CSS nem media query, entao o equivalente honesto e a propria geometria do
+    # widget: quando ele esta largo os cards estao lado a lado e o movimento natural e vertical;
+    # quando esta estreito eles empilham e o movimento passa a ser horizontal. E o mesmo
+    # principio — a animacao acompanha o formato da tela em vez de ser fixa.
+    STAGGER = 100
+    DUR = 340
+    DESLOC = 22
+    ESTREITO = 900          # abaixo disto os cards empilham: e o nosso "(max-width: ...)"
 
     def __init__(self, ir):
         super().__init__()
@@ -1028,7 +1090,7 @@ class _Hub(QWidget):
         v.setContentsMargins(28, 26, 28, 26)
         v.setSpacing(16)
 
-        t = QLabel("Solicitacao / PCM")
+        t = QLabel("Solicitação / PCM")
         t.setStyleSheet(f"color:{TEXT};font-size:19px;font-weight:600;")
         v.addWidget(t)
         d = QLabel("O supervisor pede. O PCM confere e gera a OS com as subtarefas do tema.")
@@ -1037,12 +1099,12 @@ class _Hub(QWidget):
 
         topo = QHBoxLayout()
         topo.setSpacing(14)
-        self.c_nova = _CardBotao("Criar Nova Solicitacao",
-                                 "Pedir servico ja com tema, tecnico sugerido e data pretendida",
-                                 lambda: self._ir("nova"))
-        self.c_pcm = _CardBotao("Area PCM",
+        self.c_nova = _CardBotao("Criar Nova Solicitação",
+                                 "Pedir serviço já com tema, técnico sugerido e data pretendida",
+                                 lambda: self._ir("nova"), icone="send")
+        self.c_pcm = _CardBotao("Área PCM",
                                 "Conferir a fila, aprovar e acompanhar o que virou OS",
-                                self._abrir_pcm)
+                                self._abrir_pcm, icone="calcheck")
         topo.addWidget(self.c_nova, 1)
         topo.addWidget(self.c_pcm, 1)
         v.addLayout(topo)
@@ -1052,20 +1114,22 @@ class _Hub(QWidget):
         sv.setContentsMargins(0, 0, 0, 0)
         sv.setSpacing(12)
         self._subcards = []
-        for rot, sub, alvo in (("Painel", "O que esta pendente, em andamento e finalizado", "painel"),
-                               ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema", "fila"),
-                               ("Historico", "Tudo o que ja passou por aqui", "hist")):
-            c = _CardBotao(rot, sub, lambda a=alvo: self._ir(a), alto=False)
+        for rot, txt, alvo, ico in (
+                ("Painel", "O que está pendente, em andamento e finalizado", "painel", "grid"),
+                ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema", "fila", "list"),
+                ("Histórico", "Tudo o que já passou por aqui", "hist", "clock")):
+            c = _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, alto=False)
             sv.addWidget(c, 1)
             self._subcards.append(c)
         self.sub.setVisible(False)
         v.addWidget(self.sub)
         v.addStretch(1)
 
+    # ── navegacao ──
     def _abrir_pcm(self):
         """1o clique abre os tres destinos; 2o vai direto para a fila, que e onde o PCM trabalha.
 
-        O estado fica num atributo e nao em `isVisible()`: isVisible() responde pela cadeia
+        O estado fica num atributo e nao em `isVisible()`: isVisible responde pela cadeia
         inteira de pais, entao seria False com a aba em segundo plano — e o segundo clique
         reabriria em vez de navegar."""
         if self._aberto:
@@ -1075,22 +1139,29 @@ class _Hub(QWidget):
         self.sub.setVisible(True)
         QTimer.singleShot(0, self._animar)
 
-    # A referencia do anime.js que o Levi mandou: createTimeline().add(..., stagger(100)).
-    # Aqui e Qt, entao o equivalente e um grupo paralelo por card disparado com atraso crescente.
-    # Os numeros vem de la: 100 ms de stagger, e o deslocamento em Y como movimento principal.
-    STAGGER = 100
-    DUR = 340
-    SOBE = 22
+    def recolher(self):
+        self._aberto = False
+        self.sub.setVisible(False)
+
+    # ── animacao ──
+    def _matches(self):
+        """O nosso `self.matches`: o que vale de verdade sobre o formato atual da tela."""
+        return {"estreito": self.width() < self.ESTREITO}
 
     def _animar(self, cards=None):
-        """Entra subindo, com um leve passar do ponto no fim (OutBack).
+        """Entra deslocando, com um leve passar do ponto no fim (OutBack).
 
         Guarda a referencia do grupo: animacao sem dono e coletada no meio do caminho e o widget
         congela na posicao inicial — some da tela sem erro nenhum."""
+        estreito = self._matches()["estreito"]
         for k, c in enumerate(cards or self._subcards):
             ef = QGraphicsOpacityEffect(c)
             c.setGraphicsEffect(ef)
             fim = c.pos()
+            # eixo escolhido pelo formato, como no exemplo da doc: empilhado entra pelo lado,
+            # lado a lado entra por baixo
+            ini = (QPoint(fim.x() - self.DESLOC, fim.y()) if estreito
+                   else QPoint(fim.x(), fim.y() + self.DESLOC))
             g = QParallelAnimationGroup(c)
             a1 = QPropertyAnimation(ef, b"opacity", g)
             a1.setDuration(self.DUR)
@@ -1099,7 +1170,7 @@ class _Hub(QWidget):
             a1.setEasingCurve(QEasingCurve.Type.OutCubic)
             a2 = QPropertyAnimation(c, b"pos", g)
             a2.setDuration(self.DUR)
-            a2.setStartValue(QPoint(fim.x(), fim.y() + self.SOBE))
+            a2.setStartValue(ini)
             a2.setEndValue(fim)
             # OutBack passa alguns pixels do destino e volta — e o que da a sensacao de peso
             # que a curva puramente desacelerada nao tem.
@@ -1115,10 +1186,6 @@ class _Hub(QWidget):
         if not self._entrou:
             self._entrou = True
             QTimer.singleShot(0, lambda: self._animar([self.c_nova, self.c_pcm]))
-
-    def recolher(self):
-        self._aberto = False
-        self.sub.setVisible(False)
 
 
 class SolicPcmTab(QWidget):
@@ -1137,16 +1204,22 @@ QPushButton#navPag { background:transparent; color:#8a90a2; border:none;
   min-height:0; }
 QPushButton#navPag:hover { color:#e6e8ef; }
 QPushButton#navPag:checked { color:#e8ebf2; border-bottom:2px solid #8fce3f; }
-QFrame#hubCard { background:#161d30; border:1px solid #232a3d; border-radius:12px; }
-QFrame#hubCard:hover { border-color:#3c6b1f; background:#18203a; }
+/* mesma forma dos cards da tela inicial do app: o risco verde embaixo e o que da cor e
+   parentesco. Sem ele o card e um retangulo cinza com texto dentro. */
+QFrame#hubCard { background:#161d30; border:1px solid #232a3d;
+  border-bottom:2px solid #8fce3f; border-radius:14px; }
+QFrame#hubCard:hover { border:1px solid #8fce3f; border-bottom:2px solid #8fce3f;
+  background:#18203a; }
+QLabel#hubIcone { background:rgba(143,206,63,0.14); border-radius:12px; border:none; }
 
-/* cartao da coluna da fila — a barra verde da esquerda e o unico marcador de selecao:
-   trocar a cor de fundo inteira competiria com o painel da direita. */
-QFrame#filaCard { background:#141b2c; border:1px solid #212840; border-radius:9px;
-  border-left:3px solid transparent; }
-QFrame#filaCard:hover { border-color:#2c3550; }
-QFrame#filaCard[sel="1"] { background:#18203a; border-left:3px solid #8fce3f;
-  border-top-color:#2c3550; }
+/* CELULA, nao cartao (decisao do Levi, 03/09). A fila e uma tabela: mesmo fundo da pagina,
+   sem borda em volta e sem cantos, e cada item separado do seguinte por uma linha so. Cartao
+   com borda e respiro fazia cada solicitacao parecer um objeto solto; aqui elas sao linhas de
+   uma lista, que e o que sao. A barra verde da esquerda marca a selecionada. */
+QFrame#filaCard { background:transparent; border:none;
+  border-bottom:1px solid #1b2235; border-left:3px solid transparent; }
+QFrame#filaCard:hover { background:#111828; }
+QFrame#filaCard[sel="1"] { background:#141b2c; border-left:3px solid #8fce3f; }
 /* sem font-size aqui de proposito: o QSS venceria o setFont e o fontMetrics() do rotulo
    passaria a mentir — media 403 px num texto que pinta com 150, e o elide comia o nome do
    tema sem necessidade. O tamanho vai por setFont, em _CartaoFila. */
@@ -1161,7 +1234,13 @@ QLabel#subsCab { color:#8a90a2; font-size:11.5px; padding:10px 14px;
 QFrame#subLinha { border-bottom:1px solid #1b2235; background:transparent; }
 QFrame#subLinha[ultima="1"] { border-bottom:none; }
 
-QFrame#filaCab { background:#141b2c; border:1px solid #232a3d; border-radius:10px; }
+/* o cabecalho e a PRIMEIRA LINHA da tabela: sem cantos e sem bordas laterais, so o risco de
+   baixo, que atravessa a largura inteira e amarra o titulo as celulas da lista e do detalhe. */
+QFrame#filaCab { background:transparent; border:none; border-bottom:1px solid #232a3d; }
+QFrame#divisorV { background:#232a3d; }
+QFrame#riscoParcial { background:#232a3d; border:none; }
+QLabel#cabCol { color:#8a90a2; font-size:10.5px; font-weight:700; letter-spacing:0.8px;
+  background:transparent; }
 QPushButton#btnVoltar { background:transparent; border:none; color:#8a90a2; font-size:13px;
   font-weight:600; padding:2px 4px; min-height:0; }
 QPushButton#btnVoltar:hover { color:#e6e8ef; }
