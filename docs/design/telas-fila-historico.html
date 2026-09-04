@@ -1,0 +1,479 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>OS Creator — Fila do PCM e Histórico</title>
+<!--
+  FIEL AO QUE ESTA NO CODIGO, e nao de memoria.
+
+  Cada cor, tamanho e espacamento aqui foi extraido da folha de estilo REAL da aba, despejada
+  do app rodando (`SolicPcmTab.styleSheet()`), e a estrutura foi conferida contra duas fotos
+  tiradas do proprio Qt — `tela-fila.png` e `tela-hist.png`, nesta mesma pasta. Onde o valor
+  vem de codigo Python e nao da QSS (tamanhos de fonte postos com setStyleSheet direto no
+  QLabel), o comentario diz de onde saiu.
+
+  O QUE ESTA PAGINA NAO REPRODUZ, e por que nao da:
+  - a fonte. O app usa a fonte do sistema pelo Qt; aqui e Segoe UI pelo navegador. As metricas
+    batem de perto, mas nao sao as mesmas.
+  - o elide ("...") dos rotulos. No Qt quem apara e o fontMetrics em tempo de execucao; aqui e
+    text-overflow do CSS. O ponto de corte pode cair um caractere antes ou depois.
+  - a barra de rolagem do Qt.
+
+  Fora isso, e a mesma tela: mesmas cores, mesmas medidas, mesma hierarquia.
+-->
+<style>
+  :root{
+    /* constantes do app (os_creator/steps/ui.py) */
+    --bg:#0B1020; --card:#121A2B; --texto:#FFFFFF; --muted:#8A93A8; --verde:#A6E22E;
+    --verde-escuro:#8fce3f; --tinta:#0B1020;
+    /* da QSS da aba */
+    --cab:#161d30; --linha:#222c43; --borda:#232a3d; --caixa:#141b2c;
+    --campo:#1A2337; --campo-borda:#2A3550; --azul-num:#6FA8DC;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--texto);
+       font:13px/1.45 "Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .app{min-height:100vh;display:flex;flex-direction:column}
+
+  /* ── barra de navegacao: QPushButton#navPag ── */
+  .nav{display:flex;align-items:center;gap:0;padding:0 8px;background:var(--bg)}
+  .nav button{background:transparent;color:#8a90a2;border:none;
+              border-bottom:2px solid transparent;padding:7px 14px;font-size:13.5px;
+              font-weight:600;cursor:pointer;font-family:inherit}
+  .nav button:hover{color:#e6e8ef}
+  .nav button.on{color:#e8ebf2;border-bottom:2px solid var(--verde-escuro)}
+  .tela{display:none;flex:1;min-height:0;flex-direction:column}
+  .tela.on{display:flex}
+
+  /* ══════════════════ FILA DO PCM ══════════════════ */
+  /* QFrame#filaCab — cabecalho e a PRIMEIRA LINHA da tabela, so risco embaixo */
+  .filaCab{background:var(--cab);border-bottom:1px solid var(--linha);
+           padding:9px 16px 9px 14px;display:flex;align-items:center;gap:12px}
+  .btnVoltar{background:transparent;border:none;color:#8a90a2;font-size:13px;font-weight:600;
+             padding:2px 4px;cursor:pointer;font-family:inherit}
+  .btnVoltar:hover{color:#e6e8ef}
+  .filaCab .tit{color:var(--texto);font-size:15px;font-weight:600}
+  .filaCab .cont{margin-left:auto;color:var(--muted);font-size:12.5px}
+  .filaCab .cont b{color:var(--verde)}
+  .filaCab .cont b.n{color:var(--texto)}
+
+  .corpo{flex:1;display:flex;min-height:0}
+  .col{width:460px;flex:0 0 460px;display:flex;flex-direction:column;min-height:0}
+  /* QLabel#cabCol */
+  .cabCol{color:#8a90a2;font-size:10.5px;font-weight:700;letter-spacing:.8px;
+          background:#0b1020;border-bottom:1px solid var(--linha);padding:10px 14px 9px}
+  .lista{flex:1;overflow-y:auto;min-height:0}
+
+  /* QFrame#filaCard — CELULA, nao cartao: mesmo fundo da pagina, sem borda em volta,
+     separada da seguinte por uma linha so. A barra verde da esquerda marca a selecionada. */
+  .cel{background:transparent;border:none;border-bottom:1px solid var(--linha);
+       border-left:3px solid transparent;padding:11px 12px 12px 14px;cursor:pointer}
+  .cel:hover{background:var(--cab)}
+  .cel.sel{background:var(--cab);border-left:3px solid var(--verde-escuro)}
+  .cel .topo{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+  .cel .num{color:var(--azul-num);font-size:11.5px;font-weight:700}
+  /* borda = a cor da fonte 50% mais clara (helper _clarear no solic_pcm.py) */
+  .pill{margin-left:auto;font-size:10px;font-weight:600;border-radius:8px;padding:1px 7px;
+        white-space:nowrap}
+  .cel .usina{color:var(--texto);font-size:13.5px;font-weight:600;margin-bottom:3px}
+  .cel .ativo{color:var(--muted);font-size:11.5px;margin-bottom:3px}
+  .cel .quem{color:var(--muted);font-size:11px;margin-bottom:3px}
+  /* QLabel#chipTema / #chipVazio — 11px vem do setFont em _CartaoFila, nao da QSS */
+  .chip{display:inline-block;max-width:100%;font-size:11px;border-radius:5px;padding:2px 8px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+  .chipTema{background:rgba(143,206,63,.14);color:#a9d96a;font-weight:600}
+  .chipVazio{background:rgba(138,144,162,.12);color:#8a90a2}
+
+  .divisorV{width:1px;flex:0 0 1px;background:var(--linha)}
+  .det{flex:1;overflow-y:auto;padding:16px 20px 14px;display:flex;flex-direction:column;
+       gap:12px;min-width:0}
+
+  .titLin{display:flex;gap:10px;align-items:flex-start}
+  .titLin svg{flex:0 0 22px;margin-top:4px}
+  .titLin h2{margin:0;color:var(--texto);font-size:26px;font-weight:600;line-height:1.22}
+  .orig{color:var(--muted);font-size:12.5px;margin:-4px 0 0}
+  .orig s{opacity:.85}
+
+  /* _rotulo(): caixa alta pequena, da hierarquia sem gastar mais uma cor */
+  .rot{color:var(--muted);font-size:10.5px;font-weight:700;letter-spacing:.8px}
+  .val{color:var(--texto);font-size:13px}
+  .ficha{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 18px;row-gap:4px}
+  .ficha .l2{grid-column:1 / -1;margin-top:8px}
+  .risco{height:1px;background:var(--linha);border:none;margin:2px 0}
+
+  /* QFrame#boxSug e #boxSubs */
+  .par{display:flex;gap:12px;align-items:stretch}
+  .box{background:var(--caixa);border:1px solid var(--borda);border-radius:10px;
+       padding:13px 16px 14px;min-width:0}
+  .box .cab{color:var(--verde);font-size:10.5px;font-weight:700;letter-spacing:.8px;
+            margin-bottom:9px}
+  .box.sug{flex:3}
+  .box.etq{flex:2;display:flex;flex-direction:column;gap:9px}
+  .sugLin{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .fixo{color:var(--texto);font-size:13px;font-weight:600}
+  /* QLabel#valorEditavel — sublinhado pontilhado e o convite, sem virar botao */
+  .editavel{color:#e8ebf2;font-size:13px;border-bottom:1px dashed #39405a;padding:1px 2px;
+            cursor:pointer}
+  .editavel:hover{color:#fff;border-bottom-color:var(--verde-escuro)}
+  .sugLin .amb{margin-left:auto;color:var(--muted);font-size:12px}
+  .addEtq{color:var(--verde-escuro);font-size:13px;border-bottom:1px solid var(--verde-escuro);
+          padding:2px 2px 4px;cursor:pointer}
+  .etqAviso{color:var(--muted);font-size:11.5px}
+
+  .temaLin{display:flex;align-items:center;gap:10px}
+  .chipSug{background:rgba(143,206,63,.14);color:#a9d96a;font-size:11px;font-weight:600;
+           border-radius:5px;padding:2px 8px}
+  /* QComboBox#cbTema[temado="1"] — tema escolhido = borda verde */
+  .cbTema{background:var(--campo);border:1px solid var(--verde-escuro);border-radius:10px;
+          height:40px;padding:0 12px;font-size:13px;color:var(--texto);display:flex;
+          align-items:center}
+  .classif{color:var(--muted);font-size:12.5px}
+  .classif b{color:var(--texto)}
+  .quantas{color:var(--muted);font-size:12.5px}
+  .quantas b{color:var(--texto)}
+
+  /* editor de subtarefas: LINHA sutil, nao card (pedido do Levi) */
+  .subs{display:flex;flex-direction:column}
+  .sub{display:flex;align-items:center;gap:14px;padding:9px 2px;
+       border-bottom:1px solid #1b2235}
+  .sub:last-child{border-bottom:none}
+  .sub .n{color:var(--verde);font-size:12.5px;font-weight:700;width:16px;flex:0 0 16px;
+          text-align:right}      /* numeradores verde Grid, pedido do Levi */
+  .sub .txt{flex:1;font-size:13px;color:#e8ebf2;min-width:0}
+  .sub .tipo{color:var(--muted);font-size:12px;width:78px;flex:0 0 78px}
+  .sub .anexo{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;
+              width:150px;flex:0 0 150px}
+  .cx{width:18px;height:18px;border:1px solid var(--campo-borda);border-radius:5px;
+      background:var(--campo);flex:0 0 18px;position:relative}
+  .cx.on{background:var(--verde);border:2px solid var(--verde)}
+  .cx.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:9px;
+                border:solid var(--tinta);border-width:0 2px 2px 0;transform:rotate(42deg)}
+  .sub .x{color:#5a6072;font-size:15px;cursor:pointer;padding:0 2px}
+  .sub .x:hover{color:#e05555}
+
+  .acoes{display:flex;align-items:center;gap:10px;margin-top:4px}
+  /* Os dois botoes NAO tem o mesmo peso: aprovar e a decisao, devolver e a excecao. */
+  .btnAprovar{background:var(--verde);color:var(--tinta);border:none;
+              border-bottom:2px solid #6d9c14;border-radius:11px;height:44px;padding:0 22px;
+              font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;
+              display:flex;align-items:center;gap:8px}
+  .btnAprovar:hover{background:#b8f03f;border-bottom-color:#7fae1c}
+  .btnDevolver{background:transparent;color:#9aa3b8;border:1px solid var(--linha);
+               border-radius:11px;height:44px;padding:0 18px;font-size:13px;font-weight:600;
+               cursor:pointer;font-family:inherit}
+  .btnDevolver:hover{color:#e6e8ef;border-color:#3d4a6b;background:var(--caixa)}
+  .acoes .hint{margin-left:auto;color:var(--muted);font-size:12px}
+
+  /* ══════════════════ HISTORICO ══════════════════ */
+  .hist{padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
+  .hlin{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .hlab{color:var(--muted);font-size:12px}
+  /* QLineEdit/QComboBox do QSS_FORM */
+  .campo{background:var(--campo);border:1px solid var(--campo-borda);border-radius:10px;
+         height:40px;padding:0 12px;font-size:13px;color:var(--texto);display:flex;
+         align-items:center;gap:9px}
+  .campo.foco{border-color:var(--verde)}
+  .campo .ph{color:#6b7385}
+  .campo.sel::after{content:"";margin-left:auto;width:0;height:0;
+                    border-left:4.5px solid transparent;border-right:4.5px solid transparent;
+                    border-top:5px solid #9aa3b8}
+  .filtros{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px 16px}
+  .fcampo{display:flex;flex-direction:column;gap:4px}
+  .fcampo>.hlab{font-size:11.5px}
+  .periodo{display:flex;align-items:center;gap:9px}
+  .periodo .campo{width:124px}
+  .btnG{background:transparent;color:#d4dae6;border:1px solid var(--campo-borda);
+        border-radius:10px;height:40px;padding:0 16px;font-size:13px;font-weight:600;
+        cursor:pointer;font-family:inherit}
+  .btnG:hover{border-color:#4a597e;color:#fff}
+
+  /* QTableWidget + QHeaderView::section */
+  .tabWrap{flex:1;min-height:0;background:var(--campo);border:1px solid var(--campo-borda);
+           border-radius:10px;overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{background:var(--card);color:var(--muted);padding:6px 9px;border:none;
+     border-bottom:1px solid var(--campo-borda);font-weight:600;font-size:11px;
+     text-align:left;position:sticky;top:0}
+  td{padding:8px;border-bottom:1px solid var(--campo-borda);color:var(--texto);
+     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+  tr:hover td{background:rgba(166,226,46,.05)}
+  td.no,td.os{color:#98c838;font-weight:700}
+  td.os{text-align:center}
+  td.os.vazio{color:var(--texto);font-weight:400}
+  td.st{text-align:center;overflow:visible}
+  .stPill{display:inline-block;border-radius:8px;padding:4px 12px;font-size:12px;
+          font-weight:700}
+  .stPill.cinza{color:#c4cbdb;background:var(--campo);border:1px solid var(--campo-borda);
+                font-weight:600}
+  .rodape{color:var(--muted);font-size:12px}
+
+  .obs{max-width:1100px;margin:26px auto 40px;padding:0 18px;color:var(--muted);
+       font-size:12.5px;line-height:1.6}
+  .obs b{color:var(--texto)}
+  .obs code{background:var(--campo);border:1px solid var(--campo-borda);border-radius:4px;
+            padding:1px 5px;font-size:11.5px;color:#cfd6e4}
+</style>
+
+<div class="app">
+  <div class="nav">
+    <button>‹ Início</button>
+    <button>Nova solicitação</button>
+    <button>Painel</button>
+    <button class="on" data-t="fila">Fila do PCM</button>
+    <button data-t="hist">Histórico</button>
+  </div>
+
+  <!-- ═══════════ FILA DO PCM ═══════════ -->
+  <div class="tela on" id="t-fila">
+    <div class="filaCab">
+      <button class="btnVoltar">← Voltar</button>
+      <span class="tit">Fila do PCM</span>
+      <span class="cont"><b>4</b> aguardando · <b class="n">2</b> chegaram hoje</span>
+    </div>
+
+    <div class="corpo">
+      <div class="col">
+        <div class="cabCol">AGUARDANDO APROVAÇÃO</div>
+        <div class="lista">
+          <div class="cel sel">
+            <div class="topo"><span class="num">Nº 3541</span>
+              <span class="pill" style="color:#01C0DD;border:1px solid #80dfee">Pendente</span></div>
+            <div class="usina">Colônia Tapejara</div>
+            <div class="ativo">INV-03 · Huawei SUN2000-100KTL</div>
+            <div class="quem">Singrid Vieira · há 15 h</div>
+            <span class="chip chipTema">Inversor — inspeção e medição</span>
+          </div>
+          <div class="cel">
+            <div class="topo"><span class="num">Nº 3540</span>
+              <span class="pill" style="color:#F5A623;border:1px solid #fad091">Em processo</span></div>
+            <div class="usina">Morro do Chapéu</div>
+            <div class="ativo">Estrutura Trackers 2ª Seção</div>
+            <div class="quem">Anderson Luiz · há 16 h</div>
+            <span class="chip chipTema">Tracker — chamado e comunicação da TCU</span>
+          </div>
+          <div class="cel">
+            <div class="topo"><span class="num">Nº 3538</span>
+              <span class="pill" style="color:#01C0DD;border:1px solid #80dfee">Pendente</span></div>
+            <div class="usina">Ceilândia</div>
+            <div class="ativo">String Box 04</div>
+            <div class="quem">Marcos Vinícius de Oliveira · ontem</div>
+            <span class="chip chipVazio">sem tema</span>
+          </div>
+          <div class="cel">
+            <div class="topo"><span class="num">Nº 3535</span>
+              <span class="pill" style="color:#01C0DD;border:1px solid #80dfee">Pendente</span></div>
+            <div class="usina">Ouro Branco</div>
+            <div class="ativo">INV-11 · Sungrow SG125HV</div>
+            <div class="quem">Patrícia Gomes · há 2 dias</div>
+            <span class="chip chipTema">Inversor — chamado de garantia</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="divisorV"></div>
+
+      <div class="det">
+        <div class="titLin">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#A6E22E"
+               stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66
+            17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          </svg>
+          <h2>[Colônia Tapejara][INV-03 · Huawei SUN2000-100KTL] - Inspeção e medição de inversor</h2>
+        </div>
+        <p class="orig">o supervisor escreveu: <s>Inversor 03 parado desde ontem</s> · título reescrito no padrão</p>
+
+        <div class="ficha">
+          <div><div class="rot">SOLICITANTE</div><div class="val">Singrid Vieira</div></div>
+          <div><div class="rot">ABERTA EM</div><div class="val">03/09/2026 08:14</div></div>
+          <div><div class="rot">ATIVO</div><div class="val">INV-03 · Huawei SUN2000-100KTL</div></div>
+          <div class="l2"><div class="rot">USINA</div><div class="val">Colônia Tapejara</div></div>
+        </div>
+
+        <hr class="risco">
+
+        <div class="par">
+          <div class="box sug">
+            <div class="cab">SUGERIDO PELO SUPERVISOR</div>
+            <div class="sugLin">
+              <span class="fixo">Técnico:</span><span class="editavel">Rafael Andrade</span>
+              <span class="fixo" style="margin-left:22px">Data sugerida:</span>
+              <span class="editavel">05/09/2026 08:00</span>
+              <span class="amb">ambos editáveis</span>
+            </div>
+          </div>
+          <div class="box etq">
+            <div class="cab">ETIQUETAS DA OS</div>
+            <div class="addEtq">+ adicionar etiqueta</div>
+            <div class="etqAviso">Nenhuma etiqueta — a OS nasce sem marcação.</div>
+          </div>
+        </div>
+
+        <div class="temaLin">
+          <span class="rot">TEMA</span>
+          <span class="chipSug">sugerido pela descrição</span>
+        </div>
+        <div class="cbTema">Inversor — inspeção e medição</div>
+        <div class="classif">Classificação 1: <b>Não Para o Ativo</b> domínio 27%</div>
+        <div class="quantas">A OS vai nascer com <b>10 subtarefas</b></div>
+
+        <div class="subs">
+          <div class="sub"><span class="n">1</span><span class="txt">Confirmar bloqueio e etiquetagem (LOTO) do inversor antes de iniciar</span><span class="tipo">Verificação</span><span class="anexo"><i class="cx on"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">2</span><span class="txt">Aguardar o tempo de descarga dos capacitores internos conforme manual do fabricante</span><span class="tipo">Verificação</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">3</span><span class="txt">Abrir tampas e inspecionar conexões da placa DC (aperto, oxidação, sinais de calor)</span><span class="tipo">Verificação</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">4</span><span class="txt">Comparar temperatura do inversor com a ambiente (termômetro IV / câmera térmica)</span><span class="tipo">Verificação</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">5</span><span class="txt">Temperatura medida no inversor, em °C</span><span class="tipo">Numérico</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">6</span><span class="txt">Verificar ventoinhas e filtros — quantas estão com problema</span><span class="tipo">Numérico</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">7</span><span class="txt">Medir tensão de cada string conectada, em V</span><span class="tipo">Numérico</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">8</span><span class="txt">Medir corrente de cada string conectada, em A</span><span class="tipo">Numérico</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">9</span><span class="txt">Verificar conectores MC4 e polaridade dos cabos CC</span><span class="tipo">Verificação</span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub"><span class="n">10</span><span class="txt">Anexar registros de temperatura, fotos da inspeção e medições de tensão de string</span><span class="tipo">Texto</span><span class="anexo"><i class="cx on"></i>anexo obrigatório</span><span class="x">×</span></div>
+          <div class="sub" style="border-bottom:none;padding-top:11px">
+            <span class="n"></span><span class="txt" style="color:var(--verde-escuro);font-weight:600">+   Adicionar subtarefa</span>
+          </div>
+        </div>
+
+        <div class="acoes">
+          <button class="btnAprovar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0B1020"
+                 stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6L9 17l-5-5"/></svg>
+            Aprovar e gerar OS</button>
+          <button class="btnDevolver">Devolver ao supervisor</button>
+          <span class="hint">Aprovar avança para a próxima</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ HISTÓRICO ═══════════ -->
+  <div class="tela" id="t-hist">
+    <div class="hist">
+      <div class="hlin">
+        <span class="hlab">Criado por</span>
+        <div class="campo" style="width:230px"></div>
+        <div class="campo foco" style="width:310px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A6E22E"
+               stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+          <span class="ph">Buscar solicitação pelo nº — ign…</span>
+        </div>
+        <span class="hlab" style="margin-left:auto">↻ Atualiza a cada 15 min</span>
+        <span class="hlab">Buscar</span>
+        <div class="campo" style="width:165px"><span class="ph">nº, ativo, descri…</span></div>
+        <button class="btnG">Exportar</button>
+        <button class="btnG">Limpar filtros</button>
+        <button class="btnG" style="padding:0 12px">↻</button>
+      </div>
+
+      <div class="filtros">
+        <div class="fcampo"><span class="hlab">Cliente</span>
+          <div class="campo sel">Todos os clientes</div></div>
+        <div class="fcampo"><span class="hlab">Usina</span>
+          <div class="campo sel">Todas as usinas</div></div>
+        <div class="fcampo"><span class="hlab">Tipo de ativo</span>
+          <div class="campo sel">Todos os tipos</div></div>
+        <div class="fcampo"><span class="hlab">Status</span>
+          <div class="campo sel">Todos os status</div></div>
+        <div class="fcampo"><span class="hlab">Período</span>
+          <div class="periodo">
+            <div class="campo sel">04/08/2026</div><span class="hlab">até</span>
+            <div class="campo sel">03/09/2026</div>
+          </div></div>
+      </div>
+
+      <div class="tabWrap">
+        <table>
+          <thead><tr>
+            <th style="width:60px">Nº</th><th style="width:100px">Cliente</th>
+            <th style="width:140px">Usina</th><th style="width:180px">Ativo</th>
+            <th>Descrição</th><th style="width:130px">Criada em</th>
+            <th style="width:130px;text-align:center">Status</th>
+            <th style="width:90px;text-align:center">OS ligada</th>
+          </tr></thead>
+          <tbody>
+            <tr><td class="no">3539</td><td>Thopen</td><td>Colônia Tapejara</td>
+              <td>INV-07 · Huawei SUN…</td><td>Inversor 07 com erro 507</td>
+              <td>02/09/2026 11:22</td>
+              <td class="st"><span class="stPill" style="color:#4A9EF5;background:rgba(74,158,245,.16);border:1px solid rgba(74,158,245,.42)">Aprovada</span></td>
+              <td class="os">12781</td></tr>
+            <tr><td class="no">3537</td><td>Polaris</td><td>Morro do Chapéu</td>
+              <td>Estrutura Trackers 1ª S…</td><td>TCU sem comunicação</td>
+              <td>01/09/2026 06:10</td>
+              <td class="st"><span class="stPill" style="color:#F5766B;background:rgba(245,118,107,.16);border:1px solid rgba(245,118,107,.42)">Rejeitada</span></td>
+              <td class="os vazio">—</td></tr>
+            <tr><td class="no">3534</td><td>Copel</td><td>Ceilândia</td>
+              <td>String Box 02</td><td>Fusível queimado na string 7</td>
+              <td>29/08/2026 12:47</td>
+              <td class="st"><span class="stPill" style="color:#4A9EF5;background:rgba(74,158,245,.16);border:1px solid rgba(74,158,245,.42)">Aprovada</span></td>
+              <td class="os">12777</td></tr>
+            <tr><td class="no">3531</td><td>Thopen</td><td>Ouro Branco</td>
+              <td>ETM · Estação Meteor…</td><td>Piranômetro sem leitura</td>
+              <td>27/08/2026 05:05</td>
+              <td class="st"><span class="stPill cinza">Em processo</span></td>
+              <td class="os">12770</td></tr>
+            <tr><td class="no">3528</td><td>Matrix</td><td>Céu Azul</td>
+              <td>CFTV · Câmera 03</td><td>Câmera 03 offline há 4 dias</td>
+              <td>25/08/2026 14:33</td>
+              <td class="st"><span class="stPill" style="color:#F5766B;background:rgba(245,118,107,.16);border:1px solid rgba(245,118,107,.42)">Cancelada</span></td>
+              <td class="os vazio">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="rodape">5 solicitação(ões) no período · 3 com OS ligada</div>
+    </div>
+  </div>
+</div>
+
+<div class="obs">
+  <p><b>De onde vieram os números desta página.</b> A folha de estilo foi despejada do app
+  rodando (<code>SolicPcmTab.styleSheet()</code>) e a estrutura conferida contra duas fotos
+  tiradas do próprio Qt, <code>tela-fila.png</code> e <code>tela-hist.png</code>, nesta pasta.
+  Nada aqui foi escrito de memória.</p>
+  <p><b>O que esta página não reproduz:</b> a fonte (o Qt usa a do sistema; aqui é Segoe UI
+  pelo navegador), o corte com reticências dos rótulos (no Qt quem apara é o
+  <code>fontMetrics</code> em tempo de execução, aqui é <code>text-overflow</code>, e o ponto
+  de corte pode cair um caractere antes ou depois) e a barra de rolagem. Cores, medidas e
+  hierarquia são as mesmas.</p>
+  <p><b>Duas coisas que eu quero que você olhe.</b> A primeira: o título do detalhe sai como
+  <code>[Usina][Ativo] - Motivo</code>. Na tela de Solicitação você pediu que fosse só o
+  motivo, e lá está só o motivo; aqui é o nome que a OS vai levar no Fracttal, e por isso
+  mantive a identificação do ativo. Se você quiser igual nas duas, é uma linha.</p>
+
+  <p><b>A segunda é um defeito de dado, e não de layout.</b> As duas telas formatam a hora com
+  funções <code>_data_br</code> <b>diferentes</b>. A do Histórico
+  (<code>steps/historico_solic.py</code>) chama <code>api.fmt_data_br</code> e converte
+  UTC&nbsp;→&nbsp;Brasília. A da Fila (<code>steps/solic_pcm.py</code>) só fatia a string e
+  <b>não converte nada</b> — então mostra todo horário 3&nbsp;h adiantado. Medido nas duas
+  funções com a mesma entrada:</p>
+  <table style="border-collapse:collapse;font-size:12px;margin:10px 0">
+    <tr><th style="text-align:left;padding:5px 12px;border:1px solid var(--campo-borda)">entrada (UTC do Fracttal)</th>
+        <th style="text-align:left;padding:5px 12px;border:1px solid var(--campo-borda)">Fila</th>
+        <th style="text-align:left;padding:5px 12px;border:1px solid var(--campo-borda)">Histórico</th></tr>
+    <tr><td style="padding:5px 12px;border:1px solid var(--campo-borda)">2026-09-03T08:14</td>
+        <td style="padding:5px 12px;border:1px solid var(--campo-borda)">03/09/2026 08:14</td>
+        <td style="padding:5px 12px;border:1px solid var(--campo-borda)">03/09/2026 05:14</td></tr>
+    <tr><td style="padding:5px 12px;border:1px solid var(--campo-borda)">2026-09-03T01:30</td>
+        <td style="padding:5px 12px;border:1px solid var(--campo-borda);color:#F5766B">03/09/2026 01:30</td>
+        <td style="padding:5px 12px;border:1px solid var(--campo-borda);color:#F5766B">02/09/2026 22:30</td></tr>
+  </table>
+  <p>Na segunda linha <b>muda o dia</b>: a mesma solicitação aparece como de 03/09 na Fila e de
+  02/09 no Histórico. O <code>_ha_quanto</code> da Fila ("há 15 h") sai do mesmo texto cru,
+  então o tempo relativo também está 3&nbsp;h errado. <b>Não mexi nisso</b> — é fora do escopo
+  do que você pediu e não é coisa para entrar num release sem você saber.</p>
+</div>
+
+<script>
+  document.querySelectorAll('.nav button[data-t]').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.nav button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      document.querySelectorAll('.tela').forEach(t => t.classList.remove('on'));
+      document.getElementById('t-' + b.dataset.t).classList.add('on');
+    };
+  });
+  // clicar numa célula da fila move a barra verde, como no app
+  document.querySelectorAll('.cel').forEach(c => {
+    c.onclick = () => {
+      document.querySelectorAll('.cel').forEach(x => x.classList.remove('sel'));
+      c.classList.add('sel');
+    };
+  });
+</script>

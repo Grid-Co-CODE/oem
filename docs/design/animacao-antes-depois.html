@@ -1,0 +1,155 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Animação do hub — antes e depois</title>
+<!--
+  Os DOIS lados usam exatamente os numeros que estao no Qt, em solic_pcm.py:
+
+    ANTES  STAGGER=700  DUR=1600  DESLOC=15  deslize cortado em 450 ms
+    AGORA  STAGGER=130  DUR=620   DESLOC=18  deslize e fade na mesma duracao
+
+  OutCubic do Qt e cubic-bezier(0.215, 0.61, 0.355, 1) no CSS - a mesma curva, nao uma
+  aproximacao. Por isso o que se ve aqui e o que a tela faz; o que o navegador NAO reproduz e
+  o layout (fonte, metrica, sombra), e por isso esta pagina nao serve para julgar aparencia,
+  so ritmo.
+-->
+<style>
+  :root{
+    --fundo:#090d18; --card:#161d30; --linha:#222c43; --texto:#e8ebf2;
+    --fraco:#8a90a2; --verde:#8FCE3F;
+    --curva:cubic-bezier(0.215, 0.61, 0.355, 1);   /* == QEasingCurve OutCubic */
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fundo);color:var(--texto);
+       font:14px/1.5 "Segoe UI",system-ui,sans-serif;padding:28px 32px 60px}
+  h1{font-size:19px;font-weight:600;margin:0 0 4px}
+  .sub{color:var(--fraco);font-size:13px;margin:0 0 26px}
+  .barra{display:flex;gap:12px;align-items:center;margin-bottom:26px;flex-wrap:wrap}
+  button{background:var(--card);color:var(--texto);border:1px solid var(--linha);
+         border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;
+         transition:border-color .18s var(--curva), color .18s var(--curva)}
+  button:hover{border-color:var(--verde);color:var(--verde)}
+  button.on{border-color:var(--verde);color:var(--verde)}
+  .par{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+  @media (max-width:900px){.par{grid-template-columns:1fr}}
+  .lado{border:1px solid var(--linha);border-radius:12px;padding:18px;background:#0b1020}
+  .rot{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+  .rot b{font-size:14px;font-weight:600}
+  .rot span{color:var(--fraco);font-size:11.5px;font-variant-numeric:tabular-nums}
+  .ruim b{color:#e05555}
+  .bom b{color:var(--verde)}
+  .fila{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .c{background:var(--card);border:1px solid var(--linha);border-radius:10px;padding:14px 13px;
+     min-height:96px;opacity:0}
+  .c .t{font-size:13px;font-weight:600;margin-bottom:5px}
+  .c .d{font-size:11px;color:var(--fraco);line-height:1.45}
+  .c .i{width:15px;height:15px;border:1.6px solid var(--verde);border-radius:3px;
+        margin-bottom:9px}
+
+  /* ANTES: o fade dura 1600 ms mas o deslize acaba em 450 - o card fica 1150 ms PARADO
+     clareando, e antes disso passa ate 1380 ms invisivel. E isso que le como pisca. */
+  .ruim .c.vai{animation:desliza-ruim 450ms var(--curva) both, aparece 1600ms var(--curva) both}
+  .ruim .c:nth-child(1).vai{animation-delay:0ms,0ms}
+  .ruim .c:nth-child(2).vai{animation-delay:700ms,700ms}
+  .ruim .c:nth-child(3).vai{animation-delay:1400ms,1400ms}
+
+  /* AGORA: mesma duracao e mesma curva nas duas propriedades, e o intervalo cabe dentro da
+     duracao - a partir dos 260 ms os tres estao animando ao mesmo tempo. */
+  .bom .c.vai{animation:desliza-bom 620ms var(--curva) both, aparece 620ms var(--curva) both}
+  .bom .c:nth-child(1).vai{animation-delay:0ms,0ms}
+  .bom .c:nth-child(2).vai{animation-delay:130ms,130ms}
+  .bom .c:nth-child(3).vai{animation-delay:260ms,260ms}
+
+  @keyframes aparece{from{opacity:0}to{opacity:1}}
+  @keyframes desliza-ruim{from{transform:translateY(15px)}to{transform:translateY(0)}}
+  @keyframes desliza-bom{from{transform:translateY(18px)}to{transform:translateY(0)}}
+
+  .nota{margin-top:30px;border-top:1px solid var(--linha);padding-top:18px;
+        color:var(--fraco);font-size:12.5px;max-width:760px}
+  .nota b{color:var(--texto)}
+  table{border-collapse:collapse;margin:14px 0;font-size:12.5px}
+  td,th{border:1px solid var(--linha);padding:6px 12px;text-align:left}
+  th{color:var(--texto);font-weight:600}
+  td:first-child{color:var(--fraco)}
+  .num{font-variant-numeric:tabular-nums}
+</style>
+
+<h1>Animação do hub — antes e depois</h1>
+<p class="sub">Os dois lados rodam os números que estão no Qt. Serve para julgar <b>ritmo</b>, não aparência.</p>
+
+<div class="barra">
+  <button id="play">Rodar os dois</button>
+  <button id="lento" class="">Câmera lenta (4×)</button>
+  <span style="color:var(--fraco);font-size:12px">roda sozinho ao abrir</span>
+</div>
+
+<div class="par">
+  <div class="lado ruim">
+    <div class="rot"><b>ANTES</b><span class="num">stagger 700 · dur 1600 · total 3000 ms</span></div>
+    <div class="fila">
+      <div class="c"><div class="i"></div><div class="t">Painel</div><div class="d">O que está pendente, em andamento e finalizado</div></div>
+      <div class="c"><div class="i"></div><div class="t">Fila do PCM</div><div class="d">Aprovar uma a uma, com as subtarefas do tema</div></div>
+      <div class="c"><div class="i"></div><div class="t">Histórico</div><div class="d">Tudo o que já passou por aqui</div></div>
+    </div>
+  </div>
+
+  <div class="lado bom">
+    <div class="rot"><b>AGORA</b><span class="num">stagger 130 · dur 620 · total 880 ms</span></div>
+    <div class="fila">
+      <div class="c"><div class="i"></div><div class="t">Painel</div><div class="d">O que está pendente, em andamento e finalizado</div></div>
+      <div class="c"><div class="i"></div><div class="t">Fila do PCM</div><div class="d">Aprovar uma a uma, com as subtarefas do tema</div></div>
+      <div class="c"><div class="i"></div><div class="t">Histórico</div><div class="d">Tudo o que já passou por aqui</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="nota">
+  <p><b>O que mudou, e por quê.</b> O traço da opacidade medido no app mostrou três defeitos, todos de desenho:</p>
+  <table>
+    <tr><th></th><th>antes</th><th>agora</th></tr>
+    <tr><td>3º card invisível por</td><td class="num">1380 ms</td><td class="num">260 ms</td></tr>
+    <tr><td>movimento termina em</td><td class="num">250 ms, e sobram 1100 ms parado clareando</td><td class="num">620 ms, junto com o brilho</td></tr>
+    <tr><td>cards animando ao mesmo tempo</td><td class="num">1</td><td class="num">3</td></tr>
+  </table>
+  <p>Duração longa não deixa a animação suave — deixa espaçada. O que dá suavidade é a
+  <b>sobreposição</b>: enquanto o intervalo for menor que a duração, sempre há movimento na
+  tela e o olho lê uma transição contínua em vez de coisas aparecendo uma a uma.</p>
+  <p>Se um dia a sequência precisar parecer mais demorada, quem cresce é o <b>stagger</b>,
+  nunca a duração — duração maior só alonga a parte que ninguém enxerga (a `OutCubic` chega a
+  90% em 54% do tempo).</p>
+</div>
+
+<script>
+  const cards = () => document.querySelectorAll('.c');
+  let fator = 1, ciclo = null;
+
+  function aplicar(){
+    // o lado ANTES manda no relógio: ele é o mais demorado dos dois
+    document.querySelectorAll('.ruim .c').forEach((c,i)=>{
+      c.style.animationDuration = (450*fator)+'ms, '+(1600*fator)+'ms';
+      c.style.animationDelay    = (700*i*fator)+'ms, '+(700*i*fator)+'ms';
+    });
+    document.querySelectorAll('.bom .c').forEach((c,i)=>{
+      c.style.animationDuration = (620*fator)+'ms, '+(620*fator)+'ms';
+      c.style.animationDelay    = (130*i*fator)+'ms, '+(130*i*fator)+'ms';
+    });
+  }
+  function rodar(){
+    cards().forEach(c => c.classList.remove('vai'));
+    void document.body.offsetWidth;                 // força o navegador a reiniciar as animações
+    cards().forEach(c => c.classList.add('vai'));
+  }
+  function agendar(){
+    // 3000 ms é o total do lado ANTES; o replay tem de esperar ELE terminar, senão em câmera
+    // lenta a demonstração era cortada no meio (12 s de animação com replay a cada 4,2 s)
+    if (ciclo) clearInterval(ciclo);
+    ciclo = setInterval(rodar, 3000*fator + 1200);
+  }
+
+  document.getElementById('play').onclick = rodar;
+  const bl = document.getElementById('lento');
+  bl.onclick = () => {
+    fator = bl.classList.toggle('on') ? 4 : 1;
+    aplicar(); rodar(); agendar();
+  };
+  aplicar(); rodar(); agendar();
+</script>

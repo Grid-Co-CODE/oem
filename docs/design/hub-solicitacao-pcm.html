@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub Solicitação / PCM</title>
+<!--
+  REFERÊNCIA DE DESIGN — a tela inicial da aba "Solicitação / PCM" do OS Creator, transcrita
+  de PyQt6 para HTML/CSS/JS, fiel ao que está no app (versão 2026.09.03.177).
+
+  De onde cada pedaço vem, no código real (C:\GridcoBuild\oem\os_creator\steps\solic_pcm.py):
+
+    .card            ->  _CardBotao      (ícone em quadrado verde, título, subtítulo, risco verde, seta)
+    .moldura         ->  _Elevavel       (a moldura que segura o card; é ela que entra animada,
+                                          para o hover/press do card não brigar com a entrada)
+    .card:hover      ->  _Elevavel.elevar    (sobe 4 px + sombra verde, 300 ms)
+    .card:active     ->  _Elevavel.afundar   (scale .97, 100 ms)
+    .card.ativo      ->  _CardBotao.marcar_ativo (borda inferior 4 px + ícone aceso)
+    @keyframes       ->  _Hub._animar    (fadeSlideUp em cascata)
+    @media 980px     ->  _Hub._reflow / _matches (cards empilham e a entrada vem pelo lado)
+    "voltar ao hub"  ->  _Hub.showEvent + recolher (a entrada reinicia toda vez que se volta)
+
+  Tempos (decisão do Levi, 03/09/2026) — saem da CONTA, não do chute:
+    cards de cima : 250 ms de atraso + 1750 ms          = 2000 ms
+    cards do PCM  : 700 ms × 2 de atraso + 1600 ms      = 3000 ms
+
+  Paleta (steps/ui.py + DARK_QSS do app.py):
+    fundo #090d18 · card #161d30 · borda #232a3d · verde #8fce3f · verde vivo #A6E22E
+    texto #e8ebf2 · apagado #8a90a2 · risco da tabela #222c43
+-->
+<style>
+  :root {
+    --bg: #090d18;
+    --card: #161d30;
+    --card-hover: #18203a;
+    --borda: #232a3d;
+    --verde: #8fce3f;
+    --verde-vivo: #A6E22E;
+    --verde-neon: 138, 224, 0;      /* o rgba da sombra do hover */
+    --texto: #e8ebf2;
+    --apagado: #8a90a2;
+
+    --dur-topo: 1750ms;   --stagger-topo: 250ms;    /* 250 + 1750 = 2000 */
+    --dur-pcm:  1600ms;   --stagger-pcm:  700ms;    /* 700×2 + 1600 = 3000 */
+    --curva: cubic-bezier(.22, .61, .36, 1);        /* OutCubic */
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--texto); }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 13px; min-height: 100vh; }
+
+  /* ── o hub ─────────────────────────────────────────────────────────────── */
+  .hub { padding: 26px 28px; max-width: 1500px; }
+  .hub h1 { font-size: 19px; font-weight: 600; margin: 0 0 6px; }
+  .hub .lead { color: var(--apagado); font-size: 13px; margin: 0 0 16px; }
+
+  .grade { display: grid; gap: 14px; }
+  .grade.topo { grid-template-columns: 1fr 1fr; }          /* 50 / 50 */
+  .grade.pcm  { grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+  .grade.pcm[hidden] { display: none; }
+
+  /* ── a moldura (_Elevavel): é ELA que entra animada ─────────────────────
+     O card faz hover/press com transform próprio. Se a entrada animasse o mesmo elemento,
+     o `forwards` da animação ficaria dono do transform e o hover morreria. Separar os dois
+     é o mesmo motivo de existir a moldura no Qt: ninguém desfaz o movimento do outro. */
+  .moldura { padding-bottom: 6px; }                        /* a folga para onde o card sobe */
+
+  /* ── o card (_CardBotao) ─────────────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--borda);
+    border-bottom: 2px solid var(--verde);
+    border-radius: 14px;
+    padding: 18px 20px 16px;
+    min-height: 190px;
+    display: flex; flex-direction: column;
+    cursor: pointer; user-select: none;
+    transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease, background .3s ease;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(var(--verde-neon), .15);
+    border-color: var(--verde);
+    background: var(--card-hover);
+  }
+  .card:active { transform: scale(.97); transition: transform .1s; }
+
+  /* ATIVO: o card que abriu os três de baixo. A borda engorda e o ícone acende,
+     para o olho ligar o que apareceu a quem foi clicado. */
+  .card.ativo { border: 1px solid var(--verde); border-bottom: 4px solid var(--verde-vivo); background: var(--card-hover); }
+  .card.ativo .icone { background: rgba(166, 226, 46, .30); }
+
+  .card.pequeno { min-height: 0; padding: 16px 18px 14px; }
+
+  .icone {
+    width: 46px; height: 46px; border-radius: 12px;
+    background: rgba(143, 206, 63, .14);
+    display: grid; place-items: center;
+    transition: background .3s ease;
+  }
+  .icone svg { width: 24px; height: 24px; stroke: var(--verde); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .pequeno .icone { width: 34px; height: 34px; }
+  .pequeno .icone svg { width: 18px; height: 18px; }
+
+  .titulo { font-size: 17.5px; font-weight: 600; margin: 14px 0 4px; }
+  .pequeno .titulo { font-size: 14.5px; margin-top: 8px; }
+  .desc { color: var(--apagado); font-size: 13px; line-height: 1.35; }
+  .pequeno .desc { font-size: 12px; }
+
+  .seta { margin-top: auto; align-self: flex-end; padding-top: 6px; line-height: 0; }
+  .seta svg { width: 20px; height: 20px; stroke: var(--verde); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .pequeno .seta svg { width: 16px; height: 16px; }
+
+  /* ── a entrada (_Hub._animar): fadeSlideUp em cascata ───────────────── */
+  @keyframes fadeSlideUp   { from { opacity: 0; transform: translateY(15px); }  to { opacity: 1; transform: none; } }
+  @keyframes fadeSlideLeft { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: none; } }
+
+  .entra {
+    opacity: 0;                                   /* começa invisível */
+    animation: fadeSlideUp var(--dur) var(--curva) forwards;
+    animation-delay: var(--delay);
+  }
+  .topo .entra:nth-child(1) { --dur: var(--dur-topo); --delay: 0ms; }
+  .topo .entra:nth-child(2) { --dur: var(--dur-topo); --delay: var(--stagger-topo); }
+  .pcm  .entra:nth-child(1) { --dur: var(--dur-pcm);  --delay: 0ms; }
+  .pcm  .entra:nth-child(2) { --dur: var(--dur-pcm);  --delay: calc(var(--stagger-pcm) * 1); }
+  .pcm  .entra:nth-child(3) { --dur: var(--dur-pcm);  --delay: calc(var(--stagger-pcm) * 2); }
+
+  /* ── media query (_Hub._reflow / _matches): abaixo de 980 px os cards empilham
+     e a entrada passa a vir PELO LADO — é o `x: isSmall ? [...] : 0` da doc do anime.js ── */
+  @media (max-width: 980px) {
+    .grade.topo, .grade.pcm { grid-template-columns: 1fr; }
+    .entra { animation-name: fadeSlideLeft; }
+  }
+
+  /* ── controles de teste (NÃO fazem parte do design; ajudam a ver a animação) ── */
+  .controles {
+    position: fixed; right: 16px; bottom: 16px;
+    display: flex; gap: 8px; align-items: center;
+    background: rgba(22, 29, 48, .92); border: 1px solid var(--borda); border-radius: 10px;
+    padding: 8px 10px; font-size: 12px; color: var(--apagado);
+  }
+  .controles button {
+    background: transparent; border: 1px solid #39405a; color: var(--texto);
+    border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer;
+  }
+  .controles button:hover { border-color: var(--verde); }
+  .toast {
+    position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
+    background: var(--verde); color: #0B1020; font-weight: 700; padding: 8px 14px; border-radius: 8px;
+    opacity: 0; transition: opacity .25s; pointer-events: none;
+  }
+  .toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+
+<main class="hub" id="hub">
+  <h1>Solicitação / PCM</h1>
+  <p class="lead">O supervisor pede. O PCM confere e gera a OS com as subtarefas do tema.</p>
+
+  <!-- os dois de cima: 50/50 -->
+  <section class="grade topo" id="topo">
+    <div class="moldura entra">
+      <div class="card" data-vai="nova" tabindex="0">
+        <div class="icone"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></div>
+        <div class="titulo">Criar Nova Solicitação</div>
+        <div class="desc">Pedir serviço já com tema, técnico sugerido e data sugerida</div>
+        <div class="seta"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+      </div>
+    </div>
+    <div class="moldura entra">
+      <div class="card" id="cardPcm" tabindex="0">
+        <div class="icone"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg></div>
+        <div class="titulo">Área PCM</div>
+        <div class="desc">Conferir a fila, aprovar e acompanhar o que virou OS</div>
+        <div class="seta"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- os três do PCM: só aparecem depois do clique, em cascata -->
+  <section class="grade pcm" id="pcm" hidden>
+    <div class="moldura">
+      <div class="card pequeno" data-vai="painel" tabindex="0">
+        <div class="icone"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div>
+        <div class="titulo">Painel</div>
+        <div class="desc">O que está pendente, em andamento e finalizado</div>
+        <div class="seta"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+      </div>
+    </div>
+    <div class="moldura">
+      <div class="card pequeno" data-vai="fila" tabindex="0">
+        <div class="icone"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+        <div class="titulo">Fila do PCM</div>
+        <div class="desc">Aprovar uma a uma, com as subtarefas do tema</div>
+        <div class="seta"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+      </div>
+    </div>
+    <div class="moldura">
+      <div class="card pequeno" data-vai="hist" tabindex="0">
+        <div class="icone"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+        <div class="titulo">Histórico</div>
+        <div class="desc">Tudo o que já passou por aqui</div>
+        <div class="seta"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="controles" aria-label="controles de teste">
+  <span id="bp">largo</span>
+  <button id="btnVoltar" type="button">Sair e voltar ao hub</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── estado (_Hub._aberto) ───────────────────────────────────────────────
+  // fica numa variável, não em "está visível?": no Qt, isVisible() respondia pela cadeia
+  // inteira de pais e o segundo clique reabria em vez de navegar. Mesma lição aqui.
+  let aberto = false;
+
+  const pcm     = document.getElementById('pcm');
+  const cardPcm = document.getElementById('cardPcm');
+  const topo    = document.getElementById('topo');
+  const toast   = document.getElementById('toast');
+  const estreito = matchMedia('(max-width: 980px)');
+
+  // ── reinicia uma animação CSS num conjunto de molduras ──────────────────
+  // tirar e repor a classe no mesmo tick não reinicia nada; o reflow forçado (offsetWidth)
+  // é o que faz o navegador aceitar que é uma animação nova.
+  function animar(molduras) {
+    molduras.forEach(m => { m.classList.remove('entra'); });
+    void document.body.offsetWidth;
+    molduras.forEach(m => { m.classList.add('entra'); });
+  }
+
+  // ── clique em Área PCM (_Hub._abrir_pcm) ────────────────────────────────
+  // 1º clique abre os três em cascata; 2º vai direto para a fila, que é onde o PCM trabalha.
+  cardPcm.addEventListener('click', () => {
+    if (aberto) { navegar('fila'); return; }
+    aberto = true;
+    cardPcm.classList.add('ativo');
+    pcm.hidden = false;
+    animar([...pcm.querySelectorAll('.moldura')]);
+  });
+
+  // ── sair e voltar (_Hub.showEvent + recolher) ───────────────────────────
+  // a entrada roda A CADA vez que o hub aparece, e os três do PCM recolhem: voltando, o
+  // clique em Área PCM roda a cascata inteira outra vez.
+  function recolher() {
+    aberto = false;
+    cardPcm.classList.remove('ativo');
+    pcm.hidden = true;
+  }
+  document.getElementById('btnVoltar').addEventListener('click', () => {
+    recolher();
+    animar([...topo.querySelectorAll('.moldura')]);
+  });
+
+  // ── a media query muda -> o layout reflui e a entrada roda de novo no eixo novo ──
+  // é o comportamento do createScope({ mediaQueries }) do anime.js: o escopo reexecuta
+  // quando o `matches` muda.
+  function aoMudarFormato() {
+    document.getElementById('bp').textContent = estreito.matches ? 'estreito (empilhado, entra pelo lado)'
+                                                                 : 'largo (lado a lado, entra por baixo)';
+    if (aberto) animar([...pcm.querySelectorAll('.moldura')]);
+  }
+  estreito.addEventListener('change', aoMudarFormato);
+  aoMudarFormato();
+
+  // ── navegação dos outros cards (no app, troca a página do stack) ────────
+  function navegar(destino) {
+    const nomes = { nova: 'Nova solicitação', painel: 'Painel', fila: 'Fila do PCM', hist: 'Histórico' };
+    toast.textContent = '→ ' + (nomes[destino] || destino);
+    toast.classList.add('on');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toast.classList.remove('on'), 1400);
+  }
+  document.querySelectorAll('.card[data-vai]').forEach(c => {
+    c.addEventListener('click', () => navegar(c.dataset.vai));
+    c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); c.click(); } });
+  });
+  cardPcm.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cardPcm.click(); } });
+</script>
+</body>
+</html>
