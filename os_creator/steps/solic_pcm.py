@@ -473,7 +473,7 @@ class _CardEtiquetas(QFrame):
         self._on_mudou = on_mudou
         self._catalogo = []
         self._sel = []                  # [{'id','description'}]
-        self._forcada = False           # PERFORMANCE entrou pela regra, nao pela escolha
+        self._do_tema = set()           # as que o TEMA pos, em MAIUSCULA — nao as escolhidas a mao
         v = QVBoxLayout(self)
         v.setContentsMargins(16, 13, 16, 14)
         v.setSpacing(9)
@@ -532,26 +532,42 @@ class _CardEtiquetas(QFrame):
         self._pintar()
 
     # ── a regra ──
-    def aplicar_regra(self, tema, ativo):
-        """Poe (ou tira) a PERFORMANCE conforme o tema, o ativo e as etiquetas escolhidas."""
+    def etiquetas_do_tema(self, tema, ativo):
+        """As etiquetas que ESTE tema carrega, em MAIUSCULA para comparar.
+
+        Sai da tela de Temas, onde o PCM acrescenta e tira. Se o tema ainda nao tem a lista —
+        os que ja estavam gravados antes de 04/09 nao tem —, a regra antiga
+        (`sp.exige_performance`) responde: senao a PERFORMANCE deixaria de entrar em tracker,
+        ETM e garantia no dia da atualizacao, sem ninguem ter pedido."""
+        t = sp.TEMAS.get(tema) or {}
+        if "etiquetas" in t:
+            return {str(x).strip().upper() for x in (t.get("etiquetas") or []) if str(x).strip()}
         nomes = [x["description"] for x in self._sel]
-        precisa = sp.exige_performance(tema, ativo, nomes)
-        tem = any(x["description"].strip().upper() == sp.ETIQUETA_PERFORMANCE for x in self._sel)
-        if precisa and not tem:
+        return ({sp.ETIQUETA_PERFORMANCE}
+                if sp.exige_performance(tema, ativo, nomes) else set())
+
+    def aplicar_regra(self, tema, ativo):
+        """Poe as etiquetas do tema e tira as que ELE tinha posto quando o tema muda.
+
+        So mexe no que a propria lista do tema colocou (`self._do_tema`): etiqueta que o PCM
+        acrescentou a mao fica, mesmo trocando o tema — desfazer escolha de gente sem avisar e
+        o pior tipo de automacao."""
+        querem = self.etiquetas_do_tema(tema, ativo)
+        # sai o que veio do tema anterior e nao vale mais
+        self._sel = [x for x in self._sel
+                     if x["description"].strip().upper() not in (self._do_tema - querem)]
+        tem = {x["description"].strip().upper() for x in self._sel}
+        postas = set()
+        for nome in sorted(querem - tem):
             alvo = next((e for e in self._catalogo
-                         if str(e.get("description") or "").strip().upper()
-                         == sp.ETIQUETA_PERFORMANCE), None)
+                         if str(e.get("description") or "").strip().upper() == nome), None)
             if alvo:
                 self._sel.append({"id": alvo["id"], "description": alvo["description"]})
-                self._forcada = True
-        elif not precisa and self._forcada and tem:
-            # a regra deixou de valer (trocaram o tema): a etiqueta que ELA pos sai junto
-            self._sel = [x for x in self._sel
-                         if x["description"].strip().upper() != sp.ETIQUETA_PERFORMANCE]
-            self._forcada = False
-        self._pintar(regra=precisa)
+                postas.add(nome)
+        self._do_tema = (self._do_tema & querem) | postas | (querem & tem)
+        self._pintar()
 
-    def _pintar(self, regra=None):
+    def _pintar(self):
         while self.fila_chips.count() > 1:
             it = self.fila_chips.takeAt(0)
             w = it.widget()
@@ -559,14 +575,16 @@ class _CardEtiquetas(QFrame):
                 w.setParent(None)
                 w.deleteLater()
         for e in self._sel:
-            perf = e["description"].strip().upper() == sp.ETIQUETA_PERFORMANCE
-            c = QPushButton(("%s  ×" % e["description"]) if not (perf and self._forcada)
-                            else ("%s  (regra)" % e["description"]))
-            c.setObjectName("chipEtq" if not perf else "chipEtqPerf")
+            # "(tema)" e nao "(regra)": desde 04/09 a etiqueta e campo do tema, editavel na tela
+            # de Temas — nao e mais uma regra do sistema que ninguem consegue mudar.
+            do_tema = e["description"].strip().upper() in self._do_tema
+            c = QPushButton(("%s  (tema)" % e["description"]) if do_tema
+                            else ("%s  ×" % e["description"]))
+            c.setObjectName("chipEtqPerf" if do_tema else "chipEtq")
             c.setCursor(Qt.CursorShape.PointingHandCursor)
-            if perf and self._forcada:
+            if do_tema:
                 c.setEnabled(False)
-                c.setToolTip("Tracker, ETM e garantia sempre levam PERFORMANCE")
+                c.setToolTip("Vem do tema. Para mudar, edite o tema na aba Temas.")
             else:
                 c.clicked.connect(lambda _=False, i=e["id"]: self._remover(i))
             c.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
@@ -584,7 +602,7 @@ class _CardEtiquetas(QFrame):
             self._on_mudou()
 
     def limpar(self):
-        self._sel, self._forcada = [], False
+        self._sel, self._do_tema = [], set()
         self._pintar()
 
     def ids(self):
@@ -857,28 +875,28 @@ class _Fila(QWidget):
         # sugerido — tê-los em dois campos distantes fazia parecer decisões diferentes, e o
         # combo aberto o tempo todo dava peso de formulário a algo que quase sempre é só
         # confirmar o que o supervisor já escreveu.
-        lin = QHBoxLayout()
-        lin.setSpacing(8)
-        lin.addWidget(self._fixo("Técnico:"))
+        lin = QGridLayout()
+        # UMA LINHA POR CAMPO, com o rotulo numa coluna so. Lado a lado os dois sobravam espaco
+        # a direita e o card ficava largo a toa; empilhados, os dois cards do par cabem em 50/50
+        # (pedido do Levi, 04/09). A legenda "ambos editaveis" saiu: o sublinhado pontilhado do
+        # `valorEditavel` ja e o convite, e a frase repetia o que o campo mostra.
         self.cb_resp = QComboBox()
         self.cb_resp.addItem("— selecione —", None)
-        self.cb_resp.setMinimumWidth(210)
+        self.cb_resp.setMinimumWidth(180)
         self.ed_tecnico = _CampoClicavel(self.cb_resp, "—")
-        lin.addWidget(self.ed_tecnico)
-        lin.addSpacing(14)
-        lin.addWidget(self._fixo("Data sugerida:"))
         # data E hora: "amanha" nao diz se e antes ou depois da parada, e o PCM programa por hora
         self.de_data = QDateTimeEdit()
         self.de_data.setCalendarPopup(True)
         self.de_data.setDisplayFormat("dd/MM/yyyy HH:mm")
         self.de_data.setDateTime(QDateTime.currentDateTime())
         self.ed_data = _CampoClicavel(self.de_data, "—")
-        lin.addWidget(self.ed_data)
-        lin.addSpacing(10)
-        amb = QLabel("ambos editáveis")
-        amb.setStyleSheet("color:%s;font-size:11.5px;background:transparent;" % MUTED)
-        lin.addWidget(amb)
-        lin.addStretch(1)
+        lin.setHorizontalSpacing(10)
+        lin.setVerticalSpacing(9)
+        lin.addWidget(self._fixo("Técnico:"), 0, 0)
+        lin.addWidget(self.ed_tecnico, 0, 1)
+        lin.addWidget(self._fixo("Data sugerida:"), 1, 0)
+        lin.addWidget(self.ed_data, 1, 1)
+        lin.setColumnStretch(1, 1)
         cxv.addLayout(lin)
 
         # continua existindo para quem lia o resumo em texto (e para os testes)
@@ -887,8 +905,10 @@ class _Fila(QWidget):
         self.etiquetas = _CardEtiquetas()
         par = QHBoxLayout()
         par.setSpacing(12)
-        par.addWidget(cx, 3)
-        par.addWidget(self.etiquetas, 2)
+        # 50/50: o bloco da sugestao tinha 70% e sobrava espaco, enquanto o de etiquetas ficava
+        # espremido em 30% justamente onde as etiquetas empilham para baixo (pedido do Levi)
+        par.addWidget(cx, 1)
+        par.addWidget(self.etiquetas, 1)
         self.det.addLayout(par)
 
         # ── tema ──
@@ -1590,7 +1610,7 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
             self.fila.set_responsaveis(pessoas)
             if not self.fila.etiquetas._catalogo:
                 self._wetq = ApiWorker(api.get_labels)
-                self._wetq.ok.connect(self.fila.etiquetas.set_catalogo)
+                self._wetq.ok.connect(self._espalhar_etiquetas)
                 self._wetq.start()
             if not pessoas:
                 # 20 s e o tempo medido do carregamento inicial. Sem dizer isso, o campo aparece
@@ -1609,7 +1629,23 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
             # os tipos da tela saem do CADASTRO, nao de uma lista escrita a mao: e o mesmo
             # campo `tipo` que o filtro de ativos compara, entao os dois nunca divergem
             self.temas.set_tipos_de_ativo(self._assets)
+            # o catalogo de etiquetas e o MESMO que a Fila usa. Se ela ja buscou, reaproveita;
+            # senao busca aqui — duas telas pedindo a mesma lista ao Fracttal e requisicao a toa
+            cat = getattr(self.fila.etiquetas, "_catalogo", None)
+            if cat:
+                self.temas.set_catalogo_etiquetas(cat)
+            elif self._wetq is None:
+                self._wetq = ApiWorker(api.get_labels)
+                self._wetq.ok.connect(self._espalhar_etiquetas)
+                self._wetq.start()
             self.temas.carregar_inicial()
+
+    @slot_seguro
+    def _espalhar_etiquetas(self, cat):
+        """Uma busca, duas telas: a Fila escolhe a etiqueta da OS e Temas define a do tema."""
+        self._wetq = None
+        self.fila.etiquetas.set_catalogo(cat)
+        self.temas.set_catalogo_etiquetas(cat)
 
     def _pessoas(self):
         """A lista de tecnicos que o formulario ja carregou, no formato do get_responsaveis."""

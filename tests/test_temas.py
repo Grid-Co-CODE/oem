@@ -84,3 +84,85 @@ def test_o_tipo_do_tema_e_o_do_CADASTRO_e_nao_um_apelido():
         assert ts.tipo_equipamento("nao_existe") == ""
     finally:
         sp.TEMAS.clear(); sp.TEMAS.update(guarda)
+
+
+# ── as etiquetas passaram do código para o tema (04/09) ──────────────────────
+def _card(qapp, catalogo=None):
+    from steps.solic_pcm import _CardEtiquetas
+    c = _CardEtiquetas()
+    c.set_catalogo(catalogo or [{"id": 1, "description": "PERFORMANCE"},
+                                {"id": 2, "description": "GARANTIA"},
+                                {"id": 3, "description": "URGENTE"}])
+    return c
+
+
+def _chips(c):
+    from PyQt6.QtWidgets import QPushButton
+    return [w.text() for w in c.findChildren(QPushButton)]
+
+
+def test_etiqueta_do_tema_aparece_como_tema_e_nao_como_regra(qapp):
+    """Pedido do Levi (04/09). A palavra mudou porque a coisa mudou: até então quem decidia era
+    `sp.exige_performance()`, uma regra do sistema que ninguém conseguia mudar sem release.
+    Agora é campo do tema, editável na aba Temas."""
+    import solic_spec as sp
+    guarda = dict(sp.TEMAS)
+    try:
+        sp.TEMAS["t1"] = {"nome": "T1", "etiquetas": ["PERFORMANCE"]}
+        c = _card(qapp)
+        c.aplicar_regra("t1", "INV-03")
+        assert _chips(c) == ["PERFORMANCE  (tema)"]
+        assert "(regra)" not in " ".join(_chips(c))
+    finally:
+        sp.TEMAS.clear(); sp.TEMAS.update(guarda)
+
+
+def test_tema_sem_lista_ainda_cai_na_regra_antiga(qapp):
+    """Os temas gravados ANTES de 04/09 não têm o campo `etiquetas`. Sem esta queda, a
+    PERFORMANCE deixaria de entrar em tracker/ETM/garantia no dia da atualização, sem ninguém
+    ter pedido — o pior tipo de mudança, a que ninguém escolheu."""
+    import solic_spec as sp
+    guarda = dict(sp.TEMAS)
+    try:
+        sp.TEMAS["tracker_x"] = {"nome": "TX"}          # sem a chave `etiquetas`
+        c = _card(qapp)
+        c.aplicar_regra("tracker_x", "Estrutura Trackers")
+        assert _chips(c) == ["PERFORMANCE  (tema)"]
+    finally:
+        sp.TEMAS.clear(); sp.TEMAS.update(guarda)
+
+
+def test_trocar_de_tema_nao_apaga_a_etiqueta_posta_a_mao(qapp):
+    """Desfazer escolha de gente sem avisar é o pior tipo de automação. Sai o que o TEMA
+    ANTERIOR pôs; o que o PCM acrescentou fica, e continua removível pelo ×."""
+    import solic_spec as sp
+    guarda = dict(sp.TEMAS)
+    try:
+        sp.TEMAS["t1"] = {"nome": "T1", "etiquetas": ["PERFORMANCE"]}
+        sp.TEMAS["t2"] = {"nome": "T2", "etiquetas": ["GARANTIA"]}
+        c = _card(qapp)
+        c.aplicar_regra("t1", "x")
+        c._sel.append({"id": 3, "description": "URGENTE"})   # o PCM pôs à mão
+        c._pintar()
+        c.aplicar_regra("t2", "x")
+        chips = _chips(c)
+        assert "GARANTIA  (tema)" in chips
+        assert not any(x.startswith("PERFORMANCE") for x in chips), "sobrou o tema anterior"
+        assert any(x.startswith("URGENTE") for x in chips), "apagou a escolha do PCM"
+        assert sorted(c.ids()) == [2, 3]
+    finally:
+        sp.TEMAS.clear(); sp.TEMAS.update(guarda)
+
+
+def test_tema_com_lista_VAZIA_nao_poe_etiqueta_nenhuma(qapp):
+    """Lista vazia é escolha explícita do PCM, e tem de valer — se caísse na regra antiga,
+    tirar a PERFORMANCE de um tema de tracker seria impossível."""
+    import solic_spec as sp
+    guarda = dict(sp.TEMAS)
+    try:
+        sp.TEMAS["tracker_y"] = {"nome": "TY", "etiquetas": []}
+        c = _card(qapp)
+        c.aplicar_regra("tracker_y", "Estrutura Trackers")
+        assert _chips(c) == []
+    finally:
+        sp.TEMAS.clear(); sp.TEMAS.update(guarda)

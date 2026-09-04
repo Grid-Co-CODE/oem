@@ -259,6 +259,22 @@ class TemasTab(QWidget):
         g2.setColumnStretch(1, 1)
         self.det.addLayout(g2)
 
+        # ETIQUETAS DO TEMA. Antes de 04/09 quem decidia era `sp.exige_performance()`, uma
+        # funcao com `if tema.startswith("tracker")` e uma lista de gatilhos por nome de ativo —
+        # acrescentar uma etiqueta a um tema exigia release. Agora e campo do tema, e por isso
+        # na Fila o chip diz "(tema)" e nao "(regra)".
+        self.det.addWidget(self._rotulo("Etiquetas que a OS vai levar"))
+        self.fila_etq = QHBoxLayout()
+        self.fila_etq.setSpacing(6)
+        self.fila_etq.addStretch(1)
+        self.det.addLayout(self.fila_etq)
+        self.cb_etq = QComboBox()
+        self.cb_etq.addItem("+ adicionar etiqueta", None)
+        self.cb_etq.activated.connect(self._add_etq)
+        self.det.addWidget(self.cb_etq)
+        self._etq_cat = []
+        self._etqs = []
+
         self.editor = EditorSubtarefas("Sem subtarefas: a OS vai nascer só com as 3 da base.")
         self.det.addWidget(self.editor)
         for w in (self.ed_nome, self.ed_motivo):
@@ -302,7 +318,7 @@ class TemasTab(QWidget):
 
     def _habilitar(self, on):
         for w in (self.ed_nome, self.ed_motivo, self.cb_equip, self.cb_tipo_os, self.cb_c1,
-                  self.b_salvar, self.b_desc, self.b_arq):
+                  self.cb_etq, self.b_salvar, self.b_desc, self.b_arq):
             w.setEnabled(on)
         self.editor.set_editavel(on)
         if on and not ts.pode_gravar():
@@ -310,6 +326,54 @@ class TemasTab(QWidget):
             self.b_arq.setEnabled(False)
             self.hint.setText("Sem o GRIDCO_SQL_TOKEN nesta máquina: dá para ver e ajustar, "
                               "mas não para salvar. Peça o token ao Levi.")
+
+    # ── etiquetas ──
+    def set_catalogo_etiquetas(self, itens):
+        """O catálogo do Fracttal. Sem ele o PCM não tem o que escolher, mas as etiquetas já
+        gravadas continuam aparecendo — o tema guarda o NOME, não o id."""
+        self._etq_cat = [str(x.get("description") or "").strip()
+                         for x in (itens or []) if str(x.get("description") or "").strip()]
+        self._encher_cb_etq()
+
+    def _encher_cb_etq(self):
+        postas = {x.upper() for x in self._etqs}
+        self.cb_etq.blockSignals(True)
+        self.cb_etq.clear()
+        self.cb_etq.addItem("+ adicionar etiqueta", None)
+        for nome in sorted(self._etq_cat):
+            if nome.upper() not in postas:
+                self.cb_etq.addItem(nome, nome)
+        self.cb_etq.setCurrentIndex(0)
+        self.cb_etq.blockSignals(False)
+
+    def _add_etq(self, i):
+        nome = self.cb_etq.itemData(i)
+        if not nome:
+            return
+        self._etqs.append(nome)
+        self._marcar_sujo()
+        self._pintar_etqs()
+
+    def _pintar_etqs(self):
+        while self.fila_etq.count() > 1:
+            it = self.fila_etq.takeAt(0)
+            w = it.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
+        for nome in self._etqs:
+            c = QPushButton("%s  ×" % nome)
+            c.setObjectName("chipEtq")
+            c.setCursor(Qt.CursorShape.PointingHandCursor)
+            c.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            c.clicked.connect(lambda _=False, n=nome: self._tirar_etq(n))
+            self.fila_etq.insertWidget(self.fila_etq.count() - 1, c)
+        self._encher_cb_etq()
+
+    def _tirar_etq(self, nome):
+        self._etqs = [x for x in self._etqs if x != nome]
+        self._marcar_sujo()
+        self._pintar_etqs()
 
     def set_tipos_de_ativo(self, assets):
         """Enche o combo de tipo com os tipos que EXISTEM no cadastro, do mais comum ao menos.
@@ -410,6 +474,8 @@ class TemasTab(QWidget):
         i = self.cb_c1.findText(t.get("classif1") or "")
         self.cb_c1.setCurrentIndex(i if i >= 0 else 0)
         self.editor.set_itens(list(t.get("subtarefas") or []))
+        self._etqs = list(t.get("etiquetas") or [])
+        self._pintar_etqs()
         self.b_arq.setText("Desarquivar" if t.get("arquivado") else "Arquivar")
         self._habilitar(True)
         self._sync_filtro()
@@ -422,7 +488,7 @@ class TemasTab(QWidget):
     def _novo(self):
         base = {"chave": "", "nome": "", "motivo": "", "classif1": "", "tipo_os": "",
                 "tipo_equipamento": "", "solicitacoes": 0, "arquivado": False,
-                "subtarefas": []}
+                "subtarefas": [], "etiquetas": []}
         self._itens.insert(0, base)
         self._pintar_lista()
         self._selecionar(base)
@@ -459,7 +525,8 @@ class TemasTab(QWidget):
                     classif1=self.cb_c1.currentText(),
                     tipo_os=self.cb_tipo_os.currentText(),
                     tipo_equipamento=self._equip_atual(),
-                    subtarefas=self.editor.itens())
+                    subtarefas=self.editor.itens(),
+                    etiquetas=list(self._etqs))
         self.b_salvar.setEnabled(False)
         self.hint.setText("salvando…")
         self._w = ApiWorker(ts.salvar, novo)

@@ -282,7 +282,7 @@ class HistoricoSolic(QWidget):
         lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(8)
 
-        # criador (default = logado) + limpar filtros + atualizar
+        # criador (default = TODOS desde 04/09) + limpar filtros + atualizar
         row = QHBoxLayout(); row.setSpacing(6)
         row.addWidget(QLabel("Criado por"))
         self.cb_pessoa = QComboBox(); self.cb_pessoa.setMinimumWidth(200)
@@ -443,12 +443,12 @@ class HistoricoSolic(QWidget):
         self.cb_pessoa.blockSignals(True)
         self.cb_pessoa.clear()
         self.cb_pessoa.addItem("Todos os usuários", "TODOS")
-        sel = 0
-        for i, p in enumerate(pessoas, start=1):
+        for p in pessoas:
             self.cb_pessoa.addItem(p["nome"], p["id_account"])
-            if p["id_account"] == eu:
-                sel = i
-        self.cb_pessoa.setCurrentIndex(sel)         # default = usuário logado
+        # DEFAULT = TODOS (pedido do Levi, 04/09). Antes abria filtrado no usuário logado, e
+        # quem procurava a solicitação de OUTRA pessoa via a tela vazia e concluía que ela não
+        # existia — o filtro estava ligado sem ninguém ter ligado.
+        self.cb_pessoa.setCurrentIndex(0)
         self.cb_pessoa.blockSignals(False)
         self._carregar()
 

@@ -107,6 +107,9 @@ def _de_linha(l):
     d["_linha"] = l.get("row_number")
     d.setdefault("subtarefas", [])
     d.setdefault("arquivado", False)
+    # `etiquetas` NAO ganha default aqui de proposito: a ausencia da chave e o que diz "este
+    # tema nunca foi salvo pela tela nova", e e ela que faz a Fila cair na regra antiga
+    # (`exige_performance`) em vez de concluir que o tema nao leva etiqueta nenhuma.
     return d
 
 
@@ -167,6 +170,8 @@ def aplicar_no_spec(itens=None):
                      "tipo_equipamento": t.get("tipo_equipamento", ""),
                      "dominio": (sp.TEMAS.get(ch) or {}).get("dominio", 0),
                      "solicitacoes": t.get("solicitacoes", 0)}
+        if "etiquetas" in t:
+            novos[ch]["etiquetas"] = list(t.get("etiquetas") or [])
         passos[ch] = [sp._s(x.get("desc", ""), x.get("tipo", "texto"),
                             anexo=bool(x.get("anexo"))) for x in t.get("subtarefas", [])]
     if not novos:
@@ -190,7 +195,8 @@ def tipo_equipamento(tema: str) -> str:
 def _valor(t: dict) -> str:
     return json.dumps({k: t.get(k) for k in
                        ("nome", "motivo", "classif1", "tipo_os", "tipo_equipamento",
-                        "solicitacoes", "arquivado", "subtarefas")}, ensure_ascii=False)
+                        "solicitacoes", "arquivado", "subtarefas", "etiquetas")},
+                      ensure_ascii=False)
 
 
 def salvar(tema: dict, enviar=None) -> dict:
