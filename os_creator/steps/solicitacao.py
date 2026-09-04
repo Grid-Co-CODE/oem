@@ -336,8 +336,22 @@ class SolicitacaoTab(QWidget):
         self.cb_ativo.clear(); self.cb_ativo.addItem(_SEL, None)
         if not usi:
             return
-        for a in sorted([x for x in self._assets if x.get("cliente") == cli and x.get("usina") == usi],
-                        key=lambda x: x["label"]):
+        # O TEMA ENXUGA A LISTA. Pedido do Levi (04/09): "ao escolher o tipo de equipamento no
+        # tema, quando esse tema for escolhido deve filtrar os ativos na solicitacao". A
+        # comparacao e por IGUALDADE no campo `tipo` do cadastro — o mesmo campo que o filtro
+        # manual acima usa —, e nao por pedaco de texto no nome: "DINV" sao 2.237 ativos que
+        # qualquer heuristica de "inv" pegaria por engano.
+        eq = str((sp.TEMAS.get(self.cb_tema.currentData() or "") or {})
+                 .get("tipo_equipamento") or "").strip()
+        candidatos = sorted([x for x in self._assets
+                             if x.get("cliente") == cli and x.get("usina") == usi],
+                            key=lambda x: x["label"])
+        do_tema = [x for x in candidatos if x.get("tipo") == eq] if eq else candidatos
+        # SE NADA CASAR, NAO FILTRA. Um tema cujo tipo nao existe nesta usina deixaria a lista
+        # VAZIA, e a pessoa concluiria que nao ha ativo cadastrado — pior do que nao filtrar.
+        # Nesse caso a lista volta inteira e a dica embaixo do campo explica.
+        self._tema_filtrou = bool(eq) and bool(do_tema)
+        for a in (do_tema if self._tema_filtrou else candidatos):
             if a.get("tipo") not in ALLOWED_TIPOS:
                 continue
             if tipo and a.get("tipo") != tipo:
@@ -345,6 +359,34 @@ class SolicitacaoTab(QWidget):
             if txt and txt not in a["label"].lower():
                 continue
             self.cb_ativo.addItem(a["label"], a)
+        self._dica_filtro(eq, len(do_tema), len(candidatos))
+
+    def _dica_filtro(self, eq, n_tema, n_total):
+        """Diz, embaixo do campo de ativo, que a lista foi enxugada — e quando NAO foi.
+
+        Sem isto o supervisor veria a lista encolher sem saber por que, e a pior leitura seria
+        "sumiram ativos da usina"."""
+        v = getattr(self, "v_ativo", None)
+        if v is None:
+            return
+        if not eq:
+            msg = ""
+        elif getattr(self, "_tema_filtrou", False):
+            msg = "o tema deixou só os %d ativos do tipo %s (de %d na usina)" % (
+                n_tema, eq, n_total)
+        else:
+            msg = ("esta usina não tem ativo do tipo %s — a lista está inteira" % eq)
+        d = getattr(v, "_dica_tema", None)
+        if d is None:
+            from PyQt6.QtWidgets import QLabel
+            d = QLabel("")
+            d.setObjectName("lgDica")
+            d.setWordWrap(True)
+            d.setMinimumWidth(1)
+            v.layout().addWidget(d)
+            v._dica_tema = d
+        d.setText(msg)
+        d.setVisible(bool(msg))
 
     # ── criar ──
     # ── tema ─────────────────────────────────────────────────────────────────
@@ -357,6 +399,7 @@ class SolicitacaoTab(QWidget):
             self._titulo_auto = None            # None = título é do usuário, não mexer
 
     def _on_tema(self):
+        self._refresh_ativos()          # o tema pode ENXUGAR a lista de ativos
         self._sync_tema()
         self._sync_titulo()
         self._sugerir_classificacao()

@@ -36,6 +36,7 @@ from steps.performance import _PlanoCard
 from steps.subtarefas_edit import EditorSubtarefas
 from steps.solicitacao import SolicitacaoTab
 from steps.historico_solic import HistoricoSolic
+from steps.temas import TemasTab
 
 # As três colunas do painel, na ordem do Fracttal. A régua de cada uma sai do que foi medido:
 # "pendente" é a solicitação SEM OS vinculada e não cancelada — e não um id_status fixo, porque
@@ -1327,7 +1328,9 @@ class _Hub(QWidget):
                  "painel", "grid", "Acompanhar"),
                 ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema",
                  "fila", "list", "Aprovar"),
-                ("Histórico", "Tudo o que já passou por aqui", "hist", "clock", "Consultar")):
+                ("Histórico", "Tudo o que já passou por aqui", "hist", "clock", "Consultar"),
+                ("Temas", "Padronizar nome, subtarefas e tipo de equipamento",
+                 "temas", "layers", "Padronizar")):
             c = _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, badge=bd)
             self._subcards.append(c)
         self.sub.setVisible(False)
@@ -1411,7 +1414,7 @@ class SolicPcmTab(QWidget):
     A ordem da navegação segue o fluxo real, e não a ordem em que as telas foram escritas: quem
     abre a aba na maioria das vezes é o supervisor, para PEDIR."""
 
-    HUB, NOVA, PAINEL, FILA, HIST = 0, 1, 2, 3, 4
+    HUB, NOVA, PAINEL, FILA, HIST, TEMAS = 0, 1, 2, 3, 4, 5
 
     def __init__(self):
         super().__init__()
@@ -1528,7 +1531,8 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
         b0.clicked.connect(lambda: self.ir(self.HUB))
         nav.addWidget(b0)
         for i, rot in ((self.NOVA, "Nova solicitação"), (self.PAINEL, "Painel"),
-                       (self.FILA, "Fila do PCM"), (self.HIST, "Histórico")):
+                       (self.FILA, "Fila do PCM"), (self.HIST, "Histórico"),
+                       (self.TEMAS, "Temas")):
             b = QPushButton(rot)
             b.setObjectName("navPag")
             b.setCheckable(True)
@@ -1545,7 +1549,8 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
         self.painel = _Painel(self._analisar)
         self.fila = _Fila(lambda: self.ir(self.PAINEL))
         self.hist = HistoricoSolic()
-        for w in (self.hub, self.nova, self.painel, self.fila, self.hist):
+        self.temas = TemasTab(lambda: self.ir(self.HUB))
+        for w in (self.hub, self.nova, self.painel, self.fila, self.hist, self.temas):
             self.stack.addWidget(w)
             # O QStackedWidget se dimensiona pela MAIOR de todas as paginas, mesmo as escondidas.
             # Com isto o Historico — cuja barra de filtros pede 1025 px — impunha a largura
@@ -1556,8 +1561,8 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
         self.ir(self.HUB)
 
     def _do_hub(self, alvo):
-        self.ir({"nova": self.NOVA, "painel": self.PAINEL,
-                 "fila": self.FILA, "hist": self.HIST}[alvo])
+        self.ir({"nova": self.NOVA, "painel": self.PAINEL, "fila": self.FILA,
+                 "hist": self.HIST, "temas": self.TEMAS}[alvo])
 
     def ir(self, i):
         # sair do hub RECOLHE os tres do PCM: voltando, o clique em Area PCM roda a cascata
@@ -1576,7 +1581,8 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
             w = self._nav.itemAt(k).widget()
             if w:
                 w.setVisible(i != self.HUB)
-        for b, k in zip(self._btns, (self.NOVA, self.PAINEL, self.FILA, self.HIST)):
+        for b, k in zip(self._btns,
+                        (self.NOVA, self.PAINEL, self.FILA, self.HIST, self.TEMAS)):
             b.setChecked(k == i)
         if i == self.FILA:
             # reaproveita a lista de pessoas que o formulário já buscou — uma chamada em vez de duas
@@ -1599,6 +1605,11 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
             self.fila.set_itens(self.painel.pendentes(), self._assets)
         if i == self.HIST and hasattr(self.hist, "carregar_inicial"):
             self.hist.carregar_inicial()
+        if i == self.TEMAS:
+            # os tipos da tela saem do CADASTRO, nao de uma lista escrita a mao: e o mesmo
+            # campo `tipo` que o filtro de ativos compara, entao os dois nunca divergem
+            self.temas.set_tipos_de_ativo(self._assets)
+            self.temas.carregar_inicial()
 
     def _pessoas(self):
         """A lista de tecnicos que o formulario ja carregou, no formato do get_responsaveis."""

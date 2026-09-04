@@ -56,9 +56,11 @@ def test_a_regua_nao_usa_id_status():
     assert coluna_de(a) == coluna_de(b) == PENDENTE
 
 
-def test_a_aba_tem_o_hub_e_as_quatro_paginas(qapp):
+def test_a_aba_tem_o_hub_e_as_cinco_paginas(qapp):
     t = SolicPcmTab()
-    assert t.stack.count() == 5                 # hub + as quatro
+    # hub + Nova, Painel, Fila, Histórico e Temas. Temas entrou em 04/09: o PCM padroniza
+    # nome de tema, subtarefas e tipo de equipamento sem depender de release.
+    assert t.stack.count() == 6
     assert t.stack.currentIndex() == t.HUB      # a aba abre no hub, nao numa das telas
 
 
@@ -66,7 +68,8 @@ def test_a_ordem_da_navegacao_segue_o_fluxo(qapp):
     """Nova solicitacao vem PRIMEIRO: quem abre a aba na maioria das vezes e o supervisor, para
     pedir. A ordem antiga (Painel primeiro) era a ordem em que as telas foram escritas."""
     t = SolicPcmTab()
-    assert [b.text() for b in t._btns] == ["Nova solicitação", "Painel", "Fila do PCM", "Histórico"]
+    assert [b.text() for b in t._btns] == ["Nova solicitação", "Painel", "Fila do PCM",
+                                           "Histórico", "Temas"]
 
 
 def test_o_hub_esconde_a_navegacao_e_a_traz_de_volta(qapp):
@@ -79,14 +82,16 @@ def test_o_hub_esconde_a_navegacao_e_a_traz_de_volta(qapp):
     assert not any(b.isVisibleTo(t) for b in t._btns)
 
 
-def test_a_area_pcm_revela_os_tres_destinos(qapp):
+def test_a_area_pcm_revela_os_destinos_do_pcm(qapp):
     """Os tres cards do PCM so aparecem depois do clique em Area PCM — e o segundo clique leva
     direto para a fila, que e o destino de quem esta ali para aprovar."""
     t = SolicPcmTab()
     assert not t.hub.sub.isVisibleTo(t.hub)
     t.hub._abrir_pcm()
     assert t.hub.sub.isVisibleTo(t.hub)
-    assert len(t.hub._subcards) == 3            # Painel, Fila do PCM, Historico
+    # Painel, Fila do PCM, Historico e Temas — os quatro sao trabalho DO PCM, e por isso
+    # moram atras do mesmo clique
+    assert len(t.hub._subcards) == 4
     t.hub._abrir_pcm()                          # segundo clique: vai direto para a fila
     assert t.stack.currentIndex() == t.FILA
 
