@@ -8,9 +8,22 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
+
 import solic_spec as sp
 from steps.solic_pcm import (SolicPcmTab, coluna_de, PENDENTE, ANDAMENTO,
                              FINALIZADA, FORA)
+
+
+@pytest.fixture(autouse=True)
+def _pcm_sem_senha():
+    """A Área PCM ficou atrás de senha (04/09). Sem liberar, `_abrir_pcm` abre um QInputDialog
+    MODAL e o teste headless TRAVA — a suíte passou de 5 s para mais de 5 minutos até eu matar.
+    Liberar aqui é o certo: estes testes verificam navegação, e a tranca tem teste próprio."""
+    import pcm_acesso
+    pcm_acesso.liberar()
+    yield
+    pcm_acesso.trancar()
 
 
 def test_sem_OS_vinculada_e_pendente():
@@ -87,6 +100,7 @@ def test_a_area_pcm_revela_os_destinos_do_pcm(qapp):
     direto para a fila, que e o destino de quem esta ali para aprovar."""
     t = SolicPcmTab()
     assert not t.hub.sub.isVisibleTo(t.hub)
+    assert t.hub._subcards == [], "os destinos só nascem depois de escolher a área"
     t.hub._abrir_pcm()
     assert t.hub.sub.isVisibleTo(t.hub)
     # Painel, Fila do PCM, Historico e Temas — os quatro sao trabalho DO PCM, e por isso
@@ -290,6 +304,7 @@ def test_o_hub_empilha_os_cards_quando_estreita(qapp):
     para 485 e o layout muda de verdade — e só aí trocar o eixo do movimento significa algo."""
     from steps.solic_pcm import _Hub
     h = _Hub(lambda a: None)
+    h._montar_sub("pcm")          # os destinos só nascem depois de escolher a área
     h.resize(1400, 700)
     h._reflow()
     assert h._matches()["estreito"] is False

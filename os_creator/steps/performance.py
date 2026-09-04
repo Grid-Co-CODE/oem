@@ -165,10 +165,12 @@ class _PlanoCard(QFrame):
                          "font-size:11px;font-weight:600;border:none;" % GREEN)
         l1.addWidget(bd, 0, Qt.AlignmentFlag.AlignVCenter); l1.addStretch(1)
         mid.addLayout(l1)
+        self.lbl_titulo, self.lbl_badge = t, bd    # quem herda pode trocar o texto sem recriar
         # subtítulo
         s = QLabel(sub); s.setWordWrap(True)
         s.setStyleSheet(f"font-size:12px;color:{MUTED};background:transparent;border:none;")
         mid.addWidget(s)
+        self.lbl_sub = s
         # linha de meta: só a quantidade de subtarefas
         l3 = QHBoxLayout(); l3.setSpacing(6)
         _ic = QLabel(); _ic.setPixmap(icone_pix("list", MUTED, 13)); _ic.setFixedSize(13, 13)

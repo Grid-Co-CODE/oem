@@ -20,7 +20,7 @@ from PyQt6.QtCore import Qt, QSize, QTimer, QDate, QDateTime, QTime
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QStackedWidget, QScrollArea, QFrame, QMessageBox, QComboBox,
-                             QGridLayout, QLineEdit, QSizePolicy,
+                             QGridLayout, QLineEdit, QSizePolicy, QInputDialog,
                              QDateTimeEdit, QStackedLayout)
 
 from datetime import datetime
@@ -34,6 +34,8 @@ from steps.ui import (QSS_FORM, Card, campo, esvaziar as _esvaziar, icone_pix,
 # O card da tela de Criar OS. Importado, e nao reescrito: o Levi quer as duas telas com a
 # mesma forma, e copiar significaria as duas divergirem na primeira alteracao de uma delas.
 from steps.performance import _PlanoCard
+import pcm_acesso
+from steps.searchcombo import tornar_pesquisavel
 from steps.subtarefas_edit import EditorSubtarefas
 from steps.solicitacao import SolicitacaoTab
 from steps.historico_solic import HistoricoSolic
@@ -899,7 +901,7 @@ class _Fila(QWidget):
         # a direita e o card ficava largo a toa; empilhados, os dois cards do par cabem em 50/50
         # (pedido do Levi, 04/09). A legenda "ambos editaveis" saiu: o sublinhado pontilhado do
         # `valorEditavel` ja e o convite, e a frase repetia o que o campo mostra.
-        self.cb_resp = QComboBox()
+        self.cb_resp = QComboBox(); tornar_pesquisavel(self.cb_resp)
         self.cb_resp.addItem("— selecione —", None)
         self.cb_resp.setMinimumWidth(180)
         self.ed_tecnico = _CampoClicavel(self.cb_resp, "—")
@@ -941,7 +943,8 @@ class _Fila(QWidget):
         topo_t.addStretch(1)
         self.det.addLayout(topo_t)
 
-        self.cb_tema = QComboBox()
+        # mesma busca dos demais selects: a lista de temas e editavel e so cresce
+        self.cb_tema = QComboBox(); tornar_pesquisavel(self.cb_tema)
         self.cb_tema.setObjectName("cbTema")
         self.cb_tema.addItem("— sem tema —", "")
         for chave, nome in sp.temas():
@@ -1343,6 +1346,15 @@ class _CardBotao(_PlanoCard):
             "QFrame#planoCard:hover{border:1px solid %s;}"
             % (CARD, GREEN if self._ativo else BORDER, GREEN))
 
+    def definir(self, titulo, sub):
+        """Troca o texto do card sem recria-lo.
+
+        O card do solicitante VIRA "Criar Nova Solicitacao" depois que a area abre. E o MESMO
+        objeto, entao a grade nao se mexe e o card nao pisca — recriar faria a linha inteira
+        saltar. Os dois rotulos vem do `_PlanoCard`, que passou a guarda-los para isto."""
+        self.lbl_titulo.setText(titulo)
+        self.lbl_sub.setText(sub)
+
     def marcar_ativo(self, on):
         """Borda verde acesa no card que abriu os tres de baixo.
 
@@ -1388,9 +1400,8 @@ class _Hub(QWidget):
         v.addWidget(t)
         # mesma voz da tela de Criar OS: uma frase que diz o que cada clique FAZ, e nao o que a
         # tela e. Quem abre isto aqui na maioria das vezes e o supervisor, para pedir.
-        d = QLabel("Escolha o que vai fazer. <b>Criar Nova Solicitação</b> é o pedido do "
-                   "supervisor; em <b>Área PCM</b> ficam a fila de aprovação, o acompanhamento "
-                   "e o histórico.")
+        d = QLabel("Escolha a sua área. O <b>solicitante</b> pede o serviço e acompanha o que "
+                   "pediu; o <b>PCM</b> confere a fila, aprova e padroniza os temas.")
         d.setObjectName("uiAjuda")
         d.setWordWrap(True)
         v.addWidget(d)
@@ -1399,11 +1410,11 @@ class _Hub(QWidget):
         # largo (tile + texto + seta), tres lado a lado espremem o subtitulo em duas linhas.
         self.g_topo = QGridLayout()
         self.g_topo.setSpacing(14)
-        self.c_nova = _CardBotao("Criar Nova Solicitação",
-                                 "Pedir serviço já com tema, técnico sugerido e data pretendida",
-                                 lambda: self._ir("nova"), icone="send", badge="Supervisor")
+        self.c_nova = _CardBotao("Área do Solicitante",
+                                 "Pedir serviço, acompanhar o que pediu e ver o histórico",
+                                 self._abrir_solic, icone="send", badge="Supervisor")
         self.c_pcm = _CardBotao("Área PCM",
-                                "Conferir a fila, aprovar e acompanhar o que virou OS",
+                                "Conferir a fila, aprovar e padronizar os temas",
                                 self._abrir_pcm, icone="calcheck", badge="PCM")
         v.addLayout(self.g_topo)
 
@@ -1411,17 +1422,24 @@ class _Hub(QWidget):
         self.g_sub = QGridLayout(self.sub)
         self.g_sub.setContentsMargins(0, 0, 0, 0)
         self.g_sub.setSpacing(14)          # o mesmo respiro da grade de cima: uma grade so
+        # OS DESTINOS DEPENDEM DA AREA. As duas pessoas que usam o app fazem trabalhos
+        # diferentes e ate agora viam a mesma lista.
+        self.DESTINOS = {
+            "solic": (("Painel", "O que você pediu: pendente, em andamento e finalizado",
+                       "painel", "grid", "Acompanhar"),
+                      ("Histórico", "Tudo o que já passou por aqui", "hist", "clock",
+                       "Consultar")),
+            "pcm": (("Painel", "O que está pendente, em andamento e finalizado",
+                     "painel", "grid", "Acompanhar"),
+                    ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema",
+                     "fila", "list", "Aprovar"),
+                    ("Histórico", "Tudo o que já passou por aqui", "hist", "clock",
+                     "Consultar"),
+                    ("Temas", "Padronizar nome, subtarefas e tipo de equipamento",
+                     "temas", "layers", "Padronizar")),
+        }
         self._subcards = []
-        for rot, txt, alvo, ico, bd in (
-                ("Painel", "O que está pendente, em andamento e finalizado",
-                 "painel", "grid", "Acompanhar"),
-                ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema",
-                 "fila", "list", "Aprovar"),
-                ("Histórico", "Tudo o que já passou por aqui", "hist", "clock", "Consultar"),
-                ("Temas", "Padronizar nome, subtarefas e tipo de equipamento",
-                 "temas", "layers", "Padronizar")):
-            c = _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, badge=bd)
-            self._subcards.append(c)
+        self._area = None
         self.sub.setVisible(False)
         v.addWidget(self.sub)
         v.addStretch(1)
@@ -1429,22 +1447,82 @@ class _Hub(QWidget):
         self._reflow(inicial=True)
 
     # ── navegacao ──
+    def _montar_sub(self, area):
+        """Refaz os cards de baixo para a area escolhida."""
+        _esvaziar(self.g_sub, guardar_ultimo=False)
+        self._subcards = []
+        for rot, txt, alvo, ico, bd in self.DESTINOS[area]:
+            self._subcards.append(
+                _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, badge=bd))
+        self._area = area
+        self._estreito = None          # forca o refluxo a reposicionar os cards novos
+        self._reflow(inicial=True)
+        cols = 1 if self._matches()["estreito"] else self.COLS
+        for i, c in enumerate(self._subcards):
+            self.g_sub.addWidget(c, i // cols, i % cols)
+        for i in range(min(cols, len(self._subcards))):
+            self.g_sub.setColumnStretch(i, 1)
+
+    def _abrir_solic(self):
+        """1o clique abre a area; a partir dai o card E o "Criar Nova Solicitacao".
+
+        E o caminho que o supervisor faz dez vezes por dia, e ficava atras de mais um passo."""
+        if self._area == "solic":
+            self._ir("nova")
+            return
+        self.c_pcm.marcar_ativo(False)
+        self.c_nova.definir("Criar Nova Solicitação",
+                            "Pedir serviço já com tema, técnico sugerido e data pretendida")
+        self.c_nova.marcar_ativo(True)
+        self._montar_sub("solic")
+        self.sub.setVisible(True)
+
     def _abrir_pcm(self):
         """1o clique abre os tres destinos; 2o vai direto para a fila, que e onde o PCM trabalha.
 
         O estado fica num atributo e nao em `isVisible()`: isVisible responde pela cadeia
         inteira de pais, entao seria False com a aba em segundo plano — e o segundo clique
         reabriria em vez de navegar."""
-        if self._aberto:
+        if self._area == "pcm":
             self._ir("fila")
             return
+        if not self._liberar_pcm():
+            return
         self._aberto = True
+        self.c_nova.definir("Área do Solicitante",
+                            "Pedir serviço, acompanhar o que pediu e ver o histórico")
+        self.c_nova.marcar_ativo(False)
         self.c_pcm.marcar_ativo(True)
+        self._montar_sub("pcm")
         self.sub.setVisible(True)
+
+    def _liberar_pcm(self) -> bool:
+        """A senha da area do PCM. TRANCA DE PORTA, nao cofre.
+
+        O app roda na maquina de quem usa: quem quiser mesmo entrar consegue. O que isto impede
+        e o acesso POR ENGANO — o supervisor que clica em "Area PCM" por curiosidade e aprova
+        uma solicitacao sem querer. Uma vez por sessao, porque pedir a cada clique faria o PCM
+        digitar dez vezes por dia e a senha acabaria colada no monitor.
+        """
+        if pcm_acesso.liberado():
+            return True
+        txt, ok = QInputDialog.getText(self, "Área PCM",
+                                       "Senha da área do PCM:", QLineEdit.EchoMode.Password)
+        if not ok:
+            return False
+        if not pcm_acesso.confere(txt):
+            QMessageBox.warning(self, "Área PCM", "Senha incorreta.")
+            return False
+        pcm_acesso.liberar()
+        return True
 
     def recolher(self):
         self._aberto = False
+        self._area = None
         self.c_pcm.marcar_ativo(False)
+        self.c_nova.marcar_ativo(False)
+        self.c_nova.definir("Área do Solicitante",
+                            "Pedir serviço, acompanhar o que pediu e ver o histórico")
         self.sub.setVisible(False)
 
     # ── refluxo ──
@@ -1461,7 +1539,7 @@ class _Hub(QWidget):
         # os cards entram DIRETO na grade. Ate 04/09 cada um vinha embrulhado numa moldura sem
         # layout, que existia so para a animacao poder move-los a mao; sem animacao ela some.
         for g, itens in ((self.g_topo, [self.c_nova, self.c_pcm]),
-                         (self.g_sub, self._subcards)):
+                         (self.g_sub, list(self._subcards))):
             for w in itens:
                 g.removeWidget(w)
             for i in range(g.columnCount()):

@@ -67,7 +67,11 @@ class SolicitacaoTab(QWidget):
         # títulos se repetem literalmente cobrindo 24,5% delas (padronização feita na mão, por
         # copiar e colar) e só 33,2% seguem o padrão [Usina][Ativo] - Motivo. Escolher o tema
         # resolve os dois de uma vez, e ainda desce a Classificação 1 e as subtarefas da OS.
-        self.cb_tema = QComboBox()
+        # BUSCA nos selects também (pedido do Levi, 04/09). Ele viu dois estilos de lista: o
+        # popup do combo comum e o do completer dos pesquisáveis, e preferiu o segundo. Em vez
+        # de imitar a aparência, os campos passam a usar o MESMO mecanismo — e ganham o filtro
+        # por digitação, que faz falta agora que a lista de temas é editável e cresce.
+        self.cb_tema = QComboBox(); tornar_pesquisavel(self.cb_tema)
         self.cb_tema.addItem("— sem tema —", "")
         for chave, nome in sp.temas():
             self.cb_tema.addItem(nome, chave)
@@ -159,9 +163,9 @@ class SolicitacaoTab(QWidget):
         b3.add(self.v_obs)
 
         # ── Bloco 4 — Classificação ──
-        self.cb_grupo = QComboBox()
-        self.cb_c1 = QComboBox()
-        self.cb_c2 = QComboBox()
+        self.cb_grupo = QComboBox(); tornar_pesquisavel(self.cb_grupo)
+        self.cb_c1 = QComboBox(); tornar_pesquisavel(self.cb_c1)
+        self.cb_c2 = QComboBox(); tornar_pesquisavel(self.cb_c2)
         self.v_grupo = Valor("Grupo", self.cb_grupo, obrig=True)
         self.v_c1 = Valor("Classificação 1", self.cb_c1, obrig=True)
         self.v_c2 = Valor("Classificação 2", self.cb_c2, vazio="— nenhuma —")
