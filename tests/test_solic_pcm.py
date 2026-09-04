@@ -434,39 +434,76 @@ def test_a_borda_do_status_e_mais_clara_que_a_fonte(qapp):
 
 
 # ── a animação refeita (03/09) ───────────────────────────────────────────────
-def test_o_card_nunca_fica_preso_apagado(qapp):
-    """O defeito que o Levi viu: card da esquerda apagado no hub.
+def test_o_resgate_completa_a_transicao_em_vez_de_estalar(qapp):
+    """O cao de guarda nao pode dar salto de opacidade — o salto ERA o "piscando".
 
-    A versão anterior criava um QGraphicsOpacityEffect a cada entrada e o removia no `finished`.
-    Fora da tela ela terminava certa — por isso não reproduzi de primeira. No app, uma
-    interrupção no meio (troca de página, resize, coleta de lixo) deixava o efeito preso num
-    valor intermediário e o card apagado para sempre.
+    Historia dos dois defeitos, porque um virou o outro: a primeira versao criava o efeito de
+    opacidade a cada entrada e o removia no fim, e uma interrupcao deixava o card preso apagado.
+    A segunda pos um cao de guarda que forcava 1.0 — so que a forca era um ESTALO, e como a
+    entrada era interrompida a toda hora, o estalo virou pisca-pisca na tela.
 
-    O desenho novo não tem esse estado: o efeito é PERMANENTE e nasce em 1.0, há UMA animação por
-    moldura, e um cão de guarda independente força o estado final. `assentar()` é o caminho de
-    recuperação — e é ele que este teste prende."""
+    A regra agora: se ainda falta caminho, o resgate ANIMA o que falta em 180 ms. Estalo so
+    quando ja esta praticamente pronto (>= 0.92), onde o olho nao ve."""
     from steps.solic_pcm import _Elevavel, _CardBotao
     m = _Elevavel(_CardBotao("t", "s", lambda: None))
     m.resize(400, 160)
-    assert m.opacidade.opacity() == 1.0            # nasce visível
-    m.entrar(atraso=0, dur=1600)
-    assert m.opacidade.opacity() == 0.0            # começa invisível a entrada
-    m.assentar()                                   # simula o cão de guarda disparando
+    assert m.opacidade.opacity() == 1.0            # nasce visivel
+    m.entrar(atraso=0, dur=620)
+    assert m.opacidade.opacity() == 0.0            # comeca invisivel a entrada
+
+    m.assentar()                                   # simula o cao de guarda disparando cedo
+    assert m.opacidade.opacity() < 0.92, "nao pode ter estalado para 1.0"
+    assert m._anim.duration() == 180, "o resgate tem de ser uma animacao curta, nao um salto"
+    m._anim.setCurrentTime(m._anim.duration())     # deixa o resgate chegar ao fim
     assert m.opacidade.opacity() == 1.0
-    # so a POSICAO: a altura e limitada pelo minimumHeight do card (190 px nos cards grandes),
-    # entao comparar o retangulo inteiro compararia o clamp do Qt, e nao o assentamento
-    assert m.card.pos() == m._repouso().topLeft()
+
+    # e o estalo continua valendo no fim do caminho, onde ninguem enxerga
+    m2 = _Elevavel(_CardBotao("t", "s", lambda: None))
+    m2.resize(400, 160)
+    m2.opacidade.setOpacity(0.97)
+    m2.assentar()
+    assert m2.opacidade.opacity() == 1.0
+    assert m2.card.pos() == m2._repouso().topLeft()
 
 
-def test_a_entrada_para_a_anterior_antes_de_comecar(qapp):
-    """Dois gatilhos concorrentes (showEvent e o refluxo do resize) deixavam duas animações
-    disputando o mesmo widget. Agora a moldura guarda UMA, e para a anterior."""
+def test_entrada_em_curso_nao_reinicia(qapp):
+    """Pedido de entrada durante uma entrada e IGNORADO. E o conserto do pisca.
+
+    `showEvent` e o refluxo do `resizeEvent` chegavam com poucos ms de diferenca e cada um
+    zerava a opacidade de novo: o card acendia, apagava e acendia. Medido contra o codigo
+    anterior, a opacidade chegava a CAIR 0.34 no meio do voo.
+
+    A versao antiga deste teste exigia o contrario — que a segunda animacao substituisse a
+    primeira. Ela prendia o defeito."""
     from steps.solic_pcm import _Elevavel, _CardBotao
     m = _Elevavel(_CardBotao("t", "s", lambda: None))
     m.resize(400, 160)
-    m.entrar(atraso=0, dur=1600)
+    m.entrar(atraso=0, dur=620)
     primeira = m._anim
-    m.entrar(atraso=0, dur=1600)
-    assert m._anim is not primeira                 # a nova substituiu
-    m.assentar()
-    assert m.opacidade.opacity() == 1.0
+    m.opacidade.setOpacity(0.55)                   # como se estivesse no meio do fade
+
+    m.entrar(atraso=0, dur=620)
+    assert m._anim is primeira, "a entrada foi reiniciada — volta o pisca"
+    assert m.opacidade.opacity() == 0.55, "a opacidade foi zerada — isso e o pisca"
+
+    # e o hover tambem nao atropela: ele chamaria _parar() e mataria o fade sem cao de guarda
+    m.elevar(True)
+    assert m._anim is primeira
+    assert m.opacidade.opacity() == 0.55
+
+
+def test_os_cards_se_sobrepoem_na_cascata(qapp):
+    """A regra que faz a transicao ler como continua, e nao como coisas piscando uma a uma.
+
+    Com stagger de 700 ms e duracao de 1600 (a versao anterior), o terceiro card passava
+    1380 ms em opacidade 0.00 — ausente da tela — e so entao aparecia. Cinco cards assim sao
+    cinco aparicoes separadas por silencio.
+
+    Enquanto STAGGER < DUR os cards estao animando AO MESMO TEMPO, e sempre ha movimento na
+    tela. Se algum dia a sequencia precisar ser mais demorada, quem cresce e o STAGGER — e
+    este teste e o limite de ate onde da para crescer."""
+    from steps.solic_pcm import _Hub
+    assert _Hub.STAGGER < _Hub.DUR, "sem sobreposicao a cascata vira pisca-pisca"
+    assert _Hub.STAGGER_TOPO < _Hub.DUR_TOPO
+    # tempo morto do ultimo card = quanto ele fica invisivel antes de comecar
+    assert _Hub.STAGGER * 2 <= 400, "o ultimo card demora demais para aparecer"

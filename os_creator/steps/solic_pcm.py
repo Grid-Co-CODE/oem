@@ -16,7 +16,7 @@ O QUE ESTE FLUXO CONSERTA (medido em 02/09 sobre 2.500 solicitações e 414 OS):
 
 A aprovação aqui NÃO cria um passo novo: dá lugar melhor a um passo que já acontece fora do app.
 """
-from PyQt6.QtCore import (Qt, QSize, QTimer, QPoint, QRect, QDate, QDateTime, QTime, QEasingCurve, QPropertyAnimation,
+from PyQt6.QtCore import (QAbstractAnimation, Qt, QSize, QTimer, QPoint, QRect, QDate, QDateTime, QTime, QEasingCurve, QPropertyAnimation,
                           QParallelAnimationGroup)
 from PyQt6.QtGui import QIcon, QColor
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -1210,6 +1210,7 @@ class _Elevavel(QWidget):
         self._elevado = False
         self._anim = None          # a UNICA animacao de entrada/hover desta moldura
         self._guarda = None        # cao de guarda: garante o estado final
+        self._entrando = False     # entrada em curso: pedido novo e IGNORADO, nao reinicia
 
         # sombra do hover: mora na MOLDURA, raio zero em repouso
         self.sombra = QGraphicsDropShadowEffect(self)
@@ -1238,50 +1239,75 @@ class _Elevavel(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if self._anim is None or self._anim.state() != QPropertyAnimation.State.Running:
+        if self._entrando:
+            return                  # durante a entrada quem manda na geometria e ela
+        if self._anim is None or self._anim.state() != QAbstractAnimation.State.Running:
             self.card.setGeometry(self._repouso())
+
+    def _pouso(self):
+        """Onde o card descansa agora - 4 px acima se o mouse estiver em cima."""
+        r = self._repouso()
+        return r.translated(0, -4) if self._elevado else r
 
     def _parar(self):
         """Zera o que estiver em curso. Chamado antes de QUALQUER animacao nova."""
-        if self._anim is not None and self._anim.state() == QPropertyAnimation.State.Running:
+        if self._anim is not None and self._anim.state() == QAbstractAnimation.State.Running:
             self._anim.stop()
         if self._guarda is not None:
             self._guarda.stop()
+        self._entrando = False
 
     def assentar(self):
-        """O estado final, sem animacao nenhuma: card no lugar e visivel.
+        """Rede de seguranca do cao de guarda. NAO da salto.
 
-        E o que o cao de guarda chama, e tambem o que qualquer caminho de erro deve chamar."""
+        A versao anterior estalava a opacidade para 1.0 aqui. Como o estalo acontecia toda vez
+        que a entrada era interrompida, ele trocou o defeito "card preso apagado" pelo defeito
+        "card piscando" - que foi o que o Levi viu. Agora, se ainda falta caminho, o resgate
+        COMPLETA a transicao em 180 ms, e o olho le fim de animacao em vez de flash."""
+        alvo = self._pouso()
+        if self.opacidade.opacity() >= 0.92:
+            self._parar()
+            self.opacidade.setOpacity(1.0)
+            self.card.setGeometry(alvo)
+            return
         self._parar()
-        self.opacidade.setOpacity(1.0)
-        self.card.setGeometry(self._repouso().translated(0, -4) if self._elevado
-                              else self._repouso())
+        self._anim = self._par(180, self.opacidade.opacity(), 1.0,
+                               self.card.geometry(), alvo, QEasingCurve.Type.OutQuad)
+        self._anim.start()
 
-    # ── entrada ──
-    def entrar(self, atraso=0, dur=1600, desloca=15, eixo="y"):
-        """Desliza e aparece. Sempre termina visivel, aconteca o que acontecer no caminho."""
+    def _par(self, dur, op0, op1, g0, g1, curva):
+        """Opacidade e geometria na MESMA duracao e na MESMA curva, para terminarem juntas."""
+        g = QParallelAnimationGroup(self)
+        for obj, prop, v0, v1 in ((self.opacidade, b"opacity", op0, op1),
+                                  (self.card, b"geometry", g0, g1)):
+            a = QPropertyAnimation(obj, prop, g)
+            a.setDuration(dur)
+            a.setStartValue(v0)
+            a.setEndValue(v1)
+            a.setEasingCurve(curva)
+            g.addAnimation(a)
+        return g
+
+    # -- entrada --
+    def entrar(self, atraso=0, dur=620, desloca=18, eixo="y"):
+        """Desliza e aparece, com movimento e brilho terminando no mesmo instante.
+
+        REENTRANCIA: se ja ha uma entrada correndo, o pedido novo e IGNORADO. Sem isso o
+        `showEvent` do hub e o refluxo do `resizeEvent` chegavam com poucos ms de diferenca e
+        cada um zerava a opacidade - o card acendia, apagava e acendia de novo."""
+        if self._entrando:
+            return
         self._parar()
+        self._entrando = True
         fim = self._repouso()
         ini = fim.translated(-desloca, 0) if eixo == "x" else fim.translated(0, desloca)
         self.card.setGeometry(ini)
         self.opacidade.setOpacity(0.0)
 
-        g = QParallelAnimationGroup(self)
-        a1 = QPropertyAnimation(self.opacidade, b"opacity", g)
-        a1.setDuration(dur)
-        a1.setStartValue(0.0)
-        a1.setEndValue(1.0)
-        a1.setEasingCurve(QEasingCurve.Type.OutCubic)
-        a2 = QPropertyAnimation(self.card, b"geometry", g)
-        # o DESLIZE e curto e o esmaecer e longo: em Qt a posicao e inteira, e 15 px espalhados
-        # por 1,6 s dao um salto a cada ~106 ms, que o olho ve picotar. Em 450 ms sao ~2,8
-        # quadros por pixel e o movimento le liso. A lentidao pedida fica no fade, que e continuo.
-        a2.setDuration(min(dur, 450))
-        a2.setStartValue(ini)
-        a2.setEndValue(fim)
-        a2.setEasingCurve(QEasingCurve.Type.OutCubic)
-        g.addAnimation(a1)
-        g.addAnimation(a2)
+        # OutCubic, e nao OutQuint/OutExpo: curva de ordem alta chega a 99% em 60% do tempo e o
+        # resto da duracao vira cauda invisivel - o mesmo mal que esta correcao veio consertar.
+        g = self._par(dur, 0.0, 1.0, ini, fim, QEasingCurve.Type.OutCubic)
+        g.finished.connect(self._assentou)
         self._anim = g
 
         # CAO DE GUARDA: independente da animacao. Se ela for interrompida por troca de aba,
@@ -1290,30 +1316,45 @@ class _Elevavel(QWidget):
         self._guarda.setSingleShot(True)
         self._guarda.timeout.connect(self.assentar)
         self._guarda.start(atraso + dur + 250)
+        QTimer.singleShot(atraso, lambda: self._disparar(g))
 
-        QTimer.singleShot(atraso, g.start)
+    def _disparar(self, g):
+        # so dispara se ESTA ainda for a animacao da moldura: entre o agendamento e agora o
+        # hover pode ter assumido, e nesse caso quem manda e ele
+        if self._anim is g and self._entrando:
+            g.start()
 
-    # ── hover: sobe 4 px e acende o brilho verde ──
+    def _assentou(self):
+        self._entrando = False
+        if self._guarda is not None:
+            self._guarda.stop()
+        # corrige o caso de a moldura ter mudado de tamanho no meio do caminho: o endValue
+        # calculado no inicio ficaria velho
+        self.opacidade.setOpacity(1.0)
+        self.card.setGeometry(self._pouso())
+
+    # -- hover: sobe 4 px e acende o brilho verde --
     def elevar(self, on):
-        if on == self._elevado:
+        # durante a entrada o hover nao entra: ele chamaria _parar() e mataria o fade no meio,
+        # deixando o card semi-apagado e sem cao de guarda
+        if on == self._elevado or self._entrando:
             return
         self._elevado = on
-        r = self._repouso()
-        self._mover(r.translated(0, -4) if on else r, 300)
+        self._mover(self._pouso(), 260)
         self._anim_sombra = []
         for prop, alvo in ((b"blurRadius", 24.0 if on else 0.0), (b"yOffset", 8.0 if on else 0.0)):
             a = QPropertyAnimation(self.sombra, prop, self)
-            a.setDuration(300)
+            a.setDuration(260)
             a.setEndValue(alvo)
             a.setEasingCurve(QEasingCurve.Type.OutCubic)
             a.start()
             self._anim_sombra.append(a)     # sem dono vivo a animacao e coletada no meio
 
-    # ── clique: afunda 3%, como o scale(0.97) ──
+    # -- clique: afunda 1,5%, como o scale(0.97) --
     def afundar(self, on):
-        r = self._repouso()
-        if self._elevado:
-            r = r.translated(0, -4)
+        if self._entrando:
+            return
+        r = self._pouso()
         if on:
             dx, dy = int(r.width() * 0.015), int(r.height() * 0.015)
             r = r.adjusted(dx, dy, -dx, -dy)
@@ -1435,16 +1476,21 @@ class _Hub(QWidget):
     # dos tres do PCM. O stagger sai da CONTA, nao do chute: 700 de atraso x 2 cards + 1600 de
     # duracao fecha exatamente 3000 ms no ultimo card. Mexer num numero sem o outro quebra a
     # conta, por isso os dois ficam juntos aqui.
-    STAGGER = 700           # entre um card do PCM e o proximo
-    DUR = 1600              # de cada card do PCM      -> 700*2 + 1600 = 3000 ms
-    STAGGER_TOPO = 250      # entre os dois cards de cima
-    DUR_TOPO = 1750         # de cada card de cima     -> 250 + 1750 = 2000 ms
-    DESLOC = 15
-    # O DESLIZE dura menos que o esmaecer, de proposito. Em Qt a posicao e inteira: 15 px
-    # espalhados por 1600 ms sao 16 posicoes em 111 quadros — um salto a cada ~106 ms, e o olho
-    # ve picotar. Em 450 ms sao ~2 quadros por pixel e o movimento le liso. A lentidao pedida
-    # (2 s / 3 s) fica no fade, que e continuo (256 niveis) e nao picota.
-    DUR_DESLIZE = 450
+    # SOBREPOSICAO, e nao fila. A versao anterior usava 1600 ms de duracao com 700 ms de
+    # intervalo: o terceiro card passava 1380 ms invisivel e so entao aparecia, e o conjunto
+    # lia como coisas piscando uma a uma. Com 130 ms de intervalo os tres cards estao animando
+    # AO MESMO TEMPO a partir dos 260 ms - sempre ha movimento na tela, que e o que faz a
+    # transicao parecer continua.
+    #
+    # O TOTAL ENCOLHEU DE PROPOSITO: 880 ms nos tres de baixo (era 3000) e 750 ms nos dois de
+    # cima (era 2000). Duracao longa nao deixa a animacao suave, deixa espacada; o que da
+    # suavidade e a sobreposicao mais a curva. Se um dia quisermos a sequencia mais demorada,
+    # o que cresce e o STAGGER - nunca a DUR, que so alonga a cauda invisivel.
+    STAGGER = 130           # entre um card do PCM e o proximo -> 130*2 + 620 = 880 ms
+    DUR = 620               # de cada card
+    STAGGER_TOPO = 130      # entre os dois de cima            -> 130   + 620 = 750 ms
+    DUR_TOPO = 620
+    DESLOC = 18
     LARG_CARD = 300         # largura confortavel de um card do PCM; base do limiar de refluxo
 
     def __init__(self, ir):
@@ -1453,6 +1499,7 @@ class _Hub(QWidget):
         self._anims = []
         self._aberto = False
         self._entrou = False
+        self._precisa_entrar = True
         v = QVBoxLayout(self)
         v.setContentsMargins(28, 26, 28, 26)
         v.setSpacing(16)
@@ -1581,9 +1628,19 @@ class _Hub(QWidget):
         tela estatica. Reiniciar e o que faz a animacao ser parte da tela e nao um detalhe do
         primeiro segundo do dia."""
         super().showEvent(e)
+        # so anima se o hub esteve MESMO escondido. O Qt manda showEvent tambem quando a janela
+        # e restaurada ou quando um ancestral reaparece, e sem esta trava a entrada recomecava
+        # do zero por cima de si mesma.
+        if not self._precisa_entrar:
+            return
+        self._precisa_entrar = False
         QTimer.singleShot(0, lambda: self._animar([self.m_nova, self.m_pcm],
                                                   dur=self.DUR_TOPO,
                                                   stagger=self.STAGGER_TOPO))
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._precisa_entrar = True
 
 
 class SolicPcmTab(QWidget):
