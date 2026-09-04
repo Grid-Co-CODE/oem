@@ -364,3 +364,43 @@ def test_o_hub_nao_tem_animacao_nem_efeito_grafico(qapp):
     for proibido in ("QPropertyAnimation", "QEasingCurve", "QGraphicsOpacityEffect",
                      "QGraphicsDropShadowEffect", "QParallelAnimationGroup"):
         assert not hasattr(m, proibido), f"{proibido} voltou ao solic_pcm"
+
+
+def test_a_lista_do_campo_nao_fecha_o_proprio_campo(qapp):
+    """O defeito que matou os oito campos da Nova Solicitação e os dois da Fila.
+
+    O ciclo, medido numa janela de verdade (fora da tela ele NAO acontece — sem gerenciador de
+    janelas o popup não rouba foco, e por isso nenhum teste pegou):
+
+        clique -> abrir(): a pilha vai para o editor e o combo recebe o foco
+        showPopup(): a lista sobe, e o Qt manda FocusOut NO COMBO com PopupFocusReason
+        eventFilter lia como "saiu do campo" -> fechar() -> o combo é escondido
+        a lista morre junto com o combo -> "clico e não aparece nada"
+
+    Por isso este teste NÃO clica nem abre lista: ele entrega o FocusOut com o motivo exato e
+    exige que o campo continue aberto. É a regra, não o ambiente — e falha no código antigo
+    mesmo fora da tela, que é o ponto."""
+    from PyQt6.QtGui import QFocusEvent
+    from PyQt6.QtCore import QEvent, Qt
+    from PyQt6.QtWidgets import QComboBox
+    from steps.solic_pcm import _CampoClicavel
+    from steps.light import Valor
+
+    for fabrica in (lambda ed: _CampoClicavel(ed), lambda ed: Valor("Tema", ed)):
+        cb = QComboBox()
+        cb.addItems(["a", "b", "c"])
+        campo = fabrica(cb)
+        pilha = getattr(campo, "_pilha", None) or campo.pilha
+        campo.abrir()
+        assert pilha.currentIndex() == 1, "o campo nem chegou a abrir"
+
+        # o FocusOut que a PROPRIA lista provoca: nao pode fechar
+        cb.setFocus()
+        campo.eventFilter(cb, QFocusEvent(QEvent.Type.FocusOut,
+                                          Qt.FocusReason.PopupFocusReason))
+        assert pilha.currentIndex() == 1, "a lista do campo fechou o campo — volta o defeito"
+
+        # sair de verdade (tab, clique em outro lugar) CONTINUA fechando
+        campo.eventFilter(cb, QFocusEvent(QEvent.Type.FocusOut,
+                                          Qt.FocusReason.TabFocusReason))
+        assert pilha.currentIndex() == 0, "sair do campo tem de fechar"

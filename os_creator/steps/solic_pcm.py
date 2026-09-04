@@ -482,8 +482,11 @@ class _CardEtiquetas(QFrame):
                           "background:transparent;" % GREEN)
         v.addWidget(cab)
 
-        self.fila_chips = QHBoxLayout()
-        self.fila_chips.setSpacing(6)
+        # EMPILHADAS, nao em linha. Com QHBoxLayout cada etiqueta nova empurrava a fila para a
+        # direita e o card crescia na horizontal, espremendo o bloco da sugestao ao lado. Uma por
+        # linha cresce so para baixo, que e o unico eixo em que este card tem folga.
+        self.fila_chips = QVBoxLayout()
+        self.fila_chips.setSpacing(5)
         self.fila_chips.addStretch(1)
         v.addLayout(self.fila_chips)
 
@@ -565,7 +568,9 @@ class _CardEtiquetas(QFrame):
                 c.setToolTip("Tracker, ETM e garantia sempre levam PERFORMANCE")
             else:
                 c.clicked.connect(lambda _=False, i=e["id"]: self._remover(i))
-            self.fila_chips.insertWidget(self.fila_chips.count() - 1, c)
+            c.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            self.fila_chips.insertWidget(self.fila_chips.count() - 1, c,
+                                         0, Qt.AlignmentFlag.AlignLeft)
         self._encher_combo()
         # a legenda da PERFORMANCE saiu (pedido do Levi, 04/09): quando a regra vale, o proprio
         # chip aparece marcado com "(regra)" e leva a explicacao no tooltip — a frase embaixo
@@ -604,6 +609,13 @@ class _CampoClicavel(QWidget):
         self.lbl.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl.setToolTip("clique para editar")
         editor.setObjectName("campoInline")
+        # ALTURA TRAVADA nos dois estados. O rotulo tem ~20 px (13 px de fonte + padding + risco)
+        # e o campo tem 24 fixos pela QSS; a pilha se dimensiona pelo maior, e o texto do rotulo
+        # ficava centrado em 24 enquanto o do campo assentava mais acima — ao clicar, a data
+        # "subia". Com os dois em 24 e a mesma ancoragem, o valor nao sai da linha.
+        self.setFixedHeight(24)
+        self.lbl.setFixedHeight(24)
+        self.lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._pilha.addWidget(self.lbl)
         self._pilha.addWidget(editor)
         self._pilha.setCurrentIndex(0)
@@ -629,9 +641,19 @@ class _CampoClicavel(QWidget):
         self.atualizar()
 
     def eventFilter(self, obj, ev):
-        # sair do campo fecha: sem isto o editor ficaria aberto ate a proxima selecao, e a
-        # linha perderia o formato limpo que e a razao de ele existir.
+        # sair do campo fecha — MENOS quando quem tirou o foco foi a lista DESTE campo.
+        #
+        # PopupFocusReason significa "o foco saiu porque o seu proprio popup abriu". Fechar aqui
+        # escondia o combo e matava a lista junto: era o "clico e nao aparece nada" que o Levi
+        # viu em tema, cliente, usina, ativo, tecnico, grupo e as duas classificacoes.
+        #
+        # A segunda condicao e cinto e suspensorio: o motivo do FocusOut varia entre plataformas,
+        # o estado da lista nao. Enquanto ela estiver aberta, este campo nao fecha por foco.
         if obj is self.editor and ev.type() == ev.Type.FocusOut:
+            if ev.reason() == Qt.FocusReason.PopupFocusReason:
+                return False
+            if isinstance(self.editor, QComboBox) and self.editor.view().isVisible():
+                return False
             self.fechar()
         return False
 
@@ -1066,7 +1088,12 @@ class _Fila(QWidget):
             if tema and cl.get("classif1") else "")
         if do_bloco:
             self.editor_subs.set_itens(do_bloco)
-        else:
+        # A LISTA NUNCA FICA VAZIA. Antes o `else` bastava, mas se o bloco do supervisor viesse
+        # com subtarefas que nao sobrevivem a conversao (descricao em branco, por exemplo), o
+        # editor terminava sem nenhuma linha — e ai aparecia so a frase "a OS nasce com as 3
+        # subtarefas da base" sem as tres em lugar nenhum, que foi o que o Levi estranhou.
+        # Decidir pelo RESULTADO, e nao pela intencao, fecha esse caminho.
+        if not self.editor_subs.itens():
             self.editor_subs.set_itens(
                 sp.de_api(sp.subtarefas(tema) if tema else sp.subtarefas_base()))
         self.lbl_subs.setText("%d subtarefas" % len(self.editor_subs.itens()))

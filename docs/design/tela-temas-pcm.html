@@ -1,0 +1,225 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>OS Creator — Temas (padronização do PCM)</title>
+<!--
+  REFERENCIA da tela nova, no estilo do app. Cores e medidas saem da folha real da aba
+  (SolicPcmTab.styleSheet(), despejada do app rodando) e do _PlanoCard da tela de Criar OS —
+  as mesmas usadas em telas-fila-historico.html, nesta pasta.
+
+  A TELA AINDA NAO EXISTE NO CODIGO. Isto e para o Levi olhar e dizer o que muda antes de eu
+  construir. O que ela resolve: hoje os temas moram em `os_creator/solic_spec.py`, num dicionario
+  Python — mudar o nome de um tema, acrescentar uma subtarefa ou marcar anexo obrigatorio exige
+  editar codigo e subir release. Esta tela poe isso na mao do PCM.
+-->
+<style>
+  :root{
+    --bg:#0B1020; --card:#121A2B; --texto:#FFFFFF; --muted:#8A93A8; --verde:#A6E22E;
+    --verde-escuro:#8fce3f; --tinta:#0B1020;
+    --cab:#161d30; --linha:#222c43; --borda:#232a3d; --caixa:#141b2c;
+    --campo:#1A2337; --campo-borda:#2A3550; --azul:#6FA8DC;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--texto);
+       font:13px/1.45 "Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .app{min-height:100vh;display:flex;flex-direction:column}
+
+  .nav{display:flex;align-items:center;padding:0 8px}
+  .nav button{background:transparent;color:#8a90a2;border:none;border-bottom:2px solid transparent;
+              padding:7px 14px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .nav button:hover{color:#e6e8ef}
+  .nav button.on{color:#e8ebf2;border-bottom:2px solid var(--verde-escuro)}
+
+  .cab{background:var(--cab);border-bottom:1px solid var(--linha);
+       padding:9px 16px 9px 14px;display:flex;align-items:center;gap:12px}
+  .cab .voltar{background:transparent;border:none;color:#8a90a2;font-size:13px;font-weight:600;
+               cursor:pointer;font-family:inherit;padding:2px 4px}
+  .cab .tit{color:var(--texto);font-size:15px;font-weight:600}
+  .cab .cont{margin-left:auto;color:var(--muted);font-size:12.5px}
+  .cab .cont b{color:var(--verde)}
+
+  .corpo{flex:1;display:flex;min-height:0}
+  .col{width:340px;flex:0 0 340px;display:flex;flex-direction:column;border-right:1px solid var(--linha)}
+  .cabCol{color:#8a90a2;font-size:10.5px;font-weight:700;letter-spacing:.8px;
+          background:#0b1020;border-bottom:1px solid var(--linha);padding:10px 14px 9px;
+          display:flex;align-items:center;gap:8px}
+  .cabCol .novo{margin-left:auto;color:var(--verde-escuro);font-size:11.5px;font-weight:600;
+                cursor:pointer;letter-spacing:0}
+  .busca{padding:9px 12px;border-bottom:1px solid var(--linha)}
+  .busca div{background:var(--campo);border:1px solid var(--campo-borda);border-radius:10px;
+             height:34px;padding:0 11px;display:flex;align-items:center;gap:8px;color:#6b7385;
+             font-size:12.5px}
+  .lista{flex:1;overflow-y:auto}
+  .cel{border-bottom:1px solid var(--linha);border-left:3px solid transparent;
+       padding:10px 12px 11px 14px;cursor:pointer}
+  .cel:hover{background:var(--cab)}
+  .cel.sel{background:var(--cab);border-left:3px solid var(--verde-escuro)}
+  .cel .n{color:var(--texto);font-size:13.5px;font-weight:600;margin-bottom:3px}
+  .cel .m{color:var(--muted);font-size:11.5px;display:flex;gap:5px;align-items:center;
+          flex-wrap:wrap}
+  .tag{background:rgba(143,206,63,.14);color:#a9d96a;border-radius:5px;padding:1px 7px;
+       font-size:10.5px;font-weight:600}
+  .tag.cinza{background:rgba(138,144,162,.12);color:#8a90a2}
+
+  .det{flex:1;overflow-y:auto;padding:16px 20px 18px;min-width:0}
+  .det h2{margin:0 0 3px;font-size:22px;font-weight:600}
+  .det .sub{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+  .rot{color:var(--muted);font-size:10.5px;font-weight:700;letter-spacing:.8px;
+       display:block;margin-bottom:5px}
+  .campo{background:var(--campo);border:1px solid var(--campo-borda);border-radius:10px;
+         height:40px;padding:0 12px;font-size:13px;display:flex;align-items:center}
+  .campo.sel::after{content:"";margin-left:auto;width:0;height:0;
+                    border-left:4.5px solid transparent;border-right:4.5px solid transparent;
+                    border-top:5px solid #9aa3b8}
+  .grade{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px;margin-bottom:18px}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+
+  .subs{background:var(--caixa);border:1px solid var(--borda);border-radius:10px;
+        margin-bottom:16px}
+  .subs .cabS{color:#8a90a2;font-size:11.5px;padding:10px 14px;
+              border-bottom:1px solid #212840;display:flex;align-items:center;gap:8px}
+  .subs .cabS b{color:var(--texto)}
+  .lin{display:flex;align-items:center;gap:12px;padding:9px 14px;
+       border-bottom:1px solid #1b2235}
+  .lin:last-child{border-bottom:none}
+  .lin .num{color:var(--verde);font-size:12.5px;font-weight:700;width:16px;flex:0 0 16px;
+            text-align:right}
+  .lin .arr{color:#4b5570;font-size:13px;cursor:grab;flex:0 0 12px}
+  .lin .txt{flex:1;font-size:13px;color:#e8ebf2;min-width:0}
+  .lin .tipo{width:120px;flex:0 0 120px}
+  .lin .tipo div{background:var(--campo);border:1px solid var(--campo-borda);border-radius:8px;
+                 height:28px;padding:0 9px;font-size:12px;color:#c9d0e0;display:flex;
+                 align-items:center}
+  .lin .tipo div::after{content:"";margin-left:auto;width:0;height:0;
+                        border-left:4px solid transparent;border-right:4px solid transparent;
+                        border-top:4.5px solid #9aa3b8}
+  .lin .anexo{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;
+              width:150px;flex:0 0 150px}
+  .cx{width:18px;height:18px;border:1px solid var(--campo-borda);border-radius:5px;
+      background:var(--campo);flex:0 0 18px;position:relative;cursor:pointer}
+  .cx.on{background:var(--verde);border:2px solid var(--verde)}
+  .cx.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:9px;
+                border:solid var(--tinta);border-width:0 2px 2px 0;transform:rotate(42deg)}
+  .lin .x{color:#5a6072;font-size:15px;cursor:pointer}
+  .lin .x:hover{color:#e05555}
+  .addSub{color:var(--verde-escuro);font-size:13px;font-weight:600;padding:11px 14px;
+          cursor:pointer}
+
+  .acoes{display:flex;align-items:center;gap:10px}
+  .btnP{background:var(--verde);color:var(--tinta);border:none;border-bottom:2px solid #6d9c14;
+        border-radius:11px;height:44px;padding:0 22px;font-size:13.5px;font-weight:700;
+        cursor:pointer;font-family:inherit}
+  .btnS{background:transparent;color:#9aa3b8;border:1px solid var(--linha);border-radius:11px;
+        height:44px;padding:0 18px;font-size:13px;font-weight:600;cursor:pointer;
+        font-family:inherit}
+  .acoes .hint{margin-left:auto;color:var(--muted);font-size:12px}
+
+  .obs{max-width:900px;margin:26px auto 40px;padding:0 18px;color:var(--muted);
+       font-size:12.5px;line-height:1.6}
+  .obs b{color:var(--texto)}
+  .obs code{background:var(--campo);border:1px solid var(--campo-borda);border-radius:4px;
+            padding:1px 5px;font-size:11.5px;color:#cfd6e4}
+  .obs ol{padding-left:18px}
+  .obs li{margin-bottom:7px}
+</style>
+
+<div class="app">
+  <div class="nav">
+    <button>‹ Início</button><button>Nova solicitação</button><button>Painel</button>
+    <button>Fila do PCM</button><button class="on">Temas</button><button>Histórico</button>
+  </div>
+
+  <div class="cab">
+    <button class="voltar">← Voltar</button>
+    <span class="tit">Temas</span>
+    <span class="cont"><b>14</b> temas · 4 sem checklist</span>
+  </div>
+
+  <div class="corpo">
+    <div class="col">
+      <div class="cabCol">TEMAS<span class="novo">+ novo tema</span></div>
+      <div class="busca"><div>Buscar tema…</div></div>
+      <div class="lista">
+        <div class="cel sel">
+          <div class="n">Inversor — inspeção e medição</div>
+          <div class="m"><span class="tag">Inversor</span> 10 subtarefas · 751 solicitações</div>
+        </div>
+        <div class="cel">
+          <div class="n">Inversor — substituição</div>
+          <div class="m"><span class="tag">Inversor</span> 9 subtarefas · 178 solicitações</div>
+        </div>
+        <div class="cel">
+          <div class="n">Inversor — chamado de garantia</div>
+          <div class="m"><span class="tag">Inversor</span> 6 subtarefas · 173 solicitações</div>
+        </div>
+        <div class="cel">
+          <div class="n">Tracker — chamado e comunicação da TCU</div>
+          <div class="m"><span class="tag">Tracker</span> 6 subtarefas · 468 solicitações</div>
+        </div>
+        <div class="cel">
+          <div class="n">Segurança — CFTV</div>
+          <div class="m"><span class="tag cinza">sem checklist</span> 88 solicitações</div>
+        </div>
+        <div class="cel">
+          <div class="n">ETM — estação meteorológica</div>
+          <div class="m"><span class="tag cinza">sem checklist</span> 72 solicitações</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="det">
+      <h2>Inversor — inspeção e medição</h2>
+      <p class="sub">Usado em 751 solicitações. O que estiver aqui é o que a OS vai levar quando o PCM escolher este tema.</p>
+
+      <div class="grade">
+        <div><span class="rot">NOME DO TEMA</span><div class="campo">Inversor — inspeção e medição</div></div>
+        <div><span class="rot">TIPO DE EQUIPAMENTO</span><div class="campo sel">Inversor</div></div>
+        <div><span class="rot">TIPO DE OS</span><div class="campo sel">Elétrica</div></div>
+      </div>
+      <div class="g2">
+        <div><span class="rot">MOTIVO (VIRA O TÍTULO DA OS)</span><div class="campo">Inspeção e medição de inversor</div></div>
+        <div><span class="rot">CLASSIFICAÇÃO 1</span><div class="campo sel">Não Para o Ativo</div></div>
+      </div>
+
+      <div class="subs">
+        <div class="cabS"><b>Subtarefas</b> — a ordem é a que o técnico vai ver em campo</div>
+        <div class="lin"><span class="arr">⠿</span><span class="num">1</span><span class="txt">Confirmar bloqueio e etiquetagem (LOTO) do inversor antes de iniciar</span><span class="tipo"><div>Verificação</div></span><span class="anexo"><i class="cx on"></i>anexo obrigatório</span><span class="x">×</span></div>
+        <div class="lin"><span class="arr">⠿</span><span class="num">2</span><span class="txt">Aguardar o tempo de descarga dos capacitores internos</span><span class="tipo"><div>Verificação</div></span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+        <div class="lin"><span class="arr">⠿</span><span class="num">3</span><span class="txt">Temperatura medida no inversor, em °C</span><span class="tipo"><div>Numérico</div></span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+        <div class="lin"><span class="arr">⠿</span><span class="num">4</span><span class="txt">Medir tensão de cada string conectada, em V</span><span class="tipo"><div>Numérico</div></span><span class="anexo"><i class="cx"></i>anexo obrigatório</span><span class="x">×</span></div>
+        <div class="lin"><span class="arr">⠿</span><span class="num">5</span><span class="txt">Anexar registros de temperatura e fotos da inspeção</span><span class="tipo"><div>Texto</div></span><span class="anexo"><i class="cx on"></i>anexo obrigatório</span><span class="x">×</span></div>
+        <div class="addSub">+   Adicionar subtarefa</div>
+      </div>
+
+      <div class="acoes">
+        <button class="btnP">Salvar tema</button>
+        <button class="btnS">Descartar alterações</button>
+        <span class="hint">As 3 subtarefas da base entram sozinhas no fim de todo tema</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="obs">
+  <p><b>O que esta tela resolve.</b> Hoje os temas moram em
+  <code>os_creator/solic_spec.py</code>, num dicionário Python. Mudar o nome de um tema,
+  acrescentar uma subtarefa ou marcar anexo obrigatório significa editar código e subir release.
+  Aqui isso passa para a mão do PCM.</p>
+
+  <p><b>Decisões que precisam da sua palavra antes de eu construir:</b></p>
+  <ol>
+    <li><b>Onde os temas ficam salvos.</b> Hoje são código. Se virarem dado editável, precisam de
+    um lugar — arquivo local (só vale para quem editou), banco da Gridco (vale para todos, mas
+    depende da API estar no ar) ou o próprio Fracttal. <b>Recomendo o banco</b>, com o código
+    atual servindo de valor inicial: sem isso cada PCM teria um conjunto diferente de temas.</li>
+    <li><b>Quem pode editar.</b> Se qualquer um mexe, um tema errado contamina toda OS criada
+    depois. O app já é multiusuário e sabe quem entrou.</li>
+    <li><b>O que acontece com as OS já criadas.</b> Nada — a OS leva as subtarefas copiadas no
+    momento em que nasceu. Editar um tema muda só as próximas. Vale deixar isso escrito na tela.</li>
+    <li><b>As 3 subtarefas da base</b> (descrição, registro fotográfico, pendência) entram no fim
+    de todo tema, e hoje não são editáveis. Deixo assim?</li>
+  </ol>
+
+  <p><b>O que não desenhei de propósito:</b> excluir tema. Um tema já usado em 751 solicitações
+  não pode simplesmente sumir — o certo é arquivar, e some da lista de escolha sem quebrar o
+  histórico. Se você concordar, acrescento.</p>
+</div>

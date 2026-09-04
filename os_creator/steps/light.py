@@ -213,9 +213,19 @@ class Valor(QWidget):
         self.atualizar()
 
     def eventFilter(self, obj, ev):
-        # sair do campo fecha: senão o editor ficaria aberto até a próxima seleção e a linha
-        # perderia o formato limpo que é a razão de ele existir
+        # sair do campo fecha — MENOS quando quem tirou o foco foi a lista DESTE campo.
+        #
+        # PopupFocusReason significa "o foco saiu porque o seu proprio popup abriu". Fechar aqui
+        # escondia o combo e matava a lista junto: era o "clico e nao aparece nada" que o Levi
+        # viu em tema, cliente, usina, ativo, tecnico, grupo e as duas classificacoes.
+        #
+        # A segunda condicao e cinto e suspensorio: o motivo do FocusOut varia entre plataformas,
+        # o estado da lista nao. Enquanto ela estiver aberta, este campo nao fecha por foco.
         if obj is self.editor and ev.type() == ev.Type.FocusOut:
+            if ev.reason() == Qt.FocusReason.PopupFocusReason:
+                return False
+            if isinstance(self.editor, QComboBox) and self.editor.view().isVisible():
+                return False
             self.fechar()
         return False
 
