@@ -16,13 +16,12 @@ O QUE ESTE FLUXO CONSERTA (medido em 02/09 sobre 2.500 solicitações e 414 OS):
 
 A aprovação aqui NÃO cria um passo novo: dá lugar melhor a um passo que já acontece fora do app.
 """
-from PyQt6.QtCore import (QAbstractAnimation, Qt, QSize, QTimer, QPoint, QRect, QDate, QDateTime, QTime, QEasingCurve, QPropertyAnimation,
-                          QParallelAnimationGroup)
-from PyQt6.QtGui import QIcon, QColor
+from PyQt6.QtCore import Qt, QSize, QTimer, QDate, QDateTime, QTime
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QStackedWidget, QScrollArea, QFrame, QMessageBox, QComboBox,
-                             QGridLayout, QLineEdit, QGraphicsOpacityEffect, QSizePolicy,
-                             QDateTimeEdit, QStackedLayout, QGraphicsDropShadowEffect)
+                             QGridLayout, QLineEdit, QSizePolicy,
+                             QDateTimeEdit, QStackedLayout)
 
 from datetime import datetime
 
@@ -31,6 +30,9 @@ import solic_spec as sp
 from workers import ApiWorker, slot_seguro
 from steps.ui import (QSS_FORM, Card, campo, icone_pix, GREEN, GREEN_INK, MUTED, TEXT,
                       CARD, BORDER, BG, INPUT)
+# O card da tela de Criar OS. Importado, e nao reescrito: o Levi quer as duas telas com a
+# mesma forma, e copiar significaria as duas divergirem na primeira alteracao de uma delas.
+from steps.performance import _PlanoCard
 from steps.subtarefas_edit import EditorSubtarefas
 from steps.solicitacao import SolicitacaoTab
 from steps.historico_solic import HistoricoSolic
@@ -409,6 +411,10 @@ class _CartaoFila(QFrame):
         a.setMinimumWidth(1)
         v.addWidget(a)
 
+        # a data ABSOLUTA mora aqui, no tooltip: ela saiu da ficha da direita porque e subdado —
+        # quem varre a fila decide pelo tempo relativo ("ha 21 h"), e so quer o dia e a hora
+        # exatos quando para em cima de uma solicitacao (pedido do Levi, 04/09)
+        self.setToolTip("Aberta em %s" % _data_br(s.get("data")))
         quem = QLabel("%s · %s" % (s.get("criado_por") or "—", _ha_quanto(s.get("data"))))
         quem.setStyleSheet("color:%s;font-size:11px;background:transparent;" % MUTED)
         quem.setWordWrap(True)
@@ -561,9 +567,10 @@ class _CardEtiquetas(QFrame):
                 c.clicked.connect(lambda _=False, i=e["id"]: self._remover(i))
             self.fila_chips.insertWidget(self.fila_chips.count() - 1, c)
         self._encher_combo()
-        if regra:
-            self.aviso.setText("PERFORMANCE entra sozinha: é tracker, ETM ou garantia.")
-        elif not self._sel:
+        # a legenda da PERFORMANCE saiu (pedido do Levi, 04/09): quando a regra vale, o proprio
+        # chip aparece marcado com "(regra)" e leva a explicacao no tooltip — a frase embaixo
+        # dizia de novo o que o chip ja diz.
+        if not self._sel:
             self.aviso.setText("Nenhuma etiqueta — a OS nasce sem marcação.")
         else:
             self.aviso.setText("")
@@ -764,23 +771,14 @@ class _Fila(QWidget):
         return l
 
     def _montar_detalhe(self):
-        # 26 px = 30% acima dos 20 anteriores. O sol verde antes do título marca onde começa a
-        # solicitação escolhida, num painel que é todo texto corrido.
-        tit_lin = QHBoxLayout()
-        tit_lin.setSpacing(10)
-        self.ico_sol = QLabel()
-        self.ico_sol.setPixmap(icone_pix("sol", GREEN, 22))
-        self.ico_sol.setFixedWidth(22)
-        self.ico_sol.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.ico_sol.setStyleSheet("background:transparent;")
-        tit_lin.addWidget(self.ico_sol)
+        # 26 px = 30% acima dos 20 originais. Sem icone antes: o titulo ja e o maior texto da
+        # tela e nao precisa de marcador para dizer onde comeca (pedido do Levi, 04/09).
         self.lbl_titulo = QLabel("Selecione uma solicitação na fila.")
         self.lbl_titulo.setStyleSheet("color:%s;font-size:26px;font-weight:600;"
                                       "background:transparent;" % TEXT)
         self.lbl_titulo.setWordWrap(True)
         self.lbl_titulo.setMinimumWidth(1)
-        tit_lin.addWidget(self.lbl_titulo, 1)
-        self.det.addLayout(tit_lin)
+        self.det.addWidget(self.lbl_titulo)
 
         self.lbl_orig = QLabel("")
         self.lbl_orig.setStyleSheet("color:%s;font-size:12px;background:transparent;" % MUTED)
@@ -795,18 +793,17 @@ class _Fila(QWidget):
         ficha.setHorizontalSpacing(26)
         ficha.setVerticalSpacing(3)
         self.v_solicitante = self._valor()
-        self.v_aberta = self._valor()
-        self.v_aberta.setWordWrap(False)      # "02/09/2026 20:16" em duas linhas nao ajuda ninguem
         self.v_ativo = self._valor()
         self.v_usina = self._valor()
-        for col, rot, val in ((0, "Solicitante", self.v_solicitante),
-                              (1, "Aberta em", self.v_aberta),
+        # USINA primeiro: e por ela que o PCM situa a solicitacao — quem pediu e o que quebrou
+        # so importam depois de saber ONDE. "Aberta em" saiu daqui (pedido do Levi, 04/09): a
+        # data absoluta e subdado, e virou tooltip do cartao da fila, onde ja existe o tempo
+        # relativo ("ha 21 h") que e o que se le de relance.
+        for col, rot, val in ((0, "Usina", self.v_usina),
+                              (1, "Solicitante", self.v_solicitante),
                               (2, "Ativo", self.v_ativo)):
             ficha.addWidget(self._rotulo(rot), 0, col)
             ficha.addWidget(val, 1, col)
-        ficha.setRowMinimumHeight(2, 34)   # +15 px do pedido do Levi (03/09)
-        ficha.addWidget(self._rotulo("Usina"), 2, 0)
-        ficha.addWidget(self.v_usina, 3, 0, 1, 3)
         # as tres colunas dividem a largura por igual. Antes so a ultima esticava, entao
         # SOLICITANTE e ABERTA EM ficavam espremidos na esquerda e a data quebrava em duas linhas.
         for c in (0, 1, 2):
@@ -972,7 +969,7 @@ class _Fila(QWidget):
             for l in (self.lbl_orig, self.lbl_sug, self.lbl_classif, self.chip_tema):
                 l.setText("")
             self.chip_tema.setVisible(False)
-            for l in (self.v_solicitante, self.v_aberta, self.v_ativo, self.v_usina):
+            for l in (self.v_solicitante, self.v_ativo, self.v_usina):
                 l.setText("—")
             self.ed_tecnico.lbl.setText("—")
             self.ed_data.lbl.setText("—")
@@ -997,7 +994,6 @@ class _Fila(QWidget):
             "o supervisor escreveu: <s>%s</s> · título reescrito no padrão" % orig
             if novo and novo != orig else "")
         self.v_solicitante.setText(str(s.get("criado_por") or "—"))
-        self.v_aberta.setText(_data_br(s.get("data")))
         self.v_ativo.setText(str(s.get("ativo") or "—"))
         self.v_usina.setText(str(s.get("usina") or "—"))
         tec, dt = bloco.get("tecnico"), bloco.get("data")
@@ -1186,320 +1182,86 @@ class _Fila(QWidget):
             "conta do PCM antes de entrar.")
 
 
-class _Elevavel(QWidget):
-    """Moldura que segura UM card e e a unica dona do movimento dele.
+class _CardBotao(_PlanoCard):
+    """O card do hub, na MESMA forma da tela de Criar OS — porque E a mesma classe.
 
-    Existe por uma razao de Qt: mexer na posicao de um widget que esta dentro de um QLayout nao
-    adianta — a cada ciclo o layout o devolve ao lugar calculado e a animacao roda por baixo sem
-    aparecer (foi assim que 28 quadros gravados sairam identicos). Quem entra no layout e ESTA
-    moldura; o card mora aqui dentro, sem layout, e por isso pode entrar, subir no hover e
-    afundar no clique sem ninguem contrariar.
+    Medido em 04/09 antes de escrever qualquer coisa: `steps/performance.py` nao tem uma unica
+    ocorrencia de QGraphicsEffect, QPropertyAnimation ou QEasingCurve. A tela que o Levi apontou
+    como referencia nao tem animacao nem sombra; tem um QFrame de raio 14 que troca a borda para
+    verde no hover, e mais nada. Herdar em vez de copiar garante que continue assim nas duas.
 
-    Os dois efeitos sao PERMANENTES e vivem em widgets diferentes — sombra na moldura, opacidade
-    no card. Nenhum e criado ou removido durante a animacao: efeito que nasce e morre no meio do
-    caminho congela o widget no ultimo valor pintado se o objeto for coletado antes do fim, e foi
-    exatamente esse o card que apareceu apagado na tela do Levi.
+    O que esta casca acrescenta e so o que o hub precisa e o plano nao tem: o estado ATIVO — o
+    card que abriu os tres de baixo — e rotulos que encolhem, sem os quais a grade nao reflui.
     """
 
-    RESERVA = 6
-
-    def __init__(self, card):
-        super().__init__()
-        self.card = card
-        card.setParent(self)
-        self._elevado = False
-        self._anim = None          # a UNICA animacao de entrada/hover desta moldura
-        self._guarda = None        # cao de guarda: garante o estado final
-        self._entrando = False     # entrada em curso: pedido novo e IGNORADO, nao reinicia
-
-        # sombra do hover: mora na MOLDURA, raio zero em repouso
-        self.sombra = QGraphicsDropShadowEffect(self)
-        self.sombra.setBlurRadius(0)
-        self.sombra.setOffset(0, 0)
-        self.sombra.setColor(QColor(138, 224, 0, 38))     # o verde neon da borda, a 15%
-        self.setGraphicsEffect(self.sombra)
-        self._anim_sombra = []
-
-        # opacidade da entrada: mora no CARD, nasce visivel e NUNCA e removida
-        self.opacidade = QGraphicsOpacityEffect(self.card)
-        self.opacidade.setOpacity(1.0)
-        self.card.setGraphicsEffect(self.opacidade)
-
-    # ── geometria ──
-    def sizeHint(self):
-        h = self.card.sizeHint()
-        return QSize(h.width(), h.height() + self.RESERVA)
-
-    def minimumSizeHint(self):
-        h = self.card.minimumSizeHint()
-        return QSize(h.width(), h.height() + self.RESERVA)
-
-    def _repouso(self):
-        return QRect(0, self.RESERVA, self.width(), max(0, self.height() - self.RESERVA))
-
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        if self._entrando:
-            return                  # durante a entrada quem manda na geometria e ela
-        if self._anim is None or self._anim.state() != QAbstractAnimation.State.Running:
-            self.card.setGeometry(self._repouso())
-
-    def _pouso(self):
-        """Onde o card descansa agora - 4 px acima se o mouse estiver em cima."""
-        r = self._repouso()
-        return r.translated(0, -4) if self._elevado else r
-
-    def _parar(self):
-        """Zera o que estiver em curso. Chamado antes de QUALQUER animacao nova."""
-        if self._anim is not None and self._anim.state() == QAbstractAnimation.State.Running:
-            self._anim.stop()
-        if self._guarda is not None:
-            self._guarda.stop()
-        self._entrando = False
-
-    def assentar(self):
-        """Rede de seguranca do cao de guarda. NAO da salto.
-
-        A versao anterior estalava a opacidade para 1.0 aqui. Como o estalo acontecia toda vez
-        que a entrada era interrompida, ele trocou o defeito "card preso apagado" pelo defeito
-        "card piscando" - que foi o que o Levi viu. Agora, se ainda falta caminho, o resgate
-        COMPLETA a transicao em 180 ms, e o olho le fim de animacao em vez de flash."""
-        alvo = self._pouso()
-        if self.opacidade.opacity() >= 0.92:
-            self._parar()
-            self.opacidade.setOpacity(1.0)
-            self.card.setGeometry(alvo)
-            return
-        self._parar()
-        self._anim = self._par(180, self.opacidade.opacity(), 1.0,
-                               self.card.geometry(), alvo, QEasingCurve.Type.OutQuad)
-        self._anim.start()
-
-    def _par(self, dur, op0, op1, g0, g1, curva):
-        """Opacidade e geometria na MESMA duracao e na MESMA curva, para terminarem juntas."""
-        g = QParallelAnimationGroup(self)
-        for obj, prop, v0, v1 in ((self.opacidade, b"opacity", op0, op1),
-                                  (self.card, b"geometry", g0, g1)):
-            a = QPropertyAnimation(obj, prop, g)
-            a.setDuration(dur)
-            a.setStartValue(v0)
-            a.setEndValue(v1)
-            a.setEasingCurve(curva)
-            g.addAnimation(a)
-        return g
-
-    # -- entrada --
-    def entrar(self, atraso=0, dur=620, desloca=18, eixo="y"):
-        """Desliza e aparece, com movimento e brilho terminando no mesmo instante.
-
-        REENTRANCIA: se ja ha uma entrada correndo, o pedido novo e IGNORADO. Sem isso o
-        `showEvent` do hub e o refluxo do `resizeEvent` chegavam com poucos ms de diferenca e
-        cada um zerava a opacidade - o card acendia, apagava e acendia de novo."""
-        if self._entrando:
-            return
-        self._parar()
-        self._entrando = True
-        fim = self._repouso()
-        ini = fim.translated(-desloca, 0) if eixo == "x" else fim.translated(0, desloca)
-        self.card.setGeometry(ini)
-        self.opacidade.setOpacity(0.0)
-
-        # OutCubic, e nao OutQuint/OutExpo: curva de ordem alta chega a 99% em 60% do tempo e o
-        # resto da duracao vira cauda invisivel - o mesmo mal que esta correcao veio consertar.
-        g = self._par(dur, 0.0, 1.0, ini, fim, QEasingCurve.Type.OutCubic)
-        g.finished.connect(self._assentou)
-        self._anim = g
-
-        # CAO DE GUARDA: independente da animacao. Se ela for interrompida por troca de aba,
-        # resize ou coleta de lixo, o card termina visivel do mesmo jeito.
-        self._guarda = QTimer(self)
-        self._guarda.setSingleShot(True)
-        self._guarda.timeout.connect(self.assentar)
-        self._guarda.start(atraso + dur + 250)
-        QTimer.singleShot(atraso, lambda: self._disparar(g))
-
-    def _disparar(self, g):
-        # so dispara se ESTA ainda for a animacao da moldura: entre o agendamento e agora o
-        # hover pode ter assumido, e nesse caso quem manda e ele
-        if self._anim is g and self._entrando:
-            g.start()
-
-    def _assentou(self):
-        self._entrando = False
-        if self._guarda is not None:
-            self._guarda.stop()
-        # corrige o caso de a moldura ter mudado de tamanho no meio do caminho: o endValue
-        # calculado no inicio ficaria velho
-        self.opacidade.setOpacity(1.0)
-        self.card.setGeometry(self._pouso())
-
-    # -- hover: sobe 4 px e acende o brilho verde --
-    def elevar(self, on):
-        # durante a entrada o hover nao entra: ele chamaria _parar() e mataria o fade no meio,
-        # deixando o card semi-apagado e sem cao de guarda
-        if on == self._elevado or self._entrando:
-            return
-        self._elevado = on
-        self._mover(self._pouso(), 260)
-        self._anim_sombra = []
-        for prop, alvo in ((b"blurRadius", 24.0 if on else 0.0), (b"yOffset", 8.0 if on else 0.0)):
-            a = QPropertyAnimation(self.sombra, prop, self)
-            a.setDuration(260)
-            a.setEndValue(alvo)
-            a.setEasingCurve(QEasingCurve.Type.OutCubic)
-            a.start()
-            self._anim_sombra.append(a)     # sem dono vivo a animacao e coletada no meio
-
-    # -- clique: afunda 1,5%, como o scale(0.97) --
-    def afundar(self, on):
-        if self._entrando:
-            return
-        r = self._pouso()
-        if on:
-            dx, dy = int(r.width() * 0.015), int(r.height() * 0.015)
-            r = r.adjusted(dx, dy, -dx, -dy)
-        self._mover(r, 100)
-
-    def _mover(self, destino, ms):
-        self._parar()
-        a = QPropertyAnimation(self.card, b"geometry", self)
-        a.setDuration(ms)
-        a.setStartValue(self.card.geometry())
-        a.setEndValue(destino)
-        a.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._anim = a
-        a.start()
-
-
-class _CardBotao(QFrame):
-    """Card-botao do hub, na MESMA linguagem dos cards da tela inicial do app: icone num quadrado
-    verde translucido, titulo, subtitulo, risco verde embaixo e a seta no canto.
-
-    Nao e enfeite: quem abre esta aba acabou de sair daquela tela, e repetir a forma diz "isto e
-    a mesma coisa, um nivel abaixo"."""
-
-    def __init__(self, titulo, sub, on_click, icone="grid", alto=True):
-        super().__init__()
-        self.setObjectName("hubCard")
-        self.setProperty("alto", "1" if alto else "0")
+    def __init__(self, titulo, sub, on_click, icone="grid", badge=""):
+        super().__init__(icone, titulo, badge, sub, on_click)
+        self._ativo = False
         self.setProperty("ativo", "0")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        self._on_click = on_click
-        self.moldura = None                     # preenchido pelo _Elevavel
-        v = QVBoxLayout(self)
-        v.setContentsMargins(20, 18, 20, 16)
-        v.setSpacing(4)
+        # "N subtarefas" e dos planos do Fracttal — aqui o rotulo ficaria eternamente em
+        # "... subtarefas" esperando uma contagem que nunca vem. Mesmo tratamento que o card
+        # Tickets recebe na tela de Criar OS.
+        self.sub_lbl.setVisible(False)
+        # e o iconezinho de lista que fica ao lado dele: escondendo so o rotulo sobra um "≡"
+        # solto embaixo do subtitulo. O maximumWidth separa: ele e o unico QLabel do card com
+        # setFixedSize(13, 13).
+        for lbl in self.findChildren(QLabel):
+            if lbl.maximumWidth() == 13:
+                lbl.setVisible(False)
+        # DEIXA O CARD ENCOLHER. Sem isto o minimo do hub vai a 1009 px contra um limiar de 790,
+        # e o refluxo para uma coluna nunca engata — exatamente o codigo morto que o teste do
+        # refluxo existe para impedir. Um QLabel com wordWrap so quebra a linha se puder ser mais
+        # estreito que o texto, e o padrao dele e exigir o texto inteiro.
+        # O filtro pelo maximumWidth separa sozinho quem pode encolher: o tile do icone e a seta
+        # usam setFixedSize, entao o maximo deles e a propria largura; so os rotulos de texto
+        # ficam com o maximo aberto do Qt.
+        for lbl in self.findChildren(QLabel):
+            if lbl.maximumWidth() >= 16777215:
+                lbl.setMinimumWidth(1)
 
-        topo = QHBoxLayout()
-        topo.setSpacing(8)
-        self.sq = QLabel()
-        lado = 48 if alto else 34
-        self.sq.setFixedSize(lado, lado)
-        self.sq.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sq.setObjectName("hubIcone")
-        self.sq.setPixmap(icone_pix(icone, GREEN, 26 if alto else 18))
-        topo.addWidget(self.sq)
-        topo.addStretch(1)
-        v.addLayout(topo)
-        v.addSpacing(10 if alto else 4)
-
-        t = QLabel(titulo)
-        t.setStyleSheet("font-size:%spx;font-weight:600;color:%s;background:transparent;"
-                        "border:none;" % ("17.5" if alto else "14.5", TEXT))
-        v.addWidget(t)
-        d = QLabel(sub)
-        d.setWordWrap(True)
-        d.setMinimumWidth(1)
-        d.setStyleSheet("font-size:%dpx;color:%s;background:transparent;border:none;"
-                        % (13 if alto else 12, MUTED))
-        v.addWidget(d)
-        v.addStretch(1)
-
-        seta = QHBoxLayout()
-        seta.setContentsMargins(0, 6, 0, 0)
-        seta.addStretch(1)
-        a = QLabel()
-        a.setPixmap(icone_pix("arrow", GREEN, 20 if alto else 16))
-        a.setStyleSheet("background:transparent;border:none;")
-        seta.addWidget(a)
-        v.addLayout(seta)
-        # +32 px de altura: com dois cards so, a tela ficava vazia embaixo
-        if alto:
-            self.setMinimumHeight(190)
+    def _pintar(self):
+        # a folha e do proprio widget (nao vem do ancestral), entao trocar o estado e reescreve-la
+        self.setStyleSheet(
+            "QFrame#planoCard{background:%s;border:1px solid %s;border-radius:14px;}"
+            "QFrame#planoCard:hover{border:1px solid %s;}"
+            % (CARD, GREEN if self._ativo else BORDER, GREEN))
 
     def marcar_ativo(self, on):
-        """Estado 'este foi o que voce clicou' — a borda verde de baixo engorda e o icone acende.
+        """Borda verde acesa no card que abriu os tres de baixo.
 
-        Sem isso os tres cards novos brotam sem dizer de onde vieram."""
-        self.setProperty("ativo", "1" if on else "0")
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    # ── eventos que a moldura traduz em movimento ──
-    def enterEvent(self, e):
-        super().enterEvent(e)
-        if self.moldura:
-            self.moldura.elevar(True)
-
-    def leaveEvent(self, e):
-        super().leaveEvent(e)
-        if self.moldura:
-            self.moldura.elevar(False)
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton and self.moldura:
-            self.moldura.afundar(True)
-
-    def mouseReleaseEvent(self, e):
-        if e.button() != Qt.MouseButton.LeftButton:
+        E o que liga o que apareceu a quem foi clicado. Sem isso os tres destinos surgem na tela
+        sem dizer de onde vieram."""
+        if on == self._ativo:
             return
-        if self.moldura:
-            self.moldura.afundar(False)
-        if self.rect().contains(e.position().toPoint()) and self._on_click:
-            self._on_click()
-
-
-def _com_moldura(card):
-    m = _Elevavel(card)
-    card.moldura = m
-    return m
+        self._ativo = on
+        # a propriedade e o contrato OBSERVAVEL do estado: sem ela, "este card esta ativo" ficaria
+        # so dentro da folha de estilo, onde nem teste nem outra tela consegue perguntar
+        self.setProperty("ativo", "1" if on else "0")
+        self._pintar()
 
 
 class _Hub(QWidget):
-    """A tela de entrada da aba: dois caminhos, e o do PCM abre os tres destinos dele."""
+    """A tela de entrada da aba: dois caminhos, e o do PCM abre os tres destinos dele.
 
-    # Os numeros vem do CSS que o Levi mandou: cascata de 75 ms entre os cards, 400 ms de
-    # duracao, 15 px de deslocamento. A ideia de trocar o EIXO conforme o formato vem da doc de
-    # `mediaQueries` do anime.js — la o corpo da animacao le `matches` e decide entre x e y.
-    # Tempos pedidos pelo Levi (03/09): 2 s na entrada dos cards de cima e 3 s no conjunto
-    # dos tres do PCM. O stagger sai da CONTA, nao do chute: 700 de atraso x 2 cards + 1600 de
-    # duracao fecha exatamente 3000 ms no ultimo card. Mexer num numero sem o outro quebra a
-    # conta, por isso os dois ficam juntos aqui.
-    # SOBREPOSICAO, e nao fila. A versao anterior usava 1600 ms de duracao com 700 ms de
-    # intervalo: o terceiro card passava 1380 ms invisivel e so entao aparecia, e o conjunto
-    # lia como coisas piscando uma a uma. Com 130 ms de intervalo os tres cards estao animando
-    # AO MESMO TEMPO a partir dos 260 ms - sempre ha movimento na tela, que e o que faz a
-    # transicao parecer continua.
-    #
-    # O TOTAL ENCOLHEU DE PROPOSITO: 880 ms nos tres de baixo (era 3000) e 750 ms nos dois de
-    # cima (era 2000). Duracao longa nao deixa a animacao suave, deixa espacada; o que da
-    # suavidade e a sobreposicao mais a curva. Se um dia quisermos a sequencia mais demorada,
-    # o que cresce e o STAGGER - nunca a DUR, que so alonga a cauda invisivel.
-    STAGGER = 130           # entre um card do PCM e o proximo -> 130*2 + 620 = 880 ms
-    DUR = 620               # de cada card
-    STAGGER_TOPO = 130      # entre os dois de cima            -> 130   + 620 = 750 ms
-    DUR_TOPO = 620
-    DESLOC = 18
-    LARG_CARD = 300         # largura confortavel de um card do PCM; base do limiar de refluxo
+    SEM ANIMACAO, de proposito. O Levi pediu esta tela na forma da de Criar OS, e aquela tela
+    nao anima nada: `steps/performance.py` nao tem uma unica ocorrencia de QGraphicsEffect,
+    QPropertyAnimation ou QEasingCurve. Os cards simplesmente estao la, e a unica reacao e a
+    borda ficar verde no hover.
+
+    Havia aqui uma entrada em cascata que custou tres correcoes em dois dias — card preso
+    apagado, card piscando, entrada espacada — e cada uma so aparecia no app de verdade, nunca
+    no teste. A tela que ele apontou como boa e a que nao tem nada disso.
+    """
+
+    COLS = 2                # colunas da grade, como na tela de Criar OS
+    # 360 e nao 300: o card do plano leva tile de 44, texto e seta de 34 na mesma linha, entao
+    # ele precisa de mais largura que o card antigo antes de valer a pena empilhar.
+    LARG_CARD = 360         # largura confortavel de um card; base do limiar de refluxo
 
     def __init__(self, ir):
         super().__init__()
         self._ir = ir
-        self._anims = []
         self._aberto = False
-        self._entrou = False
-        self._precisa_entrar = True
         v = QVBoxLayout(self)
         v.setContentsMargins(28, 26, 28, 26)
         v.setSpacing(16)
@@ -1507,35 +1269,40 @@ class _Hub(QWidget):
         t = QLabel("Solicitação / PCM")
         t.setStyleSheet(f"color:{TEXT};font-size:19px;font-weight:600;")
         v.addWidget(t)
-        d = QLabel("O supervisor pede. O PCM confere e gera a OS com as subtarefas do tema.")
-        d.setStyleSheet(f"color:{MUTED};font-size:13px;")
+        # mesma voz da tela de Criar OS: uma frase que diz o que cada clique FAZ, e nao o que a
+        # tela e. Quem abre isto aqui na maioria das vezes e o supervisor, para pedir.
+        d = QLabel("Escolha o que vai fazer. <b>Criar Nova Solicitação</b> é o pedido do "
+                   "supervisor; em <b>Área PCM</b> ficam a fila de aprovação, o acompanhamento "
+                   "e o histórico.")
+        d.setObjectName("uiAjuda")
+        d.setWordWrap(True)
         v.addWidget(d)
 
-        # GRADE, e nao QHBoxLayout: e ela que permite o refluxo. Com layout horizontal fixo o
-        # widget tinha largura minima de 979 px e nunca chegava a ser "estreito".
+        # GRADE de 2 colunas, igual a de Criar OS. Nao e so estetica: com o card do plano, que e
+        # largo (tile + texto + seta), tres lado a lado espremem o subtitulo em duas linhas.
         self.g_topo = QGridLayout()
         self.g_topo.setSpacing(14)
         self.c_nova = _CardBotao("Criar Nova Solicitação",
                                  "Pedir serviço já com tema, técnico sugerido e data pretendida",
-                                 lambda: self._ir("nova"), icone="send")
+                                 lambda: self._ir("nova"), icone="send", badge="Supervisor")
         self.c_pcm = _CardBotao("Área PCM",
                                 "Conferir a fila, aprovar e acompanhar o que virou OS",
-                                self._abrir_pcm, icone="calcheck")
-        self.m_nova, self.m_pcm = _com_moldura(self.c_nova), _com_moldura(self.c_pcm)
+                                self._abrir_pcm, icone="calcheck", badge="PCM")
         v.addLayout(self.g_topo)
 
         self.sub = QWidget()
         self.g_sub = QGridLayout(self.sub)
         self.g_sub.setContentsMargins(0, 0, 0, 0)
-        self.g_sub.setSpacing(12)
-        self._subcards, self._submold = [], []
-        for rot, txt, alvo, ico in (
-                ("Painel", "O que está pendente, em andamento e finalizado", "painel", "grid"),
-                ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema", "fila", "list"),
-                ("Histórico", "Tudo o que já passou por aqui", "hist", "clock")):
-            c = _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, alto=False)
+        self.g_sub.setSpacing(14)          # o mesmo respiro da grade de cima: uma grade so
+        self._subcards = []
+        for rot, txt, alvo, ico, bd in (
+                ("Painel", "O que está pendente, em andamento e finalizado",
+                 "painel", "grid", "Acompanhar"),
+                ("Fila do PCM", "Aprovar uma a uma, com as subtarefas do tema",
+                 "fila", "list", "Aprovar"),
+                ("Histórico", "Tudo o que já passou por aqui", "hist", "clock", "Consultar")):
+            c = _CardBotao(rot, txt, lambda a=alvo: self._ir(a), icone=ico, badge=bd)
             self._subcards.append(c)
-            self._submold.append(_com_moldura(c))
         self.sub.setVisible(False)
         v.addWidget(self.sub)
         v.addStretch(1)
@@ -1555,7 +1322,6 @@ class _Hub(QWidget):
         self._aberto = True
         self.c_pcm.marcar_ativo(True)
         self.sub.setVisible(True)
-        QTimer.singleShot(0, self._animar)
 
     def recolher(self):
         self._aberto = False
@@ -1572,17 +1338,20 @@ class _Hub(QWidget):
         if estreito == self._estreito:
             return False
         self._estreito = estreito
-        for g, itens in ((self.g_topo, [self.m_nova, self.m_pcm]),
-                         (self.g_sub, self._submold)):
+        cols = 1 if estreito else self.COLS
+        # os cards entram DIRETO na grade. Ate 04/09 cada um vinha embrulhado numa moldura sem
+        # layout, que existia so para a animacao poder move-los a mao; sem animacao ela some.
+        for g, itens in ((self.g_topo, [self.c_nova, self.c_pcm]),
+                         (self.g_sub, self._subcards)):
             for w in itens:
                 g.removeWidget(w)
             for i in range(g.columnCount()):
                 g.setColumnStretch(i, 0)
+            # 2 colunas, como a tela de Criar OS. O terceiro card do PCM cai sozinho na linha
+            # de baixo — que e exatamente o que o card Tickets faz naquela tela.
             for i, w in enumerate(itens):
-                g.addWidget(w, i if estreito else 0, 0 if estreito else i)
-            # 50/50 entre os dois de cima, 1/3 para cada um dos de baixo — o espaco util
-            # dividido por igual, e nao pelo tamanho do texto de cada card
-            for i in range(1 if estreito else len(itens)):
+                g.addWidget(w, i // cols, i % cols)
+            for i in range(min(cols, len(itens))):
                 g.setColumnStretch(i, 1)
             g.invalidate()
             g.activate()
@@ -1592,8 +1361,7 @@ class _Hub(QWidget):
         super().resizeEvent(e)
         # o escopo do anime.js REEXECUTA quando a media query muda; aqui, quando o formato muda,
         # o layout se refaz e a entrada roda de novo no eixo novo
-        if self._reflow() and self._aberto:
-            QTimer.singleShot(0, self._animar)
+        self._reflow()
 
     # ── animacao ──
     def _limiar(self):
@@ -1601,46 +1369,13 @@ class _Hub(QWidget):
 
         NAO usar sizeHint(): os rotulos tem wordWrap e minimumWidth(1), entao o sizeHint do card
         colapsa para ~110 px e o limiar sairia em 383 — abaixo de qualquer largura real."""
-        return (self.LARG_CARD * len(self._subcards)
-                + self.g_sub.spacing() * (len(self._subcards) - 1) + 56)
+        return (self.LARG_CARD * self.COLS
+                + self.g_sub.spacing() * (self.COLS - 1) + 56)
 
     def _matches(self):
         """O nosso `self.matches`: o que vale de verdade sobre o formato atual da tela."""
         return {"estreito": self.width() < self._limiar()}
 
-    def _animar(self, molduras=None, dur=None, stagger=None):
-        """Cascata: cada moldura entra sozinha, com o atraso dela.
-
-        O Hub NAO mexe mais em efeito nem em geometria — ele so diz quem entra, quando e por
-        qual eixo. Toda a garantia de terminar visivel esta na moldura, num lugar so."""
-        alvos = list(molduras or self._submold)
-        topo = bool(alvos) and alvos[0] in (self.m_nova, self.m_pcm)
-        stagger = (self.STAGGER_TOPO if topo else self.STAGGER) if stagger is None else stagger
-        dur = (self.DUR_TOPO if topo else self.DUR) if dur is None else dur
-        eixo = "x" if self._matches()["estreito"] else "y"
-        for k, m in enumerate(alvos):
-            m.entrar(atraso=k * stagger, dur=dur, desloca=self.DESLOC, eixo=eixo)
-
-    def showEvent(self, e):
-        """A entrada roda A CADA vez que o hub aparece — pedido do Levi (03/09).
-
-        Antes era uma vez por sessao (`_entrou`), e quem saia para a fila e voltava encontrava a
-        tela estatica. Reiniciar e o que faz a animacao ser parte da tela e nao um detalhe do
-        primeiro segundo do dia."""
-        super().showEvent(e)
-        # so anima se o hub esteve MESMO escondido. O Qt manda showEvent tambem quando a janela
-        # e restaurada ou quando um ancestral reaparece, e sem esta trava a entrada recomecava
-        # do zero por cima de si mesma.
-        if not self._precisa_entrar:
-            return
-        self._precisa_entrar = False
-        QTimer.singleShot(0, lambda: self._animar([self.m_nova, self.m_pcm],
-                                                  dur=self.DUR_TOPO,
-                                                  stagger=self.STAGGER_TOPO))
-
-    def hideEvent(self, e):
-        super().hideEvent(e)
-        self._precisa_entrar = True
 
 
 class SolicPcmTab(QWidget):

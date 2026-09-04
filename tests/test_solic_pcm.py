@@ -288,13 +288,13 @@ def test_o_hub_empilha_os_cards_quando_estreita(qapp):
     h.resize(1400, 700)
     h._reflow()
     assert h._matches()["estreito"] is False
-    # quem entra na grade e a MOLDURA (_Elevavel), nao o card: o card mora dentro dela, sem
-    # layout, para poder subir no hover e afundar no clique sem o layout desfazer o movimento
-    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._submold[1]))[:2] == (0, 1)   # linha 0, col 1
+    # o CARD entra direto na grade: desde 04/09 nao ha mais moldura (ela existia so para a
+    # animacao poder mover o card a mao, e a animacao saiu)
+    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._subcards[1]))[:2] == (0, 1)  # linha 0, col 1
     h.resize(700, 700)
     h._reflow()
     assert h._matches()["estreito"] is True
-    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._submold[1]))[:2] == (1, 0)   # empilhado
+    assert h.g_sub.getItemPosition(h.g_sub.indexOf(h._subcards[1]))[:2] == (1, 0)  # empilhado
 
 
 def test_o_limiar_do_refluxo_nao_e_numero_magico(qapp):
@@ -303,8 +303,12 @@ def test_o_limiar_do_refluxo_nao_e_numero_magico(qapp):
     largura real, que é como o galho morre sem ninguém ver."""
     from steps.solic_pcm import _Hub
     h = _Hub(lambda a: None)
-    assert h._limiar() == h.LARG_CARD * 3 + h.g_sub.spacing() * 2 + 56
-    assert h._limiar() > 900
+    assert h._limiar() == h.LARG_CARD * h.COLS + h.g_sub.spacing() * (h.COLS - 1) + 56
+    # o limiar tem de ficar ACIMA da largura minima do hub, senao o galho "estreito" e
+    # inalcancavel e o refluxo vira codigo morto — foi o que aconteceu ao adotar o card da tela
+    # de Criar OS: o minimo foi a 1009 px contra um limiar de 790, e so voltou a 379 quando os
+    # rotulos ganharam minimumWidth(1). Este assert e o que impede a regressao.
+    assert h._limiar() > h.minimumSizeHint().width()
 
 
 def test_o_stack_segue_a_pagina_visivel(qapp):
@@ -338,172 +342,25 @@ def test_o_card_clicado_fica_marcado_como_ativo(qapp):
     assert h.c_pcm.property("ativo") == "0"
 
 
-def test_o_card_mora_na_moldura_e_pode_se_mover(qapp):
-    """A razão de existir do _Elevavel: em Qt, mover um widget que está dentro de um QLayout não
-    adianta — o layout o devolve ao lugar calculado a cada ciclo, e a animação roda por baixo
-    sem aparecer. Dentro da moldura, que não tem layout, o movimento sobrevive."""
+def test_o_hub_nao_tem_animacao_nem_efeito_grafico(qapp):
+    """A regra que substituiu toda a maquinaria de entrada — e o motivo dela ter saido.
+
+    O Levi pediu esta tela na forma da de Criar OS, e foi medido que aquela tela nao anima nada:
+    `steps/performance.py` nao tem uma unica ocorrencia de QGraphicsEffect, QPropertyAnimation
+    ou QEasingCurve. A entrada em cascata que existia aqui custou tres correcoes em dois dias —
+    card preso apagado, card piscando, entrada espacada — e nenhuma delas aparecia em teste,
+    so no app de verdade.
+
+    Este teste e a trava: efeito grafico num card e o que congela o widget num valor
+    intermediario quando algo interrompe a animacao. Sem efeito, esse estado nao existe."""
     from steps.solic_pcm import _Hub
     h = _Hub(lambda a: None)
-    m = h._submold[0]
-    assert m.card is h._subcards[0]
-    assert m.card.parentWidget() is m
-    assert m.layout() is None                      # sem layout = ninguém desfaz o movimento
-    m.resize(400, 120)
-    assert m._repouso().y() == m.RESERVA           # folga para a elevação do hover
-
-
-# ── o editor de subtarefas em formato de linha (03/09) ──
-def test_o_anexo_obrigatorio_e_checkbox_com_default_do_tema(qapp):
-    """O tema so da o DEFAULT: a linha do registro fotografico vem marcada, quem monta a lista
-    pode desmarcar, e o que vai para a OS e o que ficou na tela — nao o que o tema dizia."""
-    from steps.subtarefas_edit import EditorSubtarefas
-    ed = EditorSubtarefas()
-    ed.set_itens(sp.de_api(sp.subtarefas_base()))
-    foto = next(ln for ln in ed._linhas if "fotogr" in ln.ed.text().lower())
-    assert foto.chk.isChecked() is True                 # default do tema
-    assert [x["attachments_required"] for x in ed.para_api()].count(True) == 1
-    foto.chk.setChecked(False)                          # a pessoa decidiu que nao precisa
-    assert all(x["attachments_required"] is False for x in ed.para_api())
-    outra = next(ln for ln in ed._linhas if ln is not foto)
-    outra.chk.setChecked(True)                          # e exigiu foto em outra linha
-    assert sum(x["attachments_required"] for x in ed.para_api()) == 1
-
-
-def test_o_editor_carrega_o_proprio_estilo(qapp):
-    """Em Qt a folha do ancestral mais proximo vence. Com as regras no SolicPcmTab, o
-    SolicitacaoTab (que tem QSS_FORM proprio) engolia a regra de QLineEdit e os campos viravam
-    caixas de 40 px numa tela e texto na outra. O estilo tem de viajar com o editor."""
-    from steps.subtarefas_edit import EditorSubtarefas
-    ed = EditorSubtarefas()
-    assert "QLineEdit#subTexto" in ed.styleSheet()
-    assert "QCheckBox#subAnexo" in ed.styleSheet()
-
-
-# ── a regra das etiquetas (03/09) ────────────────────────────────────────────
-def test_tracker_etm_e_garantia_sempre_levam_performance():
-    """Regra de processo do Levi: são os três assuntos que a Performance acompanha depois, e uma
-    OS sem a etiqueta não entra no relatório dela.
-
-    O gatilho NÃO é uma etiqueta: no catálogo do Fracttal não existe "Tracker" nem "ETM"
-    (conferidas as 42 em 03/09). Tracker e ETM saem do tema ou do ativo; garantia, sim, é
-    etiqueta — e é por isso que a função olha os três lugares."""
-    assert sp.exige_performance("tracker_inject", "Nobreak 1") is True
-    assert sp.exige_performance("nobreak", "Estrutura Trackers 2ª Seção") is True
-    assert sp.exige_performance("nobreak", "Piranômetro da Usina") is True     # ETM por outro nome
-    assert sp.exige_performance("nobreak", "ETM Tucano 1") is True
-    assert sp.exige_performance("nobreak", "Nobreak 1", ["Chamado Garantia"]) is True
-    # e o contrário: sem nenhum dos três, não força nada
-    assert sp.exige_performance("nobreak", "Nobreak 1") is False
-    assert sp.exige_performance("vegetacao", "Roçadeira", ["Aguardando Limpeza"]) is False
-
-
-def test_a_performance_posta_pela_regra_sai_quando_a_regra_deixa_de_valer(qapp):
-    """Trocar o tema de tracker para outro tira a etiqueta que a REGRA pôs — mas não tiraria uma
-    que a pessoa tivesse escolhido à mão."""
-    from steps.solic_pcm import _CardEtiquetas
-    c = _CardEtiquetas()
-    c.set_catalogo([{"id": 4660, "description": "PERFORMANCE"},
-                    {"id": 4821, "description": "Chamado Garantia"}])
-    c.aplicar_regra("tracker_motor", "Tracker 12")
-    assert 4660 in c.ids() and c._forcada is True
-    c.aplicar_regra("nobreak", "Nobreak 1")
-    assert 4660 not in c.ids() and c._forcada is False
-    # escolhida à mão, sobrevive
-    c._sel.append({"id": 4660, "description": "PERFORMANCE"})
-    c.aplicar_regra("nobreak", "Nobreak 1")
-    assert 4660 in c.ids()
-
-
-def test_o_ativo_no_cartao_perde_o_endereco(qapp):
-    """O `items_description` do Fracttal traz o cadastro inteiro numa string só — no cartão da
-    fila isso virava três linhas de endereço sem ajudar a decidir."""
-    from steps.solic_pcm import _ativo_curto
-    assert _ativo_curto("Estrutura Trackers 2ª Seção Colônia Tapejara, Lote N 152-Re, PR") \
-        == "Estrutura Trackers 2ª Seção Colônia Tapejara"
-    assert _ativo_curto("Nobreak 1   { SEMP-TCN100-NBRK1 }") == "Nobreak 1"
-    assert _ativo_curto("") == ""
-
-
-def test_a_borda_do_status_e_mais_clara_que_a_fonte(qapp):
-    """Metade do caminho até o branco: mesma família da cor da fonte, só recuada, para o
-    contorno ler como moldura e não como um segundo texto."""
-    from steps.solic_pcm import _clarear
-    assert _clarear("#000000") == "#7f7f7f"
-    assert _clarear("#ec4c77") == "#f5a5bb"
-    assert _clarear("nao-e-cor") == "#39405a"      # entrada inválida não quebra a tela
-
-
-# ── a animação refeita (03/09) ───────────────────────────────────────────────
-def test_o_resgate_completa_a_transicao_em_vez_de_estalar(qapp):
-    """O cao de guarda nao pode dar salto de opacidade — o salto ERA o "piscando".
-
-    Historia dos dois defeitos, porque um virou o outro: a primeira versao criava o efeito de
-    opacidade a cada entrada e o removia no fim, e uma interrupcao deixava o card preso apagado.
-    A segunda pos um cao de guarda que forcava 1.0 — so que a forca era um ESTALO, e como a
-    entrada era interrompida a toda hora, o estalo virou pisca-pisca na tela.
-
-    A regra agora: se ainda falta caminho, o resgate ANIMA o que falta em 180 ms. Estalo so
-    quando ja esta praticamente pronto (>= 0.92), onde o olho nao ve."""
-    from steps.solic_pcm import _Elevavel, _CardBotao
-    m = _Elevavel(_CardBotao("t", "s", lambda: None))
-    m.resize(400, 160)
-    assert m.opacidade.opacity() == 1.0            # nasce visivel
-    m.entrar(atraso=0, dur=620)
-    assert m.opacidade.opacity() == 0.0            # comeca invisivel a entrada
-
-    m.assentar()                                   # simula o cao de guarda disparando cedo
-    assert m.opacidade.opacity() < 0.92, "nao pode ter estalado para 1.0"
-    assert m._anim.duration() == 180, "o resgate tem de ser uma animacao curta, nao um salto"
-    m._anim.setCurrentTime(m._anim.duration())     # deixa o resgate chegar ao fim
-    assert m.opacidade.opacity() == 1.0
-
-    # e o estalo continua valendo no fim do caminho, onde ninguem enxerga
-    m2 = _Elevavel(_CardBotao("t", "s", lambda: None))
-    m2.resize(400, 160)
-    m2.opacidade.setOpacity(0.97)
-    m2.assentar()
-    assert m2.opacidade.opacity() == 1.0
-    assert m2.card.pos() == m2._repouso().topLeft()
-
-
-def test_entrada_em_curso_nao_reinicia(qapp):
-    """Pedido de entrada durante uma entrada e IGNORADO. E o conserto do pisca.
-
-    `showEvent` e o refluxo do `resizeEvent` chegavam com poucos ms de diferenca e cada um
-    zerava a opacidade de novo: o card acendia, apagava e acendia. Medido contra o codigo
-    anterior, a opacidade chegava a CAIR 0.34 no meio do voo.
-
-    A versao antiga deste teste exigia o contrario — que a segunda animacao substituisse a
-    primeira. Ela prendia o defeito."""
-    from steps.solic_pcm import _Elevavel, _CardBotao
-    m = _Elevavel(_CardBotao("t", "s", lambda: None))
-    m.resize(400, 160)
-    m.entrar(atraso=0, dur=620)
-    primeira = m._anim
-    m.opacidade.setOpacity(0.55)                   # como se estivesse no meio do fade
-
-    m.entrar(atraso=0, dur=620)
-    assert m._anim is primeira, "a entrada foi reiniciada — volta o pisca"
-    assert m.opacidade.opacity() == 0.55, "a opacidade foi zerada — isso e o pisca"
-
-    # e o hover tambem nao atropela: ele chamaria _parar() e mataria o fade sem cao de guarda
-    m.elevar(True)
-    assert m._anim is primeira
-    assert m.opacidade.opacity() == 0.55
-
-
-def test_os_cards_se_sobrepoem_na_cascata(qapp):
-    """A regra que faz a transicao ler como continua, e nao como coisas piscando uma a uma.
-
-    Com stagger de 700 ms e duracao de 1600 (a versao anterior), o terceiro card passava
-    1380 ms em opacidade 0.00 — ausente da tela — e so entao aparecia. Cinco cards assim sao
-    cinco aparicoes separadas por silencio.
-
-    Enquanto STAGGER < DUR os cards estao animando AO MESMO TEMPO, e sempre ha movimento na
-    tela. Se algum dia a sequencia precisar ser mais demorada, quem cresce e o STAGGER — e
-    este teste e o limite de ate onde da para crescer."""
-    from steps.solic_pcm import _Hub
-    assert _Hub.STAGGER < _Hub.DUR, "sem sobreposicao a cascata vira pisca-pisca"
-    assert _Hub.STAGGER_TOPO < _Hub.DUR_TOPO
-    # tempo morto do ultimo card = quanto ele fica invisivel antes de comecar
-    assert _Hub.STAGGER * 2 <= 400, "o ultimo card demora demais para aparecer"
+    h._abrir_pcm()
+    for c in [h.c_nova, h.c_pcm] + list(h._subcards):
+        assert c.graphicsEffect() is None, "card com efeito grafico — volta a poder ficar apagado"
+    assert not hasattr(h, "_animar"), "a animacao do hub saiu; nao reintroduzir sem trava"
+    # e o modulo nao importa mais nada de animacao: import parado e o proximo a virar codigo vivo
+    import steps.solic_pcm as m
+    for proibido in ("QPropertyAnimation", "QEasingCurve", "QGraphicsOpacityEffect",
+                     "QGraphicsDropShadowEffect", "QParallelAnimationGroup"):
+        assert not hasattr(m, proibido), f"{proibido} voltou ao solic_pcm"
