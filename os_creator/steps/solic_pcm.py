@@ -28,7 +28,8 @@ from datetime import datetime
 import api
 import solic_spec as sp
 from workers import ApiWorker, slot_seguro
-from steps.ui import (QSS_FORM, Card, campo, icone_pix, GREEN, GREEN_INK, MUTED, TEXT,
+from steps.ui import (QSS_FORM, Card, campo, esvaziar as _esvaziar, icone_pix,
+                      GREEN, GREEN_INK, MUTED, TEXT,
                       CARD, BORDER, BG, INPUT)
 # O card da tela de Criar OS. Importado, e nao reescrito: o Levi quer as duas telas com a
 # mesma forma, e copiar significaria as duas divergirem na primeira alteracao de uma delas.
@@ -96,7 +97,7 @@ def coluna_de(s: dict) -> str:
 class _Cartao(QFrame):
     """Cartão do painel — mesmo formato do Fracttal para ninguém reaprender."""
 
-    def __init__(self, s: dict, on_analisar=None):
+    def __init__(self, s: dict, on_analisar=None, pode_editar=True):
         super().__init__()
         self.setObjectName("solCard")
         self.setStyleSheet(
@@ -180,12 +181,22 @@ class _Cartao(QFrame):
         rod.addWidget(data)
         rod.addStretch(1)
         if on_analisar:
-            b = QPushButton("Analisar")
+            # O CARTAO INTEIRO abre a Fila, em QUALQUER coluna (pedido do Levi, 04/09). Antes so
+            # os pendentes eram clicaveis: quem queria conferir uma solicitacao ja aprovada tinha
+            # de procurar no Historico, sendo que a Fila e onde o detalhe mora. Em andamento e
+            # finalizada a Fila abre so para LER — nada editavel, porque a OS ja nasceu.
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._abrir = lambda: on_analisar(s)
+            b = QPushButton("Analisar" if pode_editar else "Ver detalhes")
             b.setObjectName("btnLink")
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(lambda: on_analisar(s))
             rod.addWidget(b)
         v.addLayout(rod)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and getattr(self, "_abrir", None):
+            self._abrir()
 
 
 class _Painel(QWidget):
@@ -220,7 +231,14 @@ class _Painel(QWidget):
         self.busca = QLineEdit()
         self.busca.setPlaceholderText("Filtrar por usina, ativo ou texto…")
         self.busca.setFixedWidth(260)
-        self.busca.textChanged.connect(self._pintar)
+        # DEBOUNCE. Cada tecla repintava ate 120 cartoes (3 colunas x 40), cada um com meia
+        # duzia de QLabel: digitar "inversor" levava 857 ms e enfileirava 320 widgets para
+        # destruir. Esperar a pessoa parar de digitar transforma 8 repinturas em 1.
+        self._t_busca = QTimer(self)
+        self._t_busca.setSingleShot(True)
+        self._t_busca.setInterval(250)
+        self._t_busca.timeout.connect(self._pintar)
+        self.busca.textChanged.connect(self._t_busca.start)
         topo.addWidget(self.busca)
         b = QPushButton("Atualizar")
         b.setObjectName("btnVoltar")
@@ -319,17 +337,12 @@ class _Painel(QWidget):
                 continue
             por[col].append(s)
         for chave, (cnt, titulo, iv) in self.cols.items():
-            while iv.count() > 1:                      # mantém o addStretch do fim
-                it = iv.takeAt(0)
-                w = it.widget()
-                if w:                                  # takeAt devolve espaçador sem widget
-                    w.setParent(None)
-                    w.deleteLater()
+            _esvaziar(iv)                              # mantém o addStretch do fim
             lista = por[chave]
             cnt.setText(f"{len(lista):,}".replace(",", "."))
             for s in lista[:40]:
                 iv.insertWidget(iv.count() - 1,
-                                _Cartao(s, self._on_analisar if chave == PENDENTE else None))
+                                _Cartao(s, self._on_analisar, pode_editar=(chave == PENDENTE)))
         # o unico numero que sobra em cima e o que NAO esta no quadro — se ele sumisse de vez,
         # 60 pedidos parados com o supervisor viravam invisiveis para todo mundo.
         self.lbl.setText(f"· {fora} devolvidas para refazer, fora do quadro" if fora else "")
@@ -568,12 +581,7 @@ class _CardEtiquetas(QFrame):
         self._pintar()
 
     def _pintar(self):
-        while self.fila_chips.count() > 1:
-            it = self.fila_chips.takeAt(0)
-            w = it.widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+        _esvaziar(self.fila_chips)
         for e in self._sel:
             # "(tema)" e nao "(regra)": desde 04/09 a etiqueta e campo do tema, editavel na tela
             # de Temas — nao e mais uma regra do sistema que ninguem consegue mudar.
@@ -814,12 +822,23 @@ class _Fila(QWidget):
     def _montar_detalhe(self):
         # 26 px = 30% acima dos 20 originais. Sem icone antes: o titulo ja e o maior texto da
         # tela e nao precisa de marcador para dizer onde comeca (pedido do Levi, 04/09).
+        # O TITULO E EDITAVEL. Ele vira o nome da OS no Fracttal, e a API nao edita OS ja
+        # criada — o padrao do tema cobre a maioria, e o campo existe para o que ele nao cobre.
         self.lbl_titulo = QLabel("Selecione uma solicitação na fila.")
         self.lbl_titulo.setStyleSheet("color:%s;font-size:26px;font-weight:600;"
                                       "background:transparent;" % TEXT)
         self.lbl_titulo.setWordWrap(True)
         self.lbl_titulo.setMinimumWidth(1)
+        self.lbl_titulo.setCursor(Qt.CursorShape.IBeamCursor)
+        self.lbl_titulo.setToolTip("clique para editar o título da OS")
+        self.lbl_titulo.mouseReleaseEvent = lambda e: self._abrir_titulo()
+        self.ed_titulo = QLineEdit()
+        self.ed_titulo.setObjectName("tituloOS")
+        self.ed_titulo.setVisible(False)
+        self.ed_titulo.editingFinished.connect(self._fechar_titulo)
+        self._titulo_manual = False
         self.det.addWidget(self.lbl_titulo)
+        self.det.addWidget(self.ed_titulo)
 
         self.lbl_orig = QLabel("")
         self.lbl_orig.setStyleSheet("color:%s;font-size:12px;background:transparent;" % MUTED)
@@ -927,7 +946,12 @@ class _Fila(QWidget):
         self.cb_tema.addItem("— sem tema —", "")
         for chave, nome in sp.temas():
             self.cb_tema.addItem(nome, chave)
-        self.cb_tema.currentIndexChanged.connect(self._pintar_subs)
+        # `lambda *_`, e NAO `connect(self._pintar_subs)`: currentIndexChanged manda o INDICE,
+        # que caia no parametro `do_bloco` e virava `set_itens(2)` — "int object is not
+        # iterable". Excecao dentro de slot do PyQt6 ABORTA o processo (0xC0000409), entao
+        # escolher qualquer tema que nao fosse o primeiro FECHAVA o app. Ficou escondido
+        # enquanto o combo nao abria (defeito do PopupFocusReason, corrigido na 184).
+        self.cb_tema.currentIndexChanged.connect(lambda *_: self._pintar_subs())
         self.det.addWidget(self.cb_tema)
 
         self.lbl_classif = QLabel("")
@@ -971,10 +995,48 @@ class _Fila(QWidget):
         self.det.addStretch(1)
         self._habilitar(False)
 
+    # -- titulo da OS --
+    def _abrir_titulo(self):
+        if getattr(self, "_so_leitura", False) or not self._sel:
+            return
+        self.ed_titulo.setText(self.lbl_titulo.text())
+        self.lbl_titulo.setVisible(False)
+        self.ed_titulo.setVisible(True)
+        self.ed_titulo.setFocus()
+        self.ed_titulo.selectAll()
+
+    def _fechar_titulo(self):
+        t = (self.ed_titulo.text() or "").strip()
+        if t:
+            # MARCA que foi escrito a mao. Sem isso, trocar o tema depois regeraria o titulo e
+            # apagaria o que o PCM digitou.
+            self._titulo_manual = (t != self._titulo_do_tema())
+            self.lbl_titulo.setText(t)
+        self.ed_titulo.setVisible(False)
+        self.lbl_titulo.setVisible(True)
+
+    def _titulo_do_tema(self):
+        """O titulo que o tema geraria agora — a referencia para saber se o PCM mexeu."""
+        sel = self._sel or {}
+        tema = self.cb_tema.currentData() or ""
+        if tema:
+            return sp.titulo(sel.get("usina") or "", sel.get("ativo") or "", tema)
+        return str(sel.get("descricao_full") or sel.get("descricao") or "")
+
+    def set_somente_leitura(self, on):
+        """Trava tudo o que grava. Usado quando o Painel abre uma solicitação que já virou OS."""
+        self._so_leitura = bool(on)
+        self._habilitar(not on and self._sel is not None)
+        self.hint.setText("Esta solicitação já saiu da fila — aqui é só consulta."
+                          if on else "Aprovar avança para a próxima")
+
     def _habilitar(self, on):
+        if getattr(self, "_so_leitura", False):
+            on = False
         self.b_aprovar.setEnabled(on)
         self.b_devolver.setEnabled(on)
         self.cb_tema.setEnabled(on)
+        self.lbl_titulo.setEnabled(on)
         self.cb_resp.setEnabled(on)
         self.ed_tecnico.setEnabled(on)
         self.ed_data.setEnabled(on)
@@ -982,14 +1044,10 @@ class _Fila(QWidget):
 
     # ── carga ──
     def set_itens(self, itens, assets, selecionar=None):
+        self._so_leitura = False        # carga nova volta ao normal; quem quer travar diz depois
         self._itens = itens or []
         self._assets = assets or []
-        while self.lista.count() > 1:
-            it = self.lista.takeAt(0)
-            w = it.widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+        _esvaziar(self.lista)
         self._cartoes = []
         for s in self._itens:
             c = _CartaoFila(s, self._selecionar)
@@ -1031,6 +1089,7 @@ class _Fila(QWidget):
 
         novo = sp.titulo(s.get("usina") or "", s.get("ativo") or "", tema) if tema else ""
         orig = str(s.get("descricao_full") or s.get("descricao") or "")
+        self._titulo_manual = False    # solicitação nova: o padrão do tema volta a mandar
         self.lbl_titulo.setText(novo or orig)
         # O PCM está reescrevendo o texto de outra pessoa — precisa ver o que está mudando.
         self.lbl_orig.setText(
@@ -1094,6 +1153,12 @@ class _Fila(QWidget):
         """Carrega a lista no editor. `do_bloco` tem PRECEDENCIA sobre o tema: se o supervisor
         editou as subtarefas na solicitacao, o que ele escreveu e o ponto de partida — trocar
         pela lista padrao do tema desfaria o trabalho dele sem avisar."""
+        # CINTO: `do_bloco` e uma LISTA de subtarefas. Se vier outra coisa — foi o indice que
+        # o `currentIndexChanged` mandava, e que abortava o processo em `set_itens(2)` —, ignora
+        # em vez de derrubar o app. A conexao ja passa `lambda *_`; isto e a segunda tranca,
+        # porque exceção dentro de slot do PyQt6 nao levanta: mata o processo (0xC0000409).
+        if do_bloco is not None and not isinstance(do_bloco, (list, tuple)):
+            do_bloco = None
         tema = self.cb_tema.currentData() or ""
         self.cb_tema.setProperty("temado", "1" if tema else "0")
         self.cb_tema.style().unpolish(self.cb_tema)
@@ -1101,6 +1166,9 @@ class _Fila(QWidget):
         # trocar o tema pode ligar ou desligar a regra da PERFORMANCE
         if getattr(self, "etiquetas", None) is not None and self._sel:
             self.etiquetas.aplicar_regra(tema, (self._sel or {}).get("ativo") or "")
+        # o tema regenera o titulo — a nao ser que o PCM tenha escrito o dele
+        if self._sel and not getattr(self, "_titulo_manual", False):
+            self.lbl_titulo.setText(self._titulo_do_tema())
         cl = sp.classificacao(tema) if tema else {}
         self.lbl_classif.setText(
             ("Classificação 1: <b style='color:%s'>%s</b>&nbsp;&nbsp;"
@@ -1153,8 +1221,9 @@ class _Fila(QWidget):
         tema = self.cb_tema.currentData() or ""
         # o que vai para a OS e o que esta NA TELA, nao o padrao do tema: o PCM acabou de editar
         subs = self.editor_subs.para_api() or sp.subtarefas_base()
-        titulo = sp.titulo(s.get("usina") or "", s.get("ativo") or "", tema) if tema else \
-            str(s.get("descricao_full") or s.get("descricao") or "")
+        # o que vai para a OS e o TITULO DA TELA: se o PCM editou, e o dele que vale — a
+        # mesma regra das subtarefas, que ja saem do editor e nao do padrao do tema
+        titulo = (self.lbl_titulo.text() or "").strip() or self._titulo_do_tema()
         n = len(subs)
         if QMessageBox.question(
                 self, "Aprovar e gerar OS",
@@ -1497,6 +1566,9 @@ QLabel#valorEditavel:hover { color:#ffffff; border-bottom:1px dashed #8fce3f; }
 QLabel#valorEditavel:disabled { color:#5a6072; border-bottom:1px dashed #262d42; }
 /* tema escolhido = borda verde: e o campo que decide o checklist da OS */
 QComboBox#cbTema[temado="1"] { border:1px solid #8fce3f; }
+/* o titulo da OS aberto para edicao: mesmo tamanho e peso do rotulo, para a linha nao pular */
+QLineEdit#tituloOS { background:transparent; border:none; border-bottom:1px solid #8fce3f;
+  border-radius:0; color:#ffffff; font-size:26px; font-weight:600; padding:0 2px; }
 QPushButton#chipEtq { background:rgba(138,144,162,0.14); color:#c9d0e0; border:1px solid #39405a;
   border-radius:9px; padding:2px 9px; font-size:10.5px; font-weight:600; min-height:0; }
 QPushButton#chipEtq:hover { border-color:#e05555; color:#ffffff; }
@@ -1656,8 +1728,17 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
                 for i in range(cb.count()) if cb.itemData(i)]
 
     def _analisar(self, s):
+        """Abre a Fila na solicitação clicada — venha ela de qualquer coluna do Painel.
+
+        Se ela não está mais pendente, a Fila entra em modo LEITURA: o detalhe aparece inteiro e
+        nada é editável, porque a OS já nasceu e a API do Fracttal não edita OS criada. Deixar os
+        campos ativos ali seria oferecer uma edição que morre no botão."""
+        pendentes = self.painel.pendentes()
+        so_leitura = not any(x is s or x.get("id_code") == s.get("id_code") for x in pendentes)
         self.ir(self.FILA)   # ja carrega os responsaveis; a ordem importa (ver _selecionar)
-        self.fila.set_itens(self.painel.pendentes(), self._assets, selecionar=s)
+        itens = pendentes if not so_leitura else (pendentes + [s])
+        self.fila.set_itens(itens, self._assets, selecionar=s)
+        self.fila.set_somente_leitura(so_leitura)
 
     # ── o que o app.py chama ──
     def set_assets(self, assets):

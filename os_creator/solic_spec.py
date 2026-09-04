@@ -367,6 +367,10 @@ _ALIAS = {"data pretendida": "data"}
 
 # Rotulo legivel de cada tipo de campo da subtarefa. O PCM precisa saber se aquela linha vai
 # pedir texto, numero, foto ou um sim/nao — e a diferenca entre um checklist e um campo em branco.
+# O sufixo que marca "anexo obrigatório" na linha da subtarefa dentro do bloco [PCM].
+# Texto, e não um código: a observação é lida no Fracttal web por gente que não tem manual.
+MARCA_ANEXO = "  (anexo obrigatório)"
+
 TIPO_ROTULO = {"texto": "Texto", "longo": "Texto", "num": "Numérico",
                "simnao": "Sim/Não", "verif": "Verificação", "lista": "Lista"}
 _ROTULO_TIPO = {"texto": "texto", "numérico": "num", "numerico": "num",
@@ -389,8 +393,14 @@ def bloco(dados: dict) -> str:
     if subs:
         linhas.append("Subtarefas:")
         for x in subs:
-            linhas.append("- [%s] %s" % (TIPO_ROTULO.get(x.get("tipo", "texto"), "Texto"),
-                                         str(x.get("desc") or "").strip()))
+            # O SUFIXO DO ANEXO. Sem ele a marca de "anexo obrigatório" que o supervisor pôs
+            # morria aqui: o bloco guardava só tipo e descrição, e o PCM abria a fila com todas
+            # as subtarefas desmarcadas. Medido na SS 3550 — as três voltavam com anexo=None.
+            # Fica em texto, e não num código, porque quem lê a observação no Fracttal web tem
+            # de entender sem manual; blocos antigos, sem o sufixo, viram False.
+            linhas.append("- [%s] %s%s" % (TIPO_ROTULO.get(x.get("tipo", "texto"), "Texto"),
+                                           str(x.get("desc") or "").strip(),
+                                           MARCA_ANEXO if x.get("anexo") else ""))
     return "\n".join(linhas) if len(linhas) > 1 else ""
 
 
@@ -416,7 +426,12 @@ def parse(texto) -> dict:
         # "- [Tipo] descricao" e uma subtarefa; o resto sao os campos "Rotulo: valor"
         if cru.startswith("- [") and "]" in cru:
             rot, desc = cru[3:].split("]", 1)
-            subs.append({"tipo": _ROTULO_TIPO.get(_norm(rot), "texto"), "desc": desc.strip()})
+            desc = desc.strip()
+            anexo = desc.endswith(MARCA_ANEXO.strip())
+            if anexo:
+                desc = desc[:-len(MARCA_ANEXO.strip())].strip()
+            subs.append({"tipo": _ROTULO_TIPO.get(_norm(rot), "texto"), "desc": desc,
+                         "anexo": anexo})
             continue
         if ":" not in linha:
             continue

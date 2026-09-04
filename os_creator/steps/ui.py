@@ -372,3 +372,31 @@ def travar_no_passado(campo_data):
     atual = campo_data.toolTip()
     campo_data.setToolTip((atual + "  " + aviso) if atual else aviso)
     return campo_data
+
+
+def esvaziar(layout, guardar_ultimo=True):
+    """Tira e destrói os widgets de um layout, SEM criar janela de topo.
+
+    `w.setParent(None)` num widget que estava visível o torna TOP-LEVEL — em Qt, widget sem pai
+    é uma janela. Entre o reparent e o `deleteLater()` (que só roda no ciclo seguinte do loop) o
+    Windows chega a desenhar cada um: foi o "várias abas pequenas abrem" que o Levi viu ao
+    digitar no Painel. Medido: digitar 8 letras levava as janelas de topo de 1 para 321.
+
+    `deleteLater()` sozinho basta — o `takeAt` já soltou o widget do layout. Esconder antes
+    evita o pisco no quadro que continua na tela.
+
+    Mora AQUI, e não em `solic_pcm`, porque `temas` também precisa: as duas telas se importam e
+    o helper em qualquer uma delas fecharia um ciclo de import.
+    """
+    while layout.count() > (1 if guardar_ultimo else 0):
+        it = layout.takeAt(0)
+        w = it.widget()
+        if w:                                  # takeAt devolve espaçador sem widget
+            # ESCONDER ANTES de soltar o pai. `setParent(None)` num widget VISÍVEL o torna uma
+            # janela de topo; escondido, ele sai do layout sem virar janela nenhuma. E o
+            # `setParent` é necessário: sem ele o widget continua filho até o `deleteLater()`
+            # rodar no ciclo seguinte, e quem perguntar por `findChildren` no meio vê o velho e
+            # o novo — foi o que quebrou o teste das etiquetas.
+            w.hide()
+            w.setParent(None)
+            w.deleteLater()

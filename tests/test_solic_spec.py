@@ -258,3 +258,26 @@ def test_tracker_chamado_cobre_o_que_os_tres_especificos_nao_cobriam():
     subs = [x["description"].lower() for x in S.subtarefas("tracker_chamado")]
     assert any("mac" in x for x in subs)
     assert any("comunica" in x for x in subs)
+
+
+def test_o_bloco_preserva_o_anexo_obrigatorio():
+    """O defeito da SS 3550: a marca de "anexo obrigatório" morria na observação.
+
+    O bloco [PCM] guardava só tipo e descrição. O supervisor marcava o anexo, o PCM abria a
+    fila com TUDO desmarcado, e a OS nascia sem exigir a foto — sem ninguém perceber, porque a
+    tela mostrava um estado coerente consigo mesma. Medido: as três subtarefas da 3550 voltavam
+    com anexo=None."""
+    subs = [{"desc": "Descreva a atividade", "tipo": "texto", "anexo": False},
+            {"desc": "Registro fotográfico", "tipo": "texto", "anexo": True},
+            {"desc": "Temperatura, em °C", "tipo": "num", "anexo": True}]
+    volta = (S.parse(S.bloco({"tema": "", "subtarefas": subs})) or {}).get("subtarefas") or []
+    assert [x["anexo"] for x in volta] == [False, True, True]
+    assert [x["desc"] for x in volta] == [x["desc"] for x in subs], "o sufixo vazou na descrição"
+
+
+def test_bloco_antigo_sem_o_sufixo_continua_sendo_lido():
+    """As solicitações já gravadas não têm o sufixo. Elas têm de continuar abrindo — como
+    anexo=False, que é o que o PCM via antes de qualquer forma."""
+    velho = "[PCM]\nSubtarefas:\n- [Texto] linha antiga sem sufixo"
+    subs = (S.parse(velho) or {}).get("subtarefas") or []
+    assert subs == [{"tipo": "texto", "desc": "linha antiga sem sufixo", "anexo": False}]

@@ -183,6 +183,27 @@ def aplicar_no_spec(itens=None):
     return True
 
 
+def etiquetas_efetivas(t) -> list:
+    """As etiquetas que este tema VAI aplicar de verdade — vindo do campo ou da regra antiga.
+
+    Existe porque a tela de Temas e a Fila estavam DISCORDANDO. Os temas gravados antes de
+    04/09 não têm o campo `etiquetas`; a Fila caía em `sp.exige_performance` e punha a
+    PERFORMANCE em tracker, ETM e garantia, mas a tela de Temas mostrava lista vazia. O PCM não
+    via — e não conseguia tirar — uma etiqueta que estava sendo aplicada. Foi o que o Levi
+    relatou em 04/09: "não está mostrando os temas que tem a etiqueta de performance".
+
+    Uma função só, usada pelas duas telas: enquanto o campo não existir, as duas leem a mesma
+    regra; assim que o PCM salvar, as duas leem a lista dele."""
+    if isinstance(t, str):
+        t = sp.TEMAS.get(t) or {}
+    t = t or {}
+    if "etiquetas" in t:
+        return [str(x).strip() for x in (t.get("etiquetas") or []) if str(x).strip()]
+    chave = t.get("chave") or ""
+    return ([sp.ETIQUETA_PERFORMANCE]
+            if sp.exige_performance(chave, "", []) else [])
+
+
 def tipo_equipamento(tema: str) -> str:
     """O tipo de equipamento do tema — o que FILTRA a lista de ativos na Solicitação.
 

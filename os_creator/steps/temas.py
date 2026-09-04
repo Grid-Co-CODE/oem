@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
 import solic_spec as sp
 import temas_store as ts
 from steps.subtarefas_edit import EditorSubtarefas
-from steps.ui import GREEN, MUTED, TEXT, CARD, BORDER
+from steps.ui import GREEN, MUTED, TEXT, CARD, BORDER, esvaziar as _esvaziar
 from workers import ApiWorker, slot_seguro
 
 # Os tipos vêm do CADASTRO, e não de uma lista escrita à mão. É o mesmo campo `tipo` que o
@@ -149,7 +149,13 @@ class TemasTab(QWidget):
         cxl.setContentsMargins(12, 9, 12, 9)
         self.ed_busca = QLineEdit()
         self.ed_busca.setPlaceholderText("Buscar tema…")
-        self.ed_busca.textChanged.connect(self._pintar_lista)
+        # mesmo debounce do Painel: repintar a lista a cada tecla cria e destroi dezenas de
+        # widgets, e cada setParent(None) piscava uma janela de topo
+        self._t_busca = QTimer(self)
+        self._t_busca.setSingleShot(True)
+        self._t_busca.setInterval(250)
+        self._t_busca.timeout.connect(self._pintar_lista)
+        self.ed_busca.textChanged.connect(self._t_busca.start)
         cxl.addWidget(self.ed_busca)
         col.addWidget(cx)
 
@@ -355,12 +361,7 @@ class TemasTab(QWidget):
         self._pintar_etqs()
 
     def _pintar_etqs(self):
-        while self.fila_etq.count() > 1:
-            it = self.fila_etq.takeAt(0)
-            w = it.widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+        _esvaziar(self.fila_etq)
         for nome in self._etqs:
             c = QPushButton("%s  ×" % nome)
             c.setObjectName("chipEtq")
@@ -402,6 +403,15 @@ class TemasTab(QWidget):
 
     # ── carga ──
     def carregar_inicial(self, forcar=False):
+        # OS TIPOS SAEM DO CADASTRO, e a tela busca sozinha se ninguém entregou. Antes dependia
+        # de a aba já ter os ativos carregados; quem abria Temas antes disso via o combo de tipo
+        # de equipamento com uma opção só — o "não tem a opção tipo de equipamento" de 04/09.
+        if self.cb_equip.count() <= 1:
+            try:
+                import api
+                self.set_tipos_de_ativo(api.load_assets_cached() or [])
+            except Exception:
+                pass
         if self._itens and not forcar:
             return
         self.hint.setText("carregando temas…")
@@ -428,12 +438,7 @@ class TemasTab(QWidget):
 
     def _pintar_lista(self):
         termo = (self.ed_busca.text() or "").strip().lower()
-        while self.lista.count() > 1:
-            it = self.lista.takeAt(0)
-            w = it.widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+        _esvaziar(self.lista)
         self._cels = []
         vis = [t for t in self._itens
                if not termo or termo in ((t.get("nome") or "") + " " + t["chave"]).lower()]
@@ -474,7 +479,10 @@ class TemasTab(QWidget):
         i = self.cb_c1.findText(t.get("classif1") or "")
         self.cb_c1.setCurrentIndex(i if i >= 0 else 0)
         self.editor.set_itens(list(t.get("subtarefas") or []))
-        self._etqs = list(t.get("etiquetas") or [])
+        # A MESMA regra da Fila (`ts.etiquetas_efetivas`). Sem isto, tema sem o campo aparecia
+        # aqui com lista vazia enquanto a Fila punha a PERFORMANCE nele — o PCM não via, e não
+        # conseguia tirar, uma etiqueta que estava sendo aplicada.
+        self._etqs = ts.etiquetas_efetivas(dict(t, chave=t.get("chave") or ""))
         self._pintar_etqs()
         self.b_arq.setText("Desarquivar" if t.get("arquivado") else "Arquivar")
         self._habilitar(True)
