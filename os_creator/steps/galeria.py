@@ -102,10 +102,88 @@ class GaleriaDialog(QDialog):
             self._cells.append(self._make_cell(img, i))
         if not self._imgs:
             self.hint.setText("Nenhuma foto nesta OS.")
+        # BAIXAR TUDO. Pedido do Levi (04/09): "so quero conseguir baixar em massa". Fica AQUI,
+        # e nao no DocumentosDialog, porque e a galeria que os tres caminhos abrem — anexos da
+        # OS, das subtarefas e da solicitacao. No detalhe da OS o caminho do DocumentosDialog
+        # esta atras de um `if outros:` com `outros = []`, ou seja, nunca executa.
+        rod = QHBoxLayout()
+        rod.addStretch(1)
+        self.b_todos = QPushButton("Baixar todos (%d)" % len(self._baixaveis()))
+        self.b_todos.setObjectName("btnPrimary")
+        self.b_todos.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_todos.clicked.connect(self._baixar_todos)
+        self.b_todos.setEnabled(bool(self._baixaveis()))
+        rod.addWidget(self.b_todos)
+        lay.addLayout(rod)
+        self._wmassa = None
+
         self._relayout(force=True)
         for _ in range(min(_MAX_CONC, len(self._queue))):   # dispara os 1ºs downloads
             self._next()
         self._upd_hint()
+
+    # ── baixar em massa ──
+    def _baixaveis(self):
+        """Foto OU nota de texto — a nota vira .txt, e e ela que costuma explicar a foto."""
+        return [d for d in self._imgs
+                if isinstance(d, dict) and (d.get("url") or str(d.get("nota") or "").strip())]
+
+    def _baixar_todos(self):
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from steps.documentos import baixar_em_massa
+        from workers import ApiWorker
+        if self._wmassa is not None:
+            return
+        itens = self._baixaveis()
+        pasta = QFileDialog.getExistingDirectory(self, "Onde salvar os anexos")
+        if not pasta:
+            return
+        # a galeria chama de `nota` o que o DocumentosDialog chama de `descricao`, e a legenda
+        # da subtarefa vem em `descricao`. Traduz aqui, num lugar so.
+        norm = []
+        for d in itens:
+            nota = str(d.get("nota") or "").strip()
+            norm.append({"url": d.get("url"),
+                         "nome": d.get("nome") or (d.get("descricao") or "anexo").split("·")[0].strip(),
+                         "descricao": nota or d.get("descricao") or "",
+                         "is_text": bool(nota and not d.get("url")),
+                         "subtarefa": d.get("subtarefa") or ""})
+        self._pasta_massa = pasta
+        self.b_todos.setEnabled(False)
+        self.hint.setText("baixando %d arquivo(s)…" % len(norm))
+        self._wmassa = ApiWorker(baixar_em_massa, norm, pasta)
+        self._wmassa.ok.connect(self._massa_ok)
+        self._wmassa.erro.connect(self._massa_erro)
+        self._wmassa.start()
+
+    def _massa_ok(self, r):
+        import os as _os
+        import sys as _sys
+        from PyQt6.QtWidgets import QMessageBox
+        self._wmassa = None
+        self.b_todos.setEnabled(True)
+        gravados, falhas = r
+        self._upd_hint()
+        msg = "%d arquivo(s) salvos em:\n%s" % (len(gravados), self._pasta_massa)
+        if falhas:
+            # a URL do Fracttal é pré-assinada e EXPIRA. Dizer isso evita a leitura de que o
+            # anexo se perdeu, quando basta reabrir os anexos para renovar o link.
+            msg += ("\n\n%d não vieram (a URL do Fracttal expira; reabrir os anexos "
+                    "renova):\n" % len(falhas))
+            msg += "\n".join("· %s" % n for n, _ in falhas[:8])
+        QMessageBox.information(self, "Anexos", msg)
+        if gravados and _sys.platform.startswith("win"):
+            try:
+                _os.startfile(self._pasta_massa)      # noqa: S606
+            except OSError:
+                pass
+
+    def _massa_erro(self, m):
+        from PyQt6.QtWidgets import QMessageBox
+        self._wmassa = None
+        self.b_todos.setEnabled(True)
+        self._upd_hint()
+        QMessageBox.critical(self, "Anexos", "Não consegui baixar:\n%s" % m)
 
     def _rotulo(self, idx):
         """Rótulo da foto no formato 'Ativo — Tarefa' (cai p/ um só quando falta o outro)."""
