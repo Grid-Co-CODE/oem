@@ -431,3 +431,42 @@ def test_a_borda_do_status_e_mais_clara_que_a_fonte(qapp):
     assert _clarear("#000000") == "#7f7f7f"
     assert _clarear("#ec4c77") == "#f5a5bb"
     assert _clarear("nao-e-cor") == "#39405a"      # entrada inválida não quebra a tela
+
+
+# ── a animação refeita (03/09) ───────────────────────────────────────────────
+def test_o_card_nunca_fica_preso_apagado(qapp):
+    """O defeito que o Levi viu: card da esquerda apagado no hub.
+
+    A versão anterior criava um QGraphicsOpacityEffect a cada entrada e o removia no `finished`.
+    Fora da tela ela terminava certa — por isso não reproduzi de primeira. No app, uma
+    interrupção no meio (troca de página, resize, coleta de lixo) deixava o efeito preso num
+    valor intermediário e o card apagado para sempre.
+
+    O desenho novo não tem esse estado: o efeito é PERMANENTE e nasce em 1.0, há UMA animação por
+    moldura, e um cão de guarda independente força o estado final. `assentar()` é o caminho de
+    recuperação — e é ele que este teste prende."""
+    from steps.solic_pcm import _Elevavel, _CardBotao
+    m = _Elevavel(_CardBotao("t", "s", lambda: None))
+    m.resize(400, 160)
+    assert m.opacidade.opacity() == 1.0            # nasce visível
+    m.entrar(atraso=0, dur=1600)
+    assert m.opacidade.opacity() == 0.0            # começa invisível a entrada
+    m.assentar()                                   # simula o cão de guarda disparando
+    assert m.opacidade.opacity() == 1.0
+    # so a POSICAO: a altura e limitada pelo minimumHeight do card (190 px nos cards grandes),
+    # entao comparar o retangulo inteiro compararia o clamp do Qt, e nao o assentamento
+    assert m.card.pos() == m._repouso().topLeft()
+
+
+def test_a_entrada_para_a_anterior_antes_de_comecar(qapp):
+    """Dois gatilhos concorrentes (showEvent e o refluxo do resize) deixavam duas animações
+    disputando o mesmo widget. Agora a moldura guarda UMA, e para a anterior."""
+    from steps.solic_pcm import _Elevavel, _CardBotao
+    m = _Elevavel(_CardBotao("t", "s", lambda: None))
+    m.resize(400, 160)
+    m.entrar(atraso=0, dur=1600)
+    primeira = m._anim
+    m.entrar(atraso=0, dur=1600)
+    assert m._anim is not primeira                 # a nova substituiu
+    m.assentar()
+    assert m.opacidade.opacity() == 1.0

@@ -1187,16 +1187,19 @@ class _Fila(QWidget):
 
 
 class _Elevavel(QWidget):
-    """Moldura que segura UM card e deixa ele se mover dentro dela.
+    """Moldura que segura UM card e e a unica dona do movimento dele.
 
-    Existe por uma razao unica e chata: em Qt, mexer na posicao de um widget que esta dentro de
-    um QLayout nao adianta — a cada ciclo o layout devolve o widget para o lugar calculado, e a
-    animacao roda por baixo sem aparecer (foi assim que 28 quadros gravados sairam identicos).
-    Quem entra no layout e ESTA moldura; o card mora aqui dentro, sem layout nenhum, e por isso
-    pode subir no hover, afundar no clique e entrar deslizando sem ninguem contrariar.
+    Existe por uma razao de Qt: mexer na posicao de um widget que esta dentro de um QLayout nao
+    adianta — a cada ciclo o layout o devolve ao lugar calculado e a animacao roda por baixo sem
+    aparecer (foi assim que 28 quadros gravados sairam identicos). Quem entra no layout e ESTA
+    moldura; o card mora aqui dentro, sem layout, e por isso pode entrar, subir no hover e
+    afundar no clique sem ninguem contrariar.
 
-    A folga de RESERVA px embaixo e o espaco para onde o card sobe — sem ela a elevacao seria
-    cortada pela borda da moldura."""
+    Os dois efeitos sao PERMANENTES e vivem em widgets diferentes — sombra na moldura, opacidade
+    no card. Nenhum e criado ou removido durante a animacao: efeito que nasce e morre no meio do
+    caminho congela o widget no ultimo valor pintado se o objeto for coletado antes do fim, e foi
+    exatamente esse o card que apareceu apagado na tela do Levi.
+    """
 
     RESERVA = 6
 
@@ -1205,19 +1208,23 @@ class _Elevavel(QWidget):
         self.card = card
         card.setParent(self)
         self._elevado = False
-        self._anim = None
-        self._anims_sombra = []
-        # A sombra e PERMANENTE, com raio zero em repouso, e o hover anima o raio e o
-        # deslocamento. Antes eu instalava o efeito ja em forca total e removia de vez: a sombra
-        # aparecia e sumia num pulo. E o que fazia o hover parecer barato perto do CSS, onde o
-        # box-shadow transita em 300 ms — blurRadius e yOffset sao qreal, continuos, entao aqui
-        # o florescer sai tao liso quanto la.
+        self._anim = None          # a UNICA animacao de entrada/hover desta moldura
+        self._guarda = None        # cao de guarda: garante o estado final
+
+        # sombra do hover: mora na MOLDURA, raio zero em repouso
         self.sombra = QGraphicsDropShadowEffect(self)
         self.sombra.setBlurRadius(0)
         self.sombra.setOffset(0, 0)
         self.sombra.setColor(QColor(138, 224, 0, 38))     # o verde neon da borda, a 15%
         self.setGraphicsEffect(self.sombra)
+        self._anim_sombra = []
 
+        # opacidade da entrada: mora no CARD, nasce visivel e NUNCA e removida
+        self.opacidade = QGraphicsOpacityEffect(self.card)
+        self.opacidade.setOpacity(1.0)
+        self.card.setGraphicsEffect(self.opacidade)
+
+    # ── geometria ──
     def sizeHint(self):
         h = self.card.sizeHint()
         return QSize(h.width(), h.height() + self.RESERVA)
@@ -1234,14 +1241,57 @@ class _Elevavel(QWidget):
         if self._anim is None or self._anim.state() != QPropertyAnimation.State.Running:
             self.card.setGeometry(self._repouso())
 
-    def _mover(self, destino, ms, curva=QEasingCurve.Type.OutCubic):
-        a = QPropertyAnimation(self.card, b"geometry", self)
-        a.setDuration(ms)
-        a.setStartValue(self.card.geometry())
-        a.setEndValue(destino)
-        a.setEasingCurve(curva)
-        self._anim = a
-        a.start()
+    def _parar(self):
+        """Zera o que estiver em curso. Chamado antes de QUALQUER animacao nova."""
+        if self._anim is not None and self._anim.state() == QPropertyAnimation.State.Running:
+            self._anim.stop()
+        if self._guarda is not None:
+            self._guarda.stop()
+
+    def assentar(self):
+        """O estado final, sem animacao nenhuma: card no lugar e visivel.
+
+        E o que o cao de guarda chama, e tambem o que qualquer caminho de erro deve chamar."""
+        self._parar()
+        self.opacidade.setOpacity(1.0)
+        self.card.setGeometry(self._repouso().translated(0, -4) if self._elevado
+                              else self._repouso())
+
+    # ── entrada ──
+    def entrar(self, atraso=0, dur=1600, desloca=15, eixo="y"):
+        """Desliza e aparece. Sempre termina visivel, aconteca o que acontecer no caminho."""
+        self._parar()
+        fim = self._repouso()
+        ini = fim.translated(-desloca, 0) if eixo == "x" else fim.translated(0, desloca)
+        self.card.setGeometry(ini)
+        self.opacidade.setOpacity(0.0)
+
+        g = QParallelAnimationGroup(self)
+        a1 = QPropertyAnimation(self.opacidade, b"opacity", g)
+        a1.setDuration(dur)
+        a1.setStartValue(0.0)
+        a1.setEndValue(1.0)
+        a1.setEasingCurve(QEasingCurve.Type.OutCubic)
+        a2 = QPropertyAnimation(self.card, b"geometry", g)
+        # o DESLIZE e curto e o esmaecer e longo: em Qt a posicao e inteira, e 15 px espalhados
+        # por 1,6 s dao um salto a cada ~106 ms, que o olho ve picotar. Em 450 ms sao ~2,8
+        # quadros por pixel e o movimento le liso. A lentidao pedida fica no fade, que e continuo.
+        a2.setDuration(min(dur, 450))
+        a2.setStartValue(ini)
+        a2.setEndValue(fim)
+        a2.setEasingCurve(QEasingCurve.Type.OutCubic)
+        g.addAnimation(a1)
+        g.addAnimation(a2)
+        self._anim = g
+
+        # CAO DE GUARDA: independente da animacao. Se ela for interrompida por troca de aba,
+        # resize ou coleta de lixo, o card termina visivel do mesmo jeito.
+        self._guarda = QTimer(self)
+        self._guarda.setSingleShot(True)
+        self._guarda.timeout.connect(self.assentar)
+        self._guarda.start(atraso + dur + 250)
+
+        QTimer.singleShot(atraso, g.start)
 
     # ── hover: sobe 4 px e acende o brilho verde ──
     def elevar(self, on):
@@ -1250,14 +1300,14 @@ class _Elevavel(QWidget):
         self._elevado = on
         r = self._repouso()
         self._mover(r.translated(0, -4) if on else r, 300)
-        self._anims_sombra = []
+        self._anim_sombra = []
         for prop, alvo in ((b"blurRadius", 24.0 if on else 0.0), (b"yOffset", 8.0 if on else 0.0)):
             a = QPropertyAnimation(self.sombra, prop, self)
             a.setDuration(300)
             a.setEndValue(alvo)
             a.setEasingCurve(QEasingCurve.Type.OutCubic)
             a.start()
-            self._anims_sombra.append(a)     # sem dono vivo a animacao e coletada no meio
+            self._anim_sombra.append(a)     # sem dono vivo a animacao e coletada no meio
 
     # ── clique: afunda 3%, como o scale(0.97) ──
     def afundar(self, on):
@@ -1268,6 +1318,16 @@ class _Elevavel(QWidget):
             dx, dy = int(r.width() * 0.015), int(r.height() * 0.015)
             r = r.adjusted(dx, dy, -dx, -dy)
         self._mover(r, 100)
+
+    def _mover(self, destino, ms):
+        self._parar()
+        a = QPropertyAnimation(self.card, b"geometry", self)
+        a.setDuration(ms)
+        a.setStartValue(self.card.geometry())
+        a.setEndValue(destino)
+        a.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim = a
+        a.start()
 
 
 class _CardBotao(QFrame):
@@ -1502,37 +1562,17 @@ class _Hub(QWidget):
         return {"estreito": self.width() < self._limiar()}
 
     def _animar(self, molduras=None, dur=None, stagger=None):
-        """fadeSlideUp em cascata — a traducao do @keyframes que o Levi mandou.
+        """Cascata: cada moldura entra sozinha, com o atraso dela.
 
-        O card e movido DENTRO da moldura, entao nenhum layout desfaz o movimento no meio."""
-        estreito = self._matches()["estreito"]
-        dur = self.DUR if dur is None else dur
-        stagger = self.STAGGER if stagger is None else stagger
-        for k, m in enumerate(molduras or self._submold):
-            m.card.setGeometry(m._repouso())
-            ef = QGraphicsOpacityEffect(m.card)
-            m.card.setGraphicsEffect(ef)
-            fim = m._repouso()
-            ini = (fim.translated(-self.DESLOC, 0) if estreito
-                   else fim.translated(0, self.DESLOC))
-            g = QParallelAnimationGroup(m)
-            a1 = QPropertyAnimation(ef, b"opacity", g)
-            a1.setDuration(dur)
-            a1.setStartValue(0.0)
-            a1.setEndValue(1.0)
-            a1.setEasingCurve(QEasingCurve.Type.OutCubic)
-            a2 = QPropertyAnimation(m.card, b"geometry", g)
-            a2.setDuration(min(dur, self.DUR_DESLIZE))
-            a2.setStartValue(ini)
-            a2.setEndValue(fim)
-            a2.setEasingCurve(QEasingCurve.Type.OutCubic)
-            g.addAnimation(a1)
-            g.addAnimation(a2)
-            # o efeito sai no fim: um widget so aceita UM QGraphicsEffect, e o proximo a
-            # precisar dele e o brilho verde do hover
-            g.finished.connect(lambda c=m.card: c.setGraphicsEffect(None))
-            QTimer.singleShot(k * stagger, g.start)
-            self._anims.append(g)
+        O Hub NAO mexe mais em efeito nem em geometria — ele so diz quem entra, quando e por
+        qual eixo. Toda a garantia de terminar visivel esta na moldura, num lugar so."""
+        alvos = list(molduras or self._submold)
+        topo = bool(alvos) and alvos[0] in (self.m_nova, self.m_pcm)
+        stagger = (self.STAGGER_TOPO if topo else self.STAGGER) if stagger is None else stagger
+        dur = (self.DUR_TOPO if topo else self.DUR) if dur is None else dur
+        eixo = "x" if self._matches()["estreito"] else "y"
+        for k, m in enumerate(alvos):
+            m.entrar(atraso=k * stagger, dur=dur, desloca=self.DESLOC, eixo=eixo)
 
     def showEvent(self, e):
         """A entrada roda A CADA vez que o hub aparece — pedido do Levi (03/09).
