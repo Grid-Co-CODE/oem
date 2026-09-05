@@ -2,6 +2,9 @@
 
 Esta pasta é da **Engenharia**. Tudo que a área precisa mudar mora aqui dentro.
 
+> **Primeira vez aqui?** Comece por `docs/onboarding-engenharia.md` — acesso, máquina,
+> como abrir o app e como abrir o primeiro PR. Este arquivo só diz a fronteira.
+
 Leia primeiro `steps/CLAUDE.md` (como se escreve uma tela) e `os_creator/CLAUDE.md`
 (armadilhas da API do Fracttal e a régua de verificação). Este arquivo só diz a fronteira.
 
@@ -52,7 +55,7 @@ garante, de fato, que um engano não chegue lá.
 
 1. Forke `Grid-Co-CODE/oem` para a sua conta e trabalhe num branch seu.
 2. Teste segundo a lista de `steps/CLAUDE.md` — **incluindo abrir o app inteiro e criar uma OS de
-   teste na usina `TESTE - PA`**.
+   teste no cliente `TESTE - PA`** — é o CLIENTE, e a usina é uma das 16 dele.
 3. Abra o PR para `Grid-Co-CODE/oem`.
 4. O CI confere três coisas, e reprova o PR se alguma falhar:
    - os arquivos alterados cabem **nesta pasta**;

@@ -8,7 +8,7 @@ O CI confere que o app importa, que o PR ficou na pasta da área e que não há 
 Ele **não** confere se a OS sai certa — isso é humano.
 
 - [ ] Abri o app inteiro e a tela respondeu
-- [ ] Criei uma OS de teste na usina `TESTE - PA`
+- [ ] Criei uma OS de teste no cliente `TESTE - PA` (é o CLIENTE; a usina é uma das 16 dele)
 - [ ] **Conferi a OS no Fracttal, campo a campo** — e não só que "não deu erro"
 - [ ] Não conferi no Fracttal, e digo isso aqui: <!-- por quê -->
 

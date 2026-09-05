@@ -73,7 +73,8 @@ o código marca a caixa. Para distinguir "o usuário escolheu" de "o app sugeriu
 1. Rodou a tela e ela abre.
 2. **Rodou o app inteiro** — `python main.py` — e a janela principal abre. Tela isolada
    funcionando não prova nada; foi assim que a v135 passou.
-3. Criou uma OS de teste na usina `TESTE - PA` e conferiu campo a campo no Fracttal.
+3. Criou uma OS de teste no cliente `TESTE - PA` e conferiu campo a campo no Fracttal.
+   (`TESTE - PA` é o CLIENTE; escolha uma das 16 usinas dele.)
 4. Cancelou a OS de teste.
 5. Escreveu as linhas de nota de versão do que mudou, na linguagem de quem usa o app —
    não "refatorado o handler", e sim "Performance: a data do evento não aceita mais data futura".

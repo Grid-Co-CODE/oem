@@ -759,7 +759,7 @@ garante, de fato, que um engano não chegue lá.
 
 1. Forke `Grid-Co-CODE/oem` para a sua conta e trabalhe num branch seu.
 2. Teste segundo a lista de `steps/CLAUDE.md` — **incluindo abrir o app inteiro e criar uma OS de
-   teste na usina `TESTE - PA`**.
+   teste no cliente `TESTE - PA`**.
 3. Abra o PR para `Grid-Co-CODE/oem`.
 4. O CI confere três coisas, e reprova o PR se alguma falhar:
    - os arquivos alterados cabem **nesta pasta**;
@@ -807,7 +807,7 @@ O CI confere que o app importa, que o PR ficou na pasta da área e que não há 
 Ele **não** confere se a OS sai certa — isso é humano.
 
 - [ ] Abri o app inteiro e a tela respondeu
-- [ ] Criei uma OS de teste na usina `TESTE - PA`
+- [ ] Criei uma OS de teste no cliente `TESTE - PA`
 - [ ] **Conferi a OS no Fracttal, campo a campo** — e não só que "não deu erro"
 - [ ] Não conferi no Fracttal, e digo isso aqui: <!-- por quê -->
 

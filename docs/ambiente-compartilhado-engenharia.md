@@ -116,7 +116,8 @@ pasta avisa — o agente acha o caminho curto pelo `api.py` para "resolver logo"
 1. Engenheiro entra na organização com acesso **read** ao `oem`.
 2. Forka para a conta dele.
 3. Trabalha em branch no fork, com o agente, dentro de `steps/engenharia/`.
-4. Testa no app aberto, criando OS de teste na usina `TESTE - PA`.
+4. Testa no app aberto, criando OS de teste no cliente `TESTE - PA` (é o CLIENTE, não a
+   usina — ele tem 221 ativos em 16 usinas).
 5. Abre PR para `Grid-Co-CODE/oem`.
 6. O CI roda os três portões de §6.2.
 7. **Levi revisa e faz o merge.** Manual, e o documento dirá isso.
@@ -167,7 +168,7 @@ evita crash: evita **card com o ícone errado, em silêncio**, que ninguém perc
 normalmente. Defeito menor que o de 2026, e ainda assim invisível sem o teste.
 
 > **O que o CI não prova.** Que a OS sai certa. O app exige login no Fracttal para abrir de fato,
-> então nenhum robô cria OS na `TESTE - PA`. O teste humano continua obrigatório, e o documento da
+> então nenhum robô cria OS no cliente `TESTE - PA`. O teste humano continua obrigatório, e o documento da
 > área precisa dizer isso em vez de sugerir que o build cobre.
 
 ### 6.3 Registro de áreas: fazer da "uma linha" uma verdade
@@ -207,7 +208,7 @@ Reescrever a seção "Como publicar" do `steps/engenharia/CLAUDE.md` para descre
 - o CI confere fronteira, layout e que o app importa — **isso passa a ser verdade** com §6.2;
 - a revisão e o merge são **do Levi**, manuais; não há CODEOWNERS e o plano não permite;
 - a publicação é **manual**, pelo `release.py`, na máquina de build;
-- o teste na `TESTE - PA` é obrigatório porque o CI não o cobre.
+- o teste no cliente `TESTE - PA` é obrigatório porque o CI não o cobre.
 
 E remover qualquer hex do texto, pelo motivo de §3.4: a régua cita nomes do `ui.py`.
 
