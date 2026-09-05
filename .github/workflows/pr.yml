@@ -41,8 +41,24 @@ jobs:
           fi
           echo "OK: o PR fica dentro da pasta da area."
 
+  layout:
+    # PORTAO 2. A Engenharia e dona do CONTEUDO da tela; a casa segura o LAYOUT. Este portao e
+    # o que torna essa frase verdadeira — sem ele o agente escreve o hex e nada avisa.
+    #
+    # Roda em TODO PR, e nao so nos de fork: se eu mexer na pasta da area, valho a mesma regra.
+    # So confere a PASTA DA AREA. Um lint de cor global reprovaria o repositorio inteiro (223
+    # literais hex em steps/*.py) — ver docs/ambiente-compartilhado-engenharia.md, secao 3.4.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Sem cor escrita a mao e sem emoji na pasta da area
+        run: python .github/lint_area.py
+
   testes:
-    # PORTOES 2 e 3. Rodam em TODO PR, inclusive os internos.
+    # PORTAO 3. Roda em TODO PR, inclusive os internos: a suite passa e o app importa.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
