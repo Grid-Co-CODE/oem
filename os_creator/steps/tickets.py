@@ -58,6 +58,28 @@ _ALTURA_LINHA = 38        # a linha respira mais: era 30
 # elidido apesar de a conta dizer que cabia -- 22 e' o valor em que parou de cortar.
 _PAD_CELULA = 22
 _LARG_MINIMA = 58        # nenhuma coluna encolhe abaixo disto no encaixe
+# O piso das DUAS ELASTICAS (Resumo e Status), que e' maior: elas sao as unicas colunas de texto
+# corrido, e em 58px nao sobra palavra nenhuma. Medido: 150px cabe "Aguardando Condi" -- o
+# bastante para separar os quatro status que comecam com "Aguardando".
+_LARG_ELASTICA = 150
+
+
+def _encolher(largs, idx, divida, piso):
+    """Tira `divida` (negativa) das colunas `idx`, proporcional a folga de cada uma sobre `piso`.
+
+    Devolve o que NAO coube -- 0 quando pagou tudo. E' o que permite cobrar primeiro de quem tem
+    folga de sobra e so' depois passar o chapeu para as outras.
+
+    Proporcional, e nao em ordem: drenar o Resumo inteiro antes de encostar no Status deixaria uma
+    coluna no piso ao lado de outra intacta, e a tabela fica torta."""
+    folgas = [max(0, largs[i] - piso) for i in idx]
+    total = sum(folgas)
+    if total <= 0:
+        return divida
+    paga = max(divida, -total)          # nao se tira mais do que existe de folga
+    for k, i in enumerate(idx):
+        largs[i] = max(piso, largs[i] + int(paga * folgas[k] / total))
+    return divida - paga
 
 _REALCE = "#A27D3F"      # a linha clicada, inteira
 _GRADE = "#818487"       # as linhas da grade e as bordas (Levi, 31/08)
@@ -2532,18 +2554,67 @@ class TicketsTab(QWidget):
             else:
                 largs[-1] += sobra
         elif sobra < 0:
-            folgas = [max(0, w - _LARG_MINIMA) for w in largs]
-            total = sum(folgas) or 1
-            for i in range(len(largs)):
-                largs[i] = max(_LARG_MINIMA, largs[i] + int(sobra * folgas[i] / total))
-        # o resto da divisão vai inteiro na coluna mais larga: sem isso sobravam de 4 a 18px e a
+            # QUEM CEDE E' QUEM GANHA (Levi, 06/09: "a coluna Periodo esta cortada"). O corte era
+            # proporcional entre TODAS, entao faltando 45px a tela inteira elidia um pouco: a
+            # Usina virava "Santarem 1 - Bloc...", a data "24/05/2025 08:0" e o Periodo
+            # "1 ano e 3 me...". Coluna de valor atomico nao suporta corte -- meia data ou meio
+            # periodo nao dizem nada, e nenhuma delas tem painel nem hover mostrando o resto.
+            #
+            # As elasticas suportam, e sao as MESMAS que levam a folga quando sobra espaco: o
+            # Resumo ja' e' truncado em 40 caracteres com o texto inteiro no hover, e o Status
+            # ganhou hover pelo mesmo motivo (ver `_hover_do_que_nao_coube`). Entao a divida vai
+            # toda para elas primeiro, ate' o piso; so' o que ainda faltar espalha pelo resto.
+            elast = [nomes.index(n) for n in (_ROTULO_CAUSA, _COL_STATUS) if n in nomes]
+            falta = _encolher(largs, elast, sobra, _LARG_ELASTICA)
+            if falta < 0:
+                outras = [i for i in range(len(largs)) if i not in elast]
+                _encolher(largs, outras, falta, _LARG_MINIMA)
+        # o resto da divisão vai inteiro numa coluna só: sem isso sobravam de 4 a 18px e a
         # tabela transbordava, pouco, mas o bastante para cortar a última coluna.
+        #
+        # Na mais larga que AGUENTE, e não simplesmente na mais larga: com a tela muito apertada
+        # a mais larga é uma elástica já parada no piso, e descontar dela os 4px de arredondamento
+        # desfazia a garantia que o encolhimento tinha acabado de dar (medido: Status em 146 com
+        # piso de 150).
         resto = vp - sum(largs)
         if resto:
-            i = max(range(len(largs)), key=lambda k: largs[k])
+            pisos = [_LARG_ELASTICA if n in (_ROTULO_CAUSA, _COL_STATUS) else _LARG_MINIMA
+                     for n in nomes]
+            cabem = [k for k in range(len(largs)) if largs[k] + resto >= pisos[k]]
+            i = max(cabem or range(len(largs)), key=lambda k: largs[k])
             largs[i] = max(_LARG_MINIMA, largs[i] + resto)
         for i, w in enumerate(largs):
             self.tab.setColumnWidth(i, w)
+        self._hover_do_que_nao_coube(largs)
+
+    def _hover_do_que_nao_coube(self, largs):
+        """O texto inteiro no hover de toda celula que o encaixe cortou.
+
+        A regra de cima escolhe QUEM cede largura; esta cuida do que sobra de quem cedeu. O Resumo
+        tem hover desde 31/08 exatamente por isso, e a diferenca so' nao incomodava porque o
+        Status raramente encolhia -- agora ele e' o primeiro a ceder, e "Aguardando Condicoes da
+        Planta" cortado no meio nao se distingue de "Aguardando Concessionaria".
+
+        So' preenche hover VAZIO. A primeira celula da linha explica a cor do estado, o Inversor
+        conta as strings afetadas e o Resumo ja' traz o texto por extenso: sobrescrever qualquer
+        um deles trocaria dado por formatacao.
+
+        SINAIS BLOQUEADOS, como no `_pintar_selecao`: mexer num item dispara `itemChanged`, que e'
+        o mesmo sinal da edicao da causa raiz -- sem isto, encaixar coluna pareceria digitacao e
+        acenderia o Salvar sozinho."""
+        fm = self.tab.fontMetrics()
+        self.tab.blockSignals(True)
+        try:
+            for c, w in enumerate(largs):
+                util = w - _PAD_CELULA
+                for r in range(self.tab.rowCount()):
+                    it = self.tab.item(r, c)
+                    if it is None or it.toolTip():
+                        continue
+                    if fm.horizontalAdvance(it.text()) > util:
+                        it.setToolTip(it.text())
+        finally:
+            self.tab.blockSignals(False)
 
     def _pinta_tabela(self):
         rot = list(colunas_da_aba(self._aba))
