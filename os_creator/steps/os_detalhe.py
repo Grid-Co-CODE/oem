@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
                              QScrollArea, QWidget, QFrame, QProgressBar, QApplication, QMessageBox,
-                             QLineEdit, QListWidget, QListWidgetItem, QComboBox)
+                             QLineEdit, QListWidget, QListWidgetItem, QComboBox, QTextEdit)
 import api
 from workers import ApiWorker, slot_seguro
 from steps.searchcombo import tornar_pesquisavel
@@ -667,10 +667,36 @@ class OsDetalheDialog(QDialog):
         self.titulo_blk = QLabel("—"); self.titulo_blk.setObjectName("readboxTitle"); self.titulo_blk.setWordWrap(True)
         self.titulo_blk.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         bl.addWidget(self.titulo_blk)
-        bl.addWidget(self._sec_label("NOTAS"))
+        # NOTAS — ler e editar no MESMO lugar (Levi, 02/09). A observação é onde fica o relato do
+        # que aconteceu; até aqui, corrigir uma linha dela exigia sair do app e abrir o Fracttal.
+        nt_bar = QHBoxLayout(); nt_bar.setContentsMargins(0, 0, 0, 0); nt_bar.setSpacing(8)
+        nt_bar.addWidget(self._sec_label("NOTAS"))
+        nt_bar.addStretch(1)
+        self.b_nota_edit = QPushButton("Editar"); self.b_nota_edit.setObjectName("secondary")
+        self.b_nota_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_nota_edit.clicked.connect(self._nota_editar)
+        self.b_nota_ok = QPushButton("Salvar"); self.b_nota_ok.setObjectName("btnPrimary")
+        self.b_nota_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_nota_ok.clicked.connect(self._nota_salvar)
+        self.b_nota_no = QPushButton("Cancelar"); self.b_nota_no.setObjectName("secondary")
+        self.b_nota_no.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_nota_no.clicked.connect(self._nota_cancelar)
+        for b in (self.b_nota_edit, self.b_nota_ok, self.b_nota_no):
+            nt_bar.addWidget(b)
+        bl.addLayout(nt_bar)
         self.notas_blk = QLabel("—"); self.notas_blk.setObjectName("readbox"); self.notas_blk.setWordWrap(True)
         self.notas_blk.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         bl.addWidget(self.notas_blk)
+        self.notas_ed = QTextEdit(); self.notas_ed.setObjectName("readbox")
+        self.notas_ed.setMinimumHeight(110)
+        self.notas_ed.setPlaceholderText("Observação da OS…")
+        bl.addWidget(self.notas_ed)
+        self._editando_nota = False
+        # nasce apagado: antes de a OS carregar não se sabe o status nem quantas tarefas ela tem, e
+        # clicar rápido abriria o editor vazio — salvar dali apagaria a observação de verdade.
+        self.b_nota_edit.setEnabled(False)
+        self.b_nota_edit.setToolTip("carregando a OS…")
+        self._nota_modo(False)
 
         # ── seletor de TAREFA (só aparece em OS com mais de uma) ──
         # A preventiva mensal abre uma tarefa por sistema — a 8709 tem 13 tarefas e 45 subtarefas.
@@ -1185,9 +1211,11 @@ class OsDetalheDialog(QDialog):
             f"Criticidade <span style='{_g}'>{d.get('criticidade') or '—'}</span>")
 
         self._notas_todas = (d.get("notas") or "").strip()
+        self._status_id = d.get("status_id")
         self._titulo_todas = d.get("descricao") or "—"
         self.titulo_blk.setText(self._titulo_todas)
         self.notas_blk.setText(self._notas_todas or "—")
+        self._nota_modo(False)          # recarregar a OS descarta uma edição não salva
 
         self._code = d.get("code") or None
         self._ativo = str(d.get("ativo") or "").strip()
@@ -1201,6 +1229,10 @@ class OsDetalheDialog(QDialog):
         subs = d.get("subtarefas") or []
         self._subs = subs
         self._tarefas = d.get("tarefas") or []
+        # depois de `_tarefas`, porque o botão depende de quantas tarefas a OS tem
+        pode, motivo = self._nota_pode_editar()
+        self.b_nota_edit.setEnabled(pode)
+        self.b_nota_edit.setToolTip(motivo)
         # o % que o diálogo de Concluir mostra é o da OS INTEIRA: concluir fecha tudo, não a
         # tarefa que estiver na tela
         self._sub_feitas = sum(1 for s in subs if s.get("feito"))
@@ -1262,6 +1294,80 @@ class OsDetalheDialog(QDialog):
         ativo = (t.get("ativo") or "").strip()
         self.notas_blk.setText(nota or ("sem observação nesta tarefa"
                                         + (" (%s)" % ativo if ativo else "")))
+
+    # ── edição da observação ────────────────────────────────────────────────────────────────
+    def _nota_modo(self, editando):
+        """Alterna leitura ↔ edição no mesmo espaço: só um dos dois widgets fica visível, senão o
+        card cresce e some com as subtarefas."""
+        self._editando_nota = bool(editando)
+        self.notas_blk.setVisible(not editando)
+        self.notas_ed.setVisible(editando)
+        self.b_nota_edit.setVisible(not editando)
+        self.b_nota_ok.setVisible(editando)
+        self.b_nota_no.setVisible(editando)
+
+    def _nota_pode_editar(self):
+        """(pode, motivo). Duas recusas, e cada uma tem uma razão medida:
+
+        · OS CONCLUÍDA/CANCELADA — o Fracttal recusa com ERROR_WO_FINISHED_BY_OTHER_USER (sondado
+          na OS 10575 em 02/09). Descobrir isso depois de digitar seria cruel.
+        · OS com VÁRIAS TAREFAS — a nota é presa à tarefa, mas o `work_orders_update` grava no
+          nível da OS. Com uma tarefa só, o teste provou que cai onde deve; com várias, não sei
+          qual receberia, e sobrescrever a observação da tarefa errada é pior que não editar."""
+        st = getattr(self, "_status_id", None)
+        if st in (3, 4):
+            return False, ("OS %s — o Fracttal não aceita mais editar a observação."
+                           % ("concluída" if st == 3 else "cancelada"))
+        if len(getattr(self, "_tarefas", []) or []) > 1:
+            return False, ("Esta OS tem %d tarefas, e cada uma tem a sua observação. A edição "
+                           "por aqui só é segura em OS de uma tarefa — use o Fracttal."
+                           % len(self._tarefas))
+        return True, "Editar a observação desta OS"
+
+    @slot_seguro
+    def _nota_editar(self, *_):
+        pode, motivo = self._nota_pode_editar()
+        if not pode:
+            QMessageBox.information(self, "Observação", motivo)
+            return
+        self.notas_ed.setPlainText(getattr(self, "_notas_todas", "") or "")
+        self._nota_modo(True)
+        self.notas_ed.setFocus()
+
+    @slot_seguro
+    def _nota_cancelar(self, *_):
+        self._nota_modo(False)
+
+    @slot_seguro
+    def _nota_salvar(self, *_):
+        novo = self.notas_ed.toPlainText().strip()
+        if novo == (getattr(self, "_notas_todas", "") or "").strip():
+            self._nota_modo(False)                     # nada mudou: não gastar uma escrita
+            return
+        self.b_nota_ok.setEnabled(False)
+        self.b_nota_ok.setText("salvando…")
+        self._w_nota = ApiWorker(api.editar_nota_os, self._wo, novo)
+        self._w_nota.ok.connect(lambda r: self._nota_gravou(r, novo))
+        self._w_nota.erro.connect(self._nota_falhou)
+        self._w_nota.start()
+
+    @slot_seguro
+    def _nota_gravou(self, r, novo):
+        self.b_nota_ok.setEnabled(True); self.b_nota_ok.setText("Salvar")
+        if not (isinstance(r, dict) and r.get("ok")):
+            QMessageBox.warning(self, "Observação",
+                                (r or {}).get("erro") or "Não consegui salvar a observação.")
+            return
+        # a API apara os espaços das pontas — guardar o que ELA gravou, não o que digitamos, senão
+        # o card mostra uma coisa e o Fracttal tem outra.
+        self._notas_todas = r.get("nota", novo)
+        self._nota_modo(False)
+        self._pintar_titulo_notas()
+
+    @slot_seguro
+    def _nota_falhou(self, e):
+        self.b_nota_ok.setEnabled(True); self.b_nota_ok.setText("Salvar")
+        QMessageBox.warning(self, "Observação", "Não consegui salvar a observação.\n%s" % str(e)[:200])
 
     def _pintar_info_tarefa(self):
         self._pintar_titulo_notas()
