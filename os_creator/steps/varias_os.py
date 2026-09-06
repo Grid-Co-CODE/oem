@@ -164,6 +164,18 @@ class VariasOSsDialog(QWidget):
         self.cb_cli = QComboBox(); self.cb_cli.currentIndexChanged.connect(self._on_cli)
         self.cb_usi = QComboBox(); self.cb_usi.currentIndexChanged.connect(self._on_usi)
         tornar_pesquisavel(self.cb_usi)
+        # VÁRIAS USINAS DO MESMO CLIENTE (Levi, 02/09). O desligamento raramente respeita a fronteira
+        # da usina: uma ocorrência na distribuidora derruba várias plantas do mesmo cliente de uma
+        # vez, e até aqui isso obrigava a refazer o COS inteiro usina por usina. Ligado, quem manda
+        # deixa de ser a usina e passa a ser o CLIENTE — a tabela lista os ativos de todas as usinas
+        # dele e a seleção para de ser zerada ao trocar de usina.
+        # Só a TELA muda: a criação já monta título e observação POR ATIVO, cada um com a usina do
+        # próprio ativo (o `por_ativo` em `_criar`), então o outro lado não precisou de nada.
+        self.chk_multi_usi = QCheckBox("Ativos de mais de uma usina deste cliente")
+        self.chk_multi_usi.setToolTip("Lista os ativos de TODAS as usinas do cliente selecionado.\n"
+                                      "Cada OS continua nascendo com a usina do seu próprio ativo.")
+        self.chk_multi_usi.setEnabled(False)          # exige um cliente escolhido — é "por cliente"
+        self.chk_multi_usi.toggled.connect(self._on_multi_usi)
         self.cb_tipo = QComboBox(); self.cb_tipo.currentIndexChanged.connect(self._refresh_ativos)
         self.busca = QLineEdit(); self.busca.setPlaceholderText("Filtrar ativo por código ou nome…")
         self.busca.addAction(QIcon(icone_pix("search", MUTED, 15)), QLineEdit.ActionPosition.LeadingPosition)
@@ -200,6 +212,7 @@ class VariasOSsDialog(QWidget):
         c_ativo.add(self._terc_row)
         c_ativo.add(self._seg_modo)
         c_ativo.add(Linha(campo("Cliente", self.cb_cli, obrig=True), campo("Usina", self.cb_usi, obrig=True)))
+        c_ativo.add(self.chk_multi_usi)
         c_ativo.add(self._lin_tipo)
         c_ativo.add(self._lbl_ativos); c_ativo.add(self._sel_bar)
         c_ativo.add(self.tbl, stretch=1); c_ativo.add(self.sel_lbl)
@@ -712,6 +725,7 @@ class VariasOSsDialog(QWidget):
         self._datas_multi.setVisible(mesmo)
         if mesmo and not self._date_rows:
             self._add_data()
+        self._sync_multi_usi()        # antes da poda abaixo: desligar o modo já reduz à usina atual
         if mesmo and len(self._checked) > 1:                  # mesmo ativo → mantém só 1 marcado
             self._checked = {next(iter(self._checked))}
             self._refresh_ativos()
@@ -813,6 +827,8 @@ class VariasOSsDialog(QWidget):
             self._fill_clientes()                                      # restaura os dropdowns
         for w in (self._lin_tipo, self._lbl_ativos, self._sel_bar, self.tbl, self.sel_lbl):
             w.setVisible(not on)
+        self.chk_multi_usi.setVisible(not on)     # em terceiros o ativo é o genérico: não há o que listar
+        self._sync_multi_usi()
         self.gen_note.setVisible(on)
         if not on:
             self._refresh_ativos()
@@ -916,11 +932,36 @@ class VariasOSsDialog(QWidget):
             self.cb_usi.setCurrentIndex(self.cb_usi.findText(cur))
         self.cb_usi.setEnabled(True); self.cb_usi.blockSignals(False)
 
+    def _sync_multi_usi(self):
+        """Liga/desliga o marcador conforme o contexto e explica POR QUE quando ele está apagado —
+        marcador cinza sem motivo faz a pessoa achar que a tela quebrou."""
+        pode = bool(self._cli()) and self._modo == 0 and not self._terceiros
+        self.chk_multi_usi.setEnabled(pode)
+        if pode:
+            self.chk_multi_usi.setToolTip("Lista os ativos de TODAS as usinas do cliente selecionado.\n"
+                                          "Cada OS continua nascendo com a usina do seu próprio ativo.")
+        elif self._terceiros:
+            self.chk_multi_usi.setToolTip("Não vale para usina de terceiros — ali o ativo é o genérico.")
+        elif self._modo != 0:
+            self.chk_multi_usi.setToolTip("Só no modo 'Vários ativos · 1 data' — no 'Mesmo ativo' "
+                                          "existe um ativo só.")
+        else:
+            self.chk_multi_usi.setToolTip("Escolha o Cliente primeiro: o modo lista as usinas DELE.")
+        if not pode and self.chk_multi_usi.isChecked():
+            self.chk_multi_usi.setChecked(False)          # dispara _on_multi_usi, que poda a seleção
+
+    @slot_seguro
+    def _on_multi_usi(self, ligado=False, *_):
+        # a poda de quem saiu da tela é do `_on_usi` — é a mesma regra dos outros caminhos, e
+        # duplicá-la aqui foi o que fez desligar o modo zerar a seleção inteira.
+        self._on_usi()
+
     @slot_seguro
     def _on_cli(self, *_):
         if self._terceiros:
             return
         self._fill_usinas()
+        self._sync_multi_usi()
         self._on_usi()
 
     @slot_seguro
@@ -935,32 +976,56 @@ class VariasOSsDialog(QWidget):
                 self.cb_cli.setCurrentIndex(self.cb_cli.findText(cart))
                 self.cb_cli.blockSignals(False)
                 self._fill_usinas()    # re-filtra a usina p/ a carteira (mantém a seleção)
-        self._checked.clear()          # troca de usina zera a seleção (não misturar ativos de usinas)
-        usi = self._usi()
+        usinas = self._usinas_alvo()
+        # UMA REGRA SÓ: o marcado é sempre um subconjunto do que a tabela pode mostrar. Ela cobre os
+        # três jeitos de a lista mudar — trocar de usina (o marcado da anterior cai fora, que é o
+        # antigo "zera a seleção"), trocar de cliente, e desligar o modo várias usinas. O que não
+        # pode acontecer, em nenhum deles, é ativo sumir da tela e continuar marcado: viraria uma OS
+        # que ninguém revisou. Antes eram duas regras concorrentes, e desligar o modo zerava tudo.
+        self._checked &= {a["id"] for a in self._assets if a.get("usina") in usinas}
         tipos = sorted({a["tipo"] for a in self._assets
-                        if a.get("usina") == usi and a.get("tipo") in cs.COS_EQUIP}) if usi else []
+                        if a.get("usina") in usinas and a.get("tipo") in cs.COS_EQUIP}) if usinas else []
         self.cb_tipo.blockSignals(True); self.cb_tipo.clear()
         self.cb_tipo.addItem("Todos os tipos"); self.cb_tipo.addItems(tipos)
         self.cb_tipo.setEnabled(bool(tipos)); self.cb_tipo.blockSignals(False)
         self._refresh_ativos()
 
+    def _multi_on(self):
+        """O modo 'várias usinas' só vale com CLIENTE escolhido e no modo 'Vários ativos · 1 data'.
+        No modo 'Mesmo ativo' só um ativo é marcado, então espalhar por usinas não significaria nada."""
+        return bool(self.chk_multi_usi.isChecked() and self._cli() and self._modo == 0
+                    and not self._terceiros)
+
+    def _usinas_alvo(self):
+        """As usinas que a tabela de ativos cobre: todas as do cliente no modo várias, senão a
+        escolhida. Devolve set() quando não há nada escolhido — a tabela fica vazia, como antes."""
+        if self._multi_on():
+            cli = self._cli()
+            return {a["usina"] for a in self._assets
+                    if a.get("usina") and a.get("tipo") in _CARTEIRA_EQUIP
+                    and cli in self._carteiras_de(a) and (self._carteiras_de(a) & self._clientes_reais)}
+        usi = self._usi()
+        return {usi} if usi else set()
+
     def _cands(self):
-        usi = self._usi()              # a usina (label único) é a chave — cliente é derivado dela
-        if not usi:
+        usinas = self._usinas_alvo()   # a usina (label único) é a chave — cliente é derivado dela
+        if not usinas:
             return []
         tipo = self.cb_tipo.currentText() if self.cb_tipo.currentIndex() > 0 else None
         txt = (self.busca.text() or "").strip().lower()
         out = []
         for a in self._assets:
-            if a.get("usina") != usi or a.get("tipo") not in ALLOWED_TIPOS:
+            if a.get("usina") not in usinas or a.get("tipo") not in ALLOWED_TIPOS:
                 continue
             if tipo and a.get("tipo") != tipo:
                 continue
             if txt and txt not in (a.get("label") or "").lower():
                 continue
             out.append(a)
-        # marcados PRIMEIRO (o ativo do clone já aparece no topo), depois alfabético
-        return sorted(out, key=lambda x: (x["id"] not in self._checked, x.get("label") or ""))
+        # marcados PRIMEIRO (o ativo do clone já aparece no topo), depois por usina e alfabético — a
+        # usina na chave só muda algo no modo várias usinas, onde ela agrupa a lista.
+        return sorted(out, key=lambda x: (x["id"] not in self._checked, x.get("usina") or "",
+                                          x.get("label") or ""))
 
     def _paint_row(self, it, chk):
         it.setForeground(QBrush(QColor("#E6EAF2") if chk else QColor(MUTED)))
@@ -969,9 +1034,15 @@ class VariasOSsDialog(QWidget):
     @slot_seguro
     def _refresh_ativos(self, *_):
         self.tbl.blockSignals(True); self.tbl.setRowCount(0)
+        multi = self._multi_on()
         for a in self._cands():
             r = self.tbl.rowCount(); self.tbl.insertRow(r)
-            it = QTableWidgetItem(a.get("label") or a.get("code") or "?")
+            rot = a.get("label") or a.get("code") or "?"
+            if multi:
+                # com ativos de várias usinas na mesma lista, 'Inversor 1.1' aparece repetido e não
+                # dá para saber qual é qual — sem a usina no rótulo a escolha vira adivinhação.
+                rot = "%s   ·   %s" % (rot, api._usina_short(a.get("usina")) or "?")
+            it = QTableWidgetItem(rot)
             it.setToolTip(a.get("label") or "")
             it.setData(Qt.ItemDataRole.UserRole, a)
             it.setFlags((it.flags() | Qt.ItemFlag.ItemIsUserCheckable) & ~Qt.ItemFlag.ItemIsEditable)
@@ -1051,7 +1122,11 @@ class VariasOSsDialog(QWidget):
             self.sel_lbl.setText(f"{n} ativo · {nd} data(s) → {nd if n else 0} OS")
             self.btn.setEnabled(bool(n and nd))
         else:
-            self.sel_lbl.setText(f"{n} ativo(s) marcado(s)")
+            # no modo várias usinas o número de OS não diz mais o tamanho do estrago: 12 ativos podem
+            # ser 12 usinas diferentes. Dizer quantas usinas é o que deixa a pessoa conferir antes.
+            nu = len({a.get("usina") for a in self._assets if a["id"] in self._checked}) \
+                if self._multi_on() else 0
+            self.sel_lbl.setText(f"{n} ativo(s) marcado(s)" + (f" · {nu} usina(s)" if nu > 1 else ""))
             self.btn.setEnabled(bool(n))
 
     # ── mapeia a ação → nome do tipo de tarefa do Fracttal ──
