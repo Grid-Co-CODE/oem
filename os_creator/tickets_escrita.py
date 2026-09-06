@@ -32,8 +32,14 @@ SHEETS_LIBERADAS = {
 
 # As abas que o pipeline AINDA sobrescreve. Não bloqueiam a escrita — avisam. A tela usa isto
 # para dizer, depois de gravar, que a planilha do OneDrive pode desfazer no próximo sync.
-# Esvaziar este conjunto é o que acontece quando o corte (ou a cópia no banco) chegar.
-SHEETS_QUE_O_SYNC_SOBRESCREVE = {123, 128}
+#
+# VAZIO desde 06/09/2026: o corte foi ligado. O `sync_gridco_api.py` passou a excluir 'Trackers' e
+# 'Strings indisp' do upload (`ABAS_DO_APP`), conferido em modo seguro — "2 aba(s) fora do upload".
+# O app virou a única origem dessas duas abas, então o aviso deixou de ser verdade e sair.
+#
+# Se o corte for desligado um dia, ESTE conjunto volta junto: sem ele a tela diz "salvo" para uma
+# edição que o próximo sync desfaz, que é pior do que não ter salvado.
+SHEETS_QUE_O_SYNC_SOBRESCREVE = set()
 
 COL_OS = "Nº OS"          # a coluna nova da fase 2; não existe nas abas de produção ainda
 

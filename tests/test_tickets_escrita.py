@@ -36,13 +36,22 @@ def test_recusa_criar_em_aba_fora_da_lista():
         esc.criar_linha(FORA_DA_LISTA, {"Usina": "TIM200"}, CABECALHO, enviar=lambda *a: None)
 
 
-def test_producao_esta_liberada_e_marcada_como_sobrescrita_pelo_sync():
-    # Levi liberou Trackers e Strings em 31/08 sabendo que o pipeline ainda sobe as duas. As
-    # duas coisas andam juntas: se um dia alguém tirar a aba da lista de "o sync sobrescreve"
-    # sem o corte ter acontecido, a tela para de avisar e o dado some sem explicação.
+def test_producao_esta_liberada_e_o_sync_nao_sobrescreve_mais():
+    """Trackers e Strings foram liberadas em 31/08 SABENDO que o pipeline ainda subia as duas, e
+    até 06/09 este teste exigia o contrário do que exige agora: que elas estivessem marcadas como
+    sobrescritas. A premissa mudou porque o CORTE foi ligado — o `sync_gridco_api.py` passou a
+    excluir as duas do upload (`ABAS_DO_APP`), conferido em modo seguro.
+
+    O acoplamento que este teste guarda continua o mesmo, só que do outro lado: as duas listas
+    têm de andar juntas. Se alguém religar o pipeline sem repor os ids aqui, a tela dirá "salvo"
+    para uma edição que o próximo sync desfaz — e o dado some sem explicação, que é exatamente o
+    que a versão anterior deste teste existia para impedir.
+
+    A conferência não dá para automatizar: o `sync_gridco_api.py` vive em outro projeto e não é
+    importável daqui. Por isso ela está escrita, e não codada."""
     for sheet_id in (123, 128):
         assert sheet_id in esc.SHEETS_LIBERADAS
-        assert sheet_id in esc.SHEETS_QUE_O_SYNC_SOBRESCREVE
+        assert sheet_id not in esc.SHEETS_QUE_O_SYNC_SOBRESCREVE
     reg = []
     esc.gravar_linha(123, 9, {"Usina": "TIM200"}, CABECALHO, enviar=_enviar_falso(reg))
     assert reg and reg[0][1] == 123

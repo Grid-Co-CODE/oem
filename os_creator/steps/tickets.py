@@ -15,15 +15,15 @@ acontecem em dado real hoje. Não é bug — é a tela pronta para a fase 2 sem 
 import re
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, QTimer, QDate, QTime
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import Qt, QTimer, QDate, QTime, QRectF, QEvent
+from PyQt6.QtGui import QColor, QPainter, QPen, QPainterPath, QFont, QFontMetrics
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QFrame, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
                              QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget, QScrollBar,
                              QStyledItemDelegate, QStyleOptionViewItem,
-                             QTimeEdit)
+                             QTimeEdit, QToolTip)
 
 import api
 import tickets_api
@@ -42,6 +42,23 @@ from workers import ApiWorker, slot_seguro
 _LIMITE_TABELA = 400
 
 # Cores escolhidas pelo Levi em 31/08 para a tabela.
+# O DESENHO DA TABELA mudou em 06/09 para o estilo que o Levi trouxe de referencia: sem linha
+# vertical, horizontais finas e RECUADAS nas pontas, cabecalho sem preenchimento. A cor da grade
+# saiu do cinza forte para um tom discreto -- com a grade fechada ela precisava marcar as celulas;
+# agora ela so' separa linhas, e gritar seria ruido.
+_LINHA = "#232C42"        # a divisoria horizontal e a borda
+_RECUO_LINHA = 14         # quanto ela se afasta de cada ponta
+_ALTURA_LINHA = 38        # a linha respira mais: era 30
+# O padding do QSS que o ResizeToContents NAO conta. Sem somar isto, o Qt mede so' o
+# texto, a coluna nasce 24px estreita demais e o conteudo sai elidido -- foi o que
+# transformou 'Santarem 1' em 'Santar...' e 'RESUMO INCIDENTE' em 'UMO INCIDE'.
+# A FOLGA por cima do texto medido. Nao e' so' o `padding` do QSS (4px de cada lado):
+# o Qt reserva margem propria dentro do item, e o retangulo que sobra para o texto e'
+# menor que a largura da coluna em cerca de 16px. Medido com 14 o texto ainda saia
+# elidido apesar de a conta dizer que cabia -- 22 e' o valor em que parou de cortar.
+_PAD_CELULA = 22
+_LARG_MINIMA = 58        # nenhuma coluna encolhe abaixo disto no encaixe
+
 _REALCE = "#A27D3F"      # a linha clicada, inteira
 _GRADE = "#818487"       # as linhas da grade e as bordas (Levi, 31/08)
 _TINTA_REALCE = "#141824"  # o texto sobre o dourado; ver _pintar_selecao
@@ -109,7 +126,7 @@ _EXTRA_COL = {
 }
 
 # a ordem das colunas da tabela; as extras entram depois da Usina
-_FIXAS_ANTES = ["", "Usina"]
+_FIXAS_ANTES = ["Usina"]      # a tarja de estado saiu da tabela em 06/09: virou widget ao lado
 # "Resumo incidente" é o NOME DA COLUNA (Levi, 31/08); o dado continua sendo a coluna
 # 'Causa raiz' da planilha — por isso o de-para logo abaixo.
 _ROTULO_CAUSA = "Resumo incidente"
@@ -698,6 +715,110 @@ def _rotulado(rotulo, widget, dica=None, cor_dica=GREEN):
     return w
 
 
+class _BordaPorCima(QWidget):
+    """A borda arredondada da tabela, desenhada POR CIMA das células e do cabeçalho.
+
+    Levi, 06/09: "a ponta ainda está sendo comida um pouquinho, como se o fundo do cabeçalho
+    estivesse passando por cima da linha — a linha deve estar na frente das células e cabeçalhos".
+    É exatamente isso. O Qt pinta o pai e SÓ DEPOIS os filhos; o fundo do cabeçalho é opaco, e num
+    canto arredondado o arco entra bem mais do que 1px para dentro. Então, por mais margem que a
+    moldura tivesse, o cabeçalho sempre comia um naco da curva. Não é ajuste de folha de estilo:
+    é ordem de pintura.
+
+    Como filho declarado por último, este widget pinta depois de todo mundo — a linha fica na
+    frente. Ele não recebe clique nenhum (`WA_TransparentForMouseEvents`), então a tabela debaixo
+    continua respondendo normalmente.
+
+    O canto QUADRADO da tabela continua existindo por fora do arco, e some porque o painel atrás
+    é da mesma cor do fundo da tabela. Por isso aqui não há máscara: `setMask` recorta sem
+    suavização e devolveria a serrilha que a curva antialiasada acabou de resolver."""
+
+    def __init__(self, pai, cor, raio=10):
+        super().__init__(pai)
+        self._cor = QColor(cor)
+        self._raio = raio
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    GROSSURA_FITA = 3.0
+
+    def paintEvent(self, _e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        caneta = QPen(self._cor)
+        caneta.setWidthF(1.0)
+        p.setPen(caneta)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        # meio pixel para dentro: sem isso a caneta de 1px fica montada na aresta e sai com meia
+        # intensidade dos dois lados, o que lê como borda apagada.
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5),
+                          self._raio, self._raio)
+        self._fita_de_estado(p)
+
+    def _fita_de_estado(self, p):
+        """A COR DO ESTADO NA ARESTA ESQUERDA (Levi, 06/09: "pode inserir as cores laterais nas
+        bordas"). A tarja deixou de ser um objeto solto ao lado e virou parte do contorno.
+
+        As pontas são arredondadas e o desenho é RECORTADO nelas: no primeiro esboço a fita
+        terminava em corte seco contra a borda de 1px, e o degrau lia como defeito.
+
+        A fita para antes das CURVAS de propósito — ali a aresta deixa de ser vertical, e emendar
+        a cor de uma linha no meio do arco também lia como defeito."""
+        tab = getattr(self, "_tab", None)
+        cor_de = getattr(self, "_cor_da_linha", None)
+        if tab is None or cor_de is None or not tab.rowCount():
+            return
+        topo = tab.horizontalHeader().height()
+        ult = tab.rowCount() - 1
+        y_ini = max(float(topo + tab.rowViewportPosition(0)), float(self._raio))
+        y_fim = min(float(topo + tab.rowViewportPosition(ult) + tab.rowHeight(ult)),
+                    float(self.height() - self._raio))
+        if y_fim - y_ini < 6:
+            return
+        fita = QPainterPath()
+        fita.addRoundedRect(QRectF(0.5, y_ini, self.GROSSURA_FITA, y_fim - y_ini),
+                            self.GROSSURA_FITA / 2, self.GROSSURA_FITA / 2)
+        p.save()
+        p.setClipPath(fita)
+        p.setPen(Qt.PenStyle.NoPen)
+        for r in range(tab.rowCount()):
+            cor = cor_de(r)
+            if not cor:
+                continue
+            p.setBrush(QColor(cor))
+            p.drawRect(QRectF(0.0, float(topo + tab.rowViewportPosition(r)),
+                              self.GROSSURA_FITA + 1.0, float(tab.rowHeight(r))))
+        p.restore()
+
+
+class _MolduraTabela(QFrame):
+    """Só existe para manter a borda de cima colada no tamanho da moldura."""
+
+    def __init__(self, cor_fundo, cor_borda, raio=10, tab=None, cor_da_linha=None):
+        super().__init__()
+        self.setStyleSheet("QFrame{background:%s;border:none;}" % cor_fundo)
+        self.borda = _BordaPorCima(self, cor_borda, raio)
+        # a borda precisa da tabela para saber onde cada linha comeca, e da funcao de cor para
+        # saber de que estado ela e'. Sao os dois dados que a antiga tarja lateral carregava.
+        self.borda._tab = tab
+        self.borda._cor_da_linha = cor_da_linha
+
+    def _encaixar(self):
+        self.borda.setGeometry(self.rect())
+        self.borda.raise_()          # por último no empilhamento = pintada por último
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._encaixar()
+
+    def showEvent(self, e):
+        # o Qt SEGURA o resizeEvent enquanto o widget está escondido: sem isto a borda ficaria no
+        # tamanho de nascença (100x30) até o primeiro redimensionamento depois de aparecer.
+        super().showEvent(e)
+        self._encaixar()
+
+
 class _Painel(QFrame):
     def __init__(self, larg=None):
         super().__init__()
@@ -723,6 +844,46 @@ _ALTURA_QSS = _ALTURA_BARRA - 2   # a folha de estilo mede o CONTEÚDO: a borda 
                         # espreme o campo quando o painel fica apertado — medido em 31/08, os
                         # campos do painel nasceram com 21px pedindo 29. Sem nenhum min-height,
                         # o Qt impõe 42 e nem a altura fixa vence. Só a dupla resolve.
+
+
+class _CabecalhoRecuado(QHeaderView):
+    """O cabeçalho da tabela: título em DUAS LINHAS quando não cabe em uma, e a divisória de baixo
+    recuada nas pontas como as das linhas.
+
+    Precisa ser classe por dois motivos, e nenhum deles o QSS resolve. O `border-bottom` do QSS
+    desenha de parede a parede e não aceita recuo. E o Qt desenha o título do cabeçalho em UMA
+    linha só, elidindo o que não couber — foi assim que "ATIVO VINCULADO" virou "'O VINCUL"
+    (Levi, 06/09: "a coluna OS vinculadas está quebrada, nesse caso pode quebrar linhas").
+
+    Como o cabeçalho aqui não tem preenchimento nem divisória entre colunas, desenhá-lo por
+    inteiro à mão não custa nada: sobram o texto e a linha de baixo."""
+
+    ALTURA = 42          # duas linhas de 10px com folga
+
+    def __init__(self):
+        super().__init__(Qt.Orientation.Horizontal)
+        self.setSectionsClickable(True)
+        self.setFixedHeight(self.ALTURA)
+        # a fonte vem daqui e não do QSS: `p.font()` dentro do paintSection não enxerga a regra
+        # `QHeaderView::section`, e o título sairia no tamanho padrão do sistema.
+        f = QFont(self.font())
+        f.setPixelSize(10)
+        f.setBold(True)
+        self.setFont(f)
+
+    def paintSection(self, p, rect, idx):
+        texto = str(self.model().headerData(idx, Qt.Orientation.Horizontal) or "")
+        p.save()
+        p.setFont(self.font())
+        p.setPen(QColor(MUTED))
+        p.drawText(rect.adjusted(4, 0, -4, -3),
+                   int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap), texto)
+        ult = self.count() - 1
+        x1 = rect.left() + (_RECUO_LINHA if idx == 0 else 0)
+        x2 = rect.right() + 1 - (_RECUO_LINHA if idx == ult else 0)
+        p.setPen(QColor(_LINHA))
+        p.drawLine(x1, rect.bottom(), x2, rect.bottom())
+        p.restore()
 
 
 class _RealceDaLinha(QStyledItemDelegate):
@@ -758,9 +919,28 @@ class _RealceDaLinha(QStyledItemDelegate):
     def paint(self, painter, option, index):
         if index.row() != getattr(self._dono, "_linha_sel", -1):
             super().paint(painter, option, index)
+            self._divisoria(painter, option, index)
             return
         painter.fillRect(option.rect, QColor(_REALCE))
         super().paint(painter, option, index)
+        self._divisoria(painter, option, index)
+
+    def _divisoria(self, p, opt, idx):
+        """A linha horizontal embaixo da celula, RECUADA nas pontas (Levi, 06/09).
+
+        O `showGrid` do Qt desenha de parede a parede e nao aceita recuo. Aqui cada celula desenha
+        o seu pedaco, e as das PONTAS desenham um pedaco mais curto -- o resultado e' uma linha
+        continua que comeca e termina antes da borda, como na referencia que ele mandou."""
+        tab = self._dono.tab
+        if idx.row() >= tab.rowCount() - 1:
+            return                                # a ultima linha nao leva divisoria
+        r = opt.rect
+        x1 = r.left() + (_RECUO_LINHA if idx.column() == 0 else 0)
+        x2 = r.right() + 1 - (_RECUO_LINHA if idx.column() == tab.columnCount() - 1 else 0)
+        p.save()
+        p.setPen(QColor(_LINHA))
+        p.drawLine(x1, r.bottom(), x2, r.bottom())
+        p.restore()
 
 
 class _Segmentado(QFrame):
@@ -871,6 +1051,40 @@ QTableWidget QWidget{background:%s;}
 """ % (BORDER, MUTED, BORDER, MUTED, BG, CARD, CARD, CARD)
 
 
+def _renomear_usina(aba, ocs, codigo):
+    """Grava o CÓDIGO da usina em várias ocorrências de uma vez. → (corrigidas, falhas).
+
+    Levi, 06/09: "caso eu mude de uma, todas que têm nome igual da que eu mudei também terão de
+    mudar". Faz sentido — o nome errado é da PLANILHA, não da linha: quando 'Santarém 2' não
+    existe no cadastro, ele não existe em nenhuma das 17 linhas que o repetem, e corrigir uma a
+    uma seria 17 vezes o mesmo trabalho.
+
+    Roda na thread do worker porque cada linha custa duas viagens à API — a conferência de
+    conflito e o PUT. Com 17 linhas são 34 chamadas, e na thread da tela isso congelaria o app.
+
+    Uma linha que falha não derruba as outras: a lista de falhas volta para a tela dizer quais
+    ficaram para trás, em vez de um "não consegui" que não diz o quê."""
+    sheet_id = tickets_spec.ABAS[aba]["sheet_id"]
+    cab = tickets_api.cabecalho_de(sheet_id)
+    if not cab:
+        raise RuntimeError("não sei a ordem das colunas desta aba")
+    corrigidas, falhas = [], []
+    for oc in ocs:
+        antes = str(oc.get("Usina") or "")
+        dados = {c: oc.get(c) for c in cab if str(c or "").strip()}
+        dados["Usina"] = codigo
+        try:
+            # `base` com o nome ANTIGO: é o que a conferência de conflito compara contra o banco,
+            # e por isso ela precisa vir antes de qualquer mudança no dicionário em memória.
+            tickets_escrita.gravar_linha(sheet_id, oc.get("_row"), dados, cab,
+                                         base={"Usina": antes})
+        except Exception as e:                                   # noqa: BLE001
+            falhas.append((oc, "%s: %s" % (type(e).__name__, str(e)[:70])))
+        else:
+            corrigidas.append(oc)
+    return corrigidas, falhas
+
+
 def _carregar_aba(sheet_id):
     """As ocorrências E o diário, na mesma thread do worker.
 
@@ -896,6 +1110,9 @@ class TicketsTab(QWidget):
         self._aba = "Trackers"
         self._ocs, self._sel = [], None
         self._visiveis = []
+        # separa "ainda não chegou" de "chegou e não tem nada" — os dois deixam a tabela vazia e
+        # pedem reações opostas de quem está olhando (esperar × mexer no filtro).
+        self._carregando = True
         # (coluna, descendente). None = a ordem padrão de `ordenar_ocorrencias`: o que precisa de
         # atenção primeiro. Clicar num cabeçalho troca; clicar de novo inverte; o terceiro clique
         # devolve o padrão, para ninguém ficar preso numa ordem que não quis.
@@ -1102,49 +1319,37 @@ class TicketsTab(QWidget):
         # outline:0 + item:focus (custou tempo antes): sem isso o retângulo de foco da célula
         # clicada desenha uma borda por dentro do item e espreme o texto.
         self.tab.setStyleSheet(
-            # CARD, não `transparent`: viewport transparente cai na cor BASE da paleta do sistema,
-            # que é CLARA (#EFEFEF) — a tabela inteira ficava cinza dentro do navy. Só aparece
-            # dentro da MainWindow, porque é ela quem instala a paleta; a tela isolada não
-            # reproduzia, e foi por isso que passou em dois testes meus.
-            # o raio acompanha o card que a envolve: com o canto quadrado, a borda da tabela
-            # aparecia cortada contra o arredondado do painel (Levi, 31/08).
-            "QTableWidget{background:%s;border:1px solid %s;border-radius:10px;color:%s;"
-            "font-size:12.5px;outline:0;gridline-color:%s;}"
+            # CARD, nao `transparent`: viewport transparente cai na cor BASE da paleta do sistema,
+            # que e' CLARA (#EFEFEF) -- a tabela inteira ficava cinza dentro do navy.
+            #
+            # SEM GRADE (Levi, 06/09). A referencia que ele trouxe nao tem linha vertical nenhuma,
+            # e as horizontais nao encostam na borda. Nenhuma das duas coisas o QSS sabe fazer:
+            # quem desenha a divisoria recuada e' o `_RealceDaLinha`, e a do cabecalho e' o
+            # `_CabecalhoRecuado`. Aqui so' sobra o que e' cor e espaco.
+            "QTableWidget{background:%s;border:none;border-radius:0;color:%s;"
+            "font-size:12.5px;outline:0;}"
             "QTableWidget QWidget{background:%s;}"
-            # O CABEÇALHO ENTRA NA GRADE (Levi, 31/08). Antes ele tinha só o fio de baixo, de
-            # quando a tabela não tinha grade nenhuma; com a grade desenhada, um cabeçalho sem
-            # divisórias ficava solto das colunas que anuncia. O QHeaderView precisa da regra
-            # própria — estilizar só ::section deixa o canto arredondado do widget aparecendo.
-            "QHeaderView{background:%s;border:none;border-radius:0;}"
-            "QHeaderView::section{background:%s;color:%s;border:none;border-radius:0;"
-            "border-right:1px solid %s;border-bottom:1px solid %s;"
-            "padding:5px 4px;font-size:10px;font-weight:800;}"
-            # O EDITOR DA CÉLULA (Levi, 31/08): ao dar duplo clique na causa raiz, a caixa de
-            # digitar nascia mais alta que a linha e escorregava para baixo, invadindo a linha
-            # seguinte. O culpado é o QSS global do app, que põe padding e altura mínima em todo
-            # QLineEdit — o delegate dimensiona o editor pelo retângulo da célula, mas o mínimo
-            # do widget vence e o excedente transborda.
-            # A altura é FIXA e menor que a linha: só `min-height:0` fazia o editor encolher até
-            # a altura do texto (11px medidos) e cortar as letras de baixo. 18px de conteúdo mais
-            # as duas bordas cabem com folga na linha de 30px, e o delegate centraliza.
+            # o cabecalho perdeu o preenchimento e as divisorias: a unica linha dele e' a de
+            # baixo, e ela vem do `_CabecalhoRecuado` para nascer recuada como as outras.
+            "QHeaderView{background:transparent;border:none;}"
+            "QHeaderView::section{background:transparent;color:%s;border:none;"
+            "padding:0px 4px;font-size:10px;font-weight:800;}"
+            # O EDITOR DA CELULA (Levi, 31/08): a caixa de digitar nascia mais alta que a linha e
+            # escorregava para baixo, invadindo a seguinte. O culpado e' o QSS global do app, que
+            # poe padding e altura minima em todo QLineEdit.
             "QTableWidget QLineEdit{background:%s;color:%s;border:1px solid %s;border-radius:5px;"
             "padding:0px 5px;margin:0px;min-height:0px;font-size:12.5px;}"
-            "QTableWidget::item{padding:9px 4px;}"
+            "QTableWidget::item{padding:0px 4px;border:none;}"
             "QTableWidget::item:focus{border:none;outline:none;}"
-            # A SELEÇÃO É PINTADA POR NÓS (Levi, 31/08: "não quero que mude a cor à esquerda" e
-            # "esse laranja é feião, testa a cor grid"). Aqui o estilo é anulado: transparente
-            # nos dois lugares. Quem pinta é o `_pintar_selecao`, item a item — assim o texto de
-            # cada célula mantém a sua cor (SEM OS em vermelho, dias em alarme) e a tarja mantém
-            # a cor do estado. Deixar com o estilo repintava tudo com a cor de seleção do QSS
-            # global do app, e sobravam riscos nas divisas das células.
+            # A SELECAO E' PINTADA POR NOS (Levi, 31/08). Aqui o estilo e' anulado nos dois
+            # lugares; quem pinta e' o `_pintar_selecao`, item a item, para o texto de cada celula
+            # manter a sua cor.
             "QTableWidget{selection-background-color:transparent;}"
             "QTableWidget::item:selected{background:transparent;border:none;}"
-            % (CARD, _GRADE, TEXT, _GRADE, CARD, CARD, CARD, MUTED, _GRADE, _GRADE,
-               INPUT, TEXT, GREEN))
+            % (CARD, TEXT, CARD, MUTED, INPUT, TEXT, GREEN))
         self.tab.cellClicked.connect(self._sel_tabela)
         self.tab.horizontalHeader().setSectionsClickable(True)
         self.tab.horizontalHeader().sectionClicked.connect(self._ordenar_por)
-        self.tab.setColumnWidth(0, 14)
         self.tab.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         # QUEM ESTICA É A CAUSA RAIZ (col. 4), não a usina. Estava ao contrário: a usina esticava
         # e deixava um vão enorme entre a tarja e o texto, enquanto a causa raiz — que é o texto
@@ -1156,12 +1361,22 @@ class TicketsTab(QWidget):
         # GRADE (Levi, 31/08). Os riscos que apareciam antes na linha clicada não eram a grade
         # — eram o estilo desenhando a seleção nativa, que já está desligada. Com ela fora do
         # caminho, a grade pode voltar, e no azul que ele escolheu.
-        self.tab.setShowGrid(True)
+        self.tab.setShowGrid(False)     # a divisoria e' desenhada recuada, pelo delegate
+        # UMA LINHA SO'. Com a altura em 38px o Qt passou a caber duas linhas de texto e
+        # comecou a quebrar 'Santarem 1' no meio -- o que nao acontecia nos 30px de antes.
+        self.tab.setWordWrap(False)
+        self.tab.setHorizontalHeader(_CabecalhoRecuado())
+        self.tab.setHorizontalHeaderLabels(colunas_da_aba(self._aba))
+        self.tab.verticalHeader().setDefaultSectionSize(_ALTURA_LINHA)
         self.tab.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
         # A ROLAGEM FICA FORA DA TABELA (Levi, 31/08), colada à direita com 2px. A barra do Qt
         # mora DENTRO da área de rolagem e come a última coluna; aqui a de dentro é desligada e
         # uma barra própria, ao lado, comanda a mesma rolagem nos dois sentidos.
         self.tab.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # e a horizontal também: o `_ajustar_larguras_por_conteudo` faz as colunas somarem
+        # exatamente a largura visível, mas um pixel de arredondamento em qualquer repintura faria
+        # a barra aparecer e sumir embaixo da tabela — e ela nunca teria o que rolar.
+        self.tab.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._barra = QScrollBar(Qt.Orientation.Vertical)
         self._barra.setStyleSheet(_QSS_SCROLLBAR_SO_BARRA)
         interna = self.tab.verticalScrollBar()
@@ -1170,11 +1385,42 @@ class TicketsTab(QWidget):
                             self._barra.setPageStep(interna.pageStep()),
                             self._barra.setVisible(mx > mn)))
         interna.valueChanged.connect(self._barra.setValue)
+        interna.valueChanged.connect(
+            lambda *_: self._moldura.borda.update() if getattr(self, '_moldura', None) else None)
         self._barra.valueChanged.connect(interna.setValue)
+        # A MOLDURA — é ela que tem a borda e o raio; ver a nota no estilo da tabela. A margem de
+        # 1px é a espessura da própria borda: sem ela a tabela cobriria a linha que acabou de ser
+        # desenhada.
+        # O QUADRO DO WIDGET, não só a borda da folha (Levi, 06/09: "essa linha dupla perto do
+        # scroll não é aceitável"). Medido pixel a pixel: sobrava um traço de 2px em x=1106, um
+        # vão em 1108 e a borda da moldura em 1109 — duas linhas paralelas da mesma cor.
+        # `border:none` no QSS não derruba o frame do QAbstractScrollArea; só o setFrameShape.
+        self.tab.setFrameShape(QFrame.Shape.NoFrame)
+        moldura = _MolduraTabela(CARD, _LINHA, 10, tab=self.tab,
+                                 cor_da_linha=self._cor_da_linha)
+        mv = QVBoxLayout(moldura)
+        # margem ZERO: a borda não está mais embaixo, então não há o que preservar. Com margem, a
+        # tabela ficava 1px para dentro e reaparecia o vão que virava linha dupla.
+        mv.setContentsMargins(0, 0, 0, 0)
+        mv.setSpacing(0)
+        mv.addWidget(self.tab)
+
+        # O AVISO DE TABELA VAZIA (Levi, 05/09: "ao pré-carregar mostra um padrão muito feio de
+        # tabela"). Trocar de aba esvazia a lista e SÓ ENTÃO busca; no intervalo sobrava a grade
+        # nua, com um vão escuro do tamanho da tela. Filho do viewport para ficar abaixo do
+        # cabeçalho — sobre a área das linhas, que é o que está vazio.
+        self._vazio = QLabel("carregando ocorrências…", self.tab.viewport())
+        self._vazio.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._vazio.setStyleSheet("color:%s;font-size:12.5px;background:transparent;border:none;"
+                                  % MUTED)
+        self.tab.viewport().installEventFilter(self)
+        self._encaixar_vazio()
+
         caixa = QHBoxLayout()
         caixa.setContentsMargins(0, 0, 0, 0)
         caixa.setSpacing(2)
-        caixa.addWidget(self.tab, 1)
+        self._moldura = moldura
+        caixa.addWidget(moldura, 1)
         caixa.addWidget(self._barra)
         p.v.addLayout(caixa, 1)
         self._rodape = _lbl("—", MUTED, 11.5)
@@ -1182,7 +1428,11 @@ class TicketsTab(QWidget):
         return p
 
     def _coluna_painel(self):
-        p = _Painel(400)          # 452 não cabia com a tabela em 1366px de notebook
+        # 340, e nao 400 (Levi, 06/09: "aumente em 10% a largura dessa area e tamanho da
+        # tabela"). Os 60px saem daqui porque nao ha outra fonte de largura: a tabela e o
+        # painel dividem a mesma linha, e o resto sao margens de 16px. O 452 original ja havia
+        # sido cortado para 400 pelo mesmo motivo, em notebook de 1366.
+        p = _Painel(340)
         self._p_conteudo = QWidget()
         # A COR DO CARD, EXPLÍCITA — mesma armadilha do QScrollArea mais abaixo, e o Levi
         # apontou de novo em 31/08 ao clicar numa linha. Medido varrendo uma coluna de pixels da
@@ -1453,6 +1703,7 @@ class TicketsTab(QWidget):
     # ── dados: duas cargas independentes (ocorrências guiam a tela; catálogo só enriquece o
     # painel — se ele falhar ou demorar, a lista principal continua útil) ──────────────────
     def _carregar(self):
+        self._carregando = True
         self._sub.setText("carregando ocorrências…")
         self._buscar_ocorrencias()
         self._buscar_ativos()
@@ -1489,6 +1740,7 @@ class TicketsTab(QWidget):
     @slot_seguro
     def _falhou(self, msg):
         self._w = None
+        self._carregando = False
         self._sub.setText("não consegui carregar as ocorrências: %s" % str(msg)[:120])
         self._repintar()          # zera tiles/filtros/tabela em vez de deixá-los como estavam
 
@@ -1497,6 +1749,7 @@ class TicketsTab(QWidget):
         self._w = None
         if aba_pedida != self._aba:
             return           # resposta de uma troca de aba já abandonada — descarta
+        self._carregando = False     # depois do descarte: resposta velha nao encerra a espera
         linhas, diario = par
         ocs = []
         for row in (linhas or []):
@@ -1586,6 +1839,7 @@ class TicketsTab(QWidget):
         self._sel = None
         self._estados_filtro.clear()
         self._usina_filtro = ""
+        self._carregando = True
         self._sub.setText("carregando ocorrências…")
         self._repintar()             # esvazia lista/tiles já — não deixa a aba anterior pendurada
         self._buscar_ocorrencias()
@@ -2105,8 +2359,46 @@ class TicketsTab(QWidget):
                 cab.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
             else:
                 cab.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        self.tab.setColumnWidth(0, 14)
         self._ajustar_elasticas()
+
+    # ── a tarja de estado, ao lado da tabela ───────────────────────────────────
+    def _cor_da_linha(self, r):
+        """Cor do estado da ocorrência na linha visível `r`, ou "" quando não há linha."""
+        if 0 <= r < len(self._visiveis):
+            return tickets_spec.COR_ESTADO.get(self._visiveis[r].get("_estado"), MUTED)
+        return ""
+
+    def _dica_da_linha(self, r):
+        """O mesmo texto do painel, para o hover sobre a tarja (Levi, 31/08: a cor sozinha não se
+        explica para quem chega na tela hoje)."""
+        if not (0 <= r < len(self._visiveis)):
+            return ""
+        estado = self._visiveis[r].get("_estado")
+        return "%s — %s" % (tickets_spec.NOME_ESTADO.get(estado, estado),
+                            _TXT_AVISO.get(estado, ""))
+
+    # ── o aviso que cobre a tabela vazia ────────────────────────────────────────────────────
+    def eventFilter(self, obj, ev):
+        """Só para acompanhar o tamanho do viewport: o aviso é filho dele e precisa ser
+        reposicionado a cada redimensionamento, senão fica preso no canto ao esticar a janela."""
+        if obj is self.tab.viewport() and ev.type() == ev.Type.Resize:
+            self._encaixar_vazio()
+        return super().eventFilter(obj, ev)
+
+    def _encaixar_vazio(self):
+        if getattr(self, "_vazio", None) is not None:
+            self._vazio.setGeometry(self.tab.viewport().rect())
+
+    def _mostrar_vazio(self, texto):
+        """`texto` = mostra o aviso; None = esconde. Some sozinho assim que entra a primeira
+        linha — quem chama é o `_pinta_tabela`, que sabe quantas sobraram do filtro."""
+        if getattr(self, "_vazio", None) is None:
+            return
+        if texto:
+            self._vazio.setText(texto)
+            self._encaixar_vazio()
+            self._vazio.raise_()
+        self._vazio.setVisible(bool(texto))
 
     def _ajustar_elasticas(self):
         """O STATUS FICA COM 1/3 DA LARGURA DO RESUMO (Levi, 31/08).
@@ -2118,13 +2410,105 @@ class TicketsTab(QWidget):
         nomes = colunas_da_aba(self._aba)
         if _COL_STATUS not in nomes or _ROTULO_CAUSA not in nomes:
             return
-        sobra = self.tab.viewport().width()
+        if self.tab.rowCount() == 0:
+            self._largura_do_vazio(nomes)
+            return
+        self._ajustar_larguras_por_conteudo(nomes)
+
+    def _largura_do_vazio(self, nomes):
+        """TABELA VAZIA (Levi, 05/09: "o gráfico continua mal dimensionado").
+
+        Sem linha, as colunas encolhem até o texto do CABEÇALHO e a sobra vira quase a largura
+        inteira — o 3-para-1 despejava tudo no Resumo, que ficava monstruoso ao lado de cinco
+        colunas espremidas. Esticar todas por IGUAL, que foi minha primeira tentativa, é pior: os
+        cabeçalhos longos passam a ser cortados ("ício da ocorrênci").
+
+        Então cada coluna nasce com a largura do próprio cabeçalho — que nunca corta — e a sobra é
+        repartida por igual entre elas. A régua 3:1 volta assim que entra a primeira linha."""
+        cab = self.tab.horizontalHeader()
+        for i in range(len(nomes)):
+            cab.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        naturais = [self.tab.columnWidth(i) for i in range(len(nomes))]
+        sobra = self.tab.viewport().width() - sum(naturais)
+        for i in range(len(nomes)):
+            cab.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+        if sobra > 0 and len(nomes) > 1:
+            fatia = sobra // (len(nomes) - 1)          # a coluna 0 é a tarja, largura fixa
+            for i in range(len(nomes)):
+                self.tab.setColumnWidth(i, naturais[i] + _PAD_CELULA + fatia)
+
+    def _preciso_por_coluna(self, nomes):
+        """O que cada coluna precisa para NÃO cortar o dado: o texto mais largo entre as linhas
+        visíveis, mais o padding do QSS.
+
+        Mede o DADO, e não o cabeçalho — que é o contrário do `ResizeToContents` do Qt, que usa o
+        maior dos dois. Com os títulos em MAIÚSCULA isso ficou caro: "ATIVO VINCULADO" pede 137px
+        para uma coluna que só mostra "Sim"/"Não", e numa aba de 10 colunas em notebook de 1366 o
+        desperdício saía do dado — "Inversor 1.1" virava "Inversor …".
+
+        O cabeçalho pode elidir, e por isso ele ganhou hover: nome de coluna se aprende uma vez,
+        dado se lê toda vez."""
+        fm = self.tab.fontMetrics()
+        # A MAIOR PALAVRA do titulo tambem e' um piso. O cabecalho quebra em duas linhas, mas
+        # palavra nao quebra: numa coluna estreita "ATIVO VINCULADO" descia a segunda linha e
+        # mesmo assim elidia, virando "ATIVO / NCULAD" (Levi, 06/09). Medida com a fonte do
+        # CABECALHO, que e' menor e negrito -- a da celula daria um piso errado.
+        fmc = QFontMetrics(self.tab.horizontalHeader().font())
+        preciso = []
         for i, nome in enumerate(nomes):
-            if nome not in (_ROTULO_CAUSA, _COL_STATUS):
-                sobra -= self.tab.columnWidth(i)
-        if sobra > 240:
-            self.tab.setColumnWidth(nomes.index(_COL_STATUS), sobra // 4)
-            self.tab.setColumnWidth(nomes.index(_ROTULO_CAUSA), sobra - sobra // 4 - 2)
+            larg = 0
+            for r in range(self.tab.rowCount()):
+                it = self.tab.item(r, i)
+                if it is not None:
+                    larg = max(larg, fm.horizontalAdvance(it.text()))
+            if nome == _ROTULO_CAUSA:
+                larg = min(larg, 340)      # texto livre: passa disso e engole as outras
+            palavra = max((fmc.horizontalAdvance(w) for w in nome.upper().split()), default=0)
+            preciso.append(max(_LARG_MINIMA, larg + _PAD_CELULA, palavra + 14))
+        return preciso
+
+    def _ajustar_larguras_por_conteudo(self, nomes):
+        """A RÉGUA DA LARGURA, numa conta só.
+
+        Eram três passos brigando entre si — um media o conteúdo, outro repartia 3-para-1 entre
+        Status e Resumo, e um terceiro encaixava no viewport. O resultado dependia da ordem: o
+        encaixe crescia proporcional à largura ATUAL, então o Resumo (já o maior) levava quase
+        toda a folga e as colunas apertadas continuavam elidindo mesmo num monitor de 1920.
+
+        Agora a ordem é a que faz sentido: PRIMEIRO cada coluna recebe o que o dado pede, e só o
+        que sobrar depois disso vai para as elásticas. Faltando espaço, o corte é proporcional à
+        folga de cada uma sobre o mínimo — as largas cedem mais que as estreitas."""
+        cab = self.tab.horizontalHeader()
+        for i in range(len(nomes)):
+            cab.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+        largs = self._preciso_por_coluna(nomes)
+        vp = self.tab.viewport().width()
+        if vp <= 0:
+            return
+        sobra = vp - sum(largs)
+        if sobra > 0:
+            # A FOLGA VAI PARA AS ELÁSTICAS, 3 para 1 entre Resumo e Status (Levi, 31/08). Elas são
+            # as únicas que ganham com espaço extra: o Resumo é texto corrido e o Status precisa
+            # caber "Aguardando Condições da Planta".
+            if _ROTULO_CAUSA in nomes and _COL_STATUS in nomes:
+                i_re, i_st = nomes.index(_ROTULO_CAUSA), nomes.index(_COL_STATUS)
+                largs[i_st] += sobra // 4
+                largs[i_re] += sobra - sobra // 4
+            else:
+                largs[-1] += sobra
+        elif sobra < 0:
+            folgas = [max(0, w - _LARG_MINIMA) for w in largs]
+            total = sum(folgas) or 1
+            for i in range(len(largs)):
+                largs[i] = max(_LARG_MINIMA, largs[i] + int(sobra * folgas[i] / total))
+        # o resto da divisão vai inteiro na coluna mais larga: sem isso sobravam de 4 a 18px e a
+        # tabela transbordava, pouco, mas o bastante para cortar a última coluna.
+        resto = vp - sum(largs)
+        if resto:
+            i = max(range(len(largs)), key=lambda k: largs[k])
+            largs[i] = max(_LARG_MINIMA, largs[i] + resto)
+        for i, w in enumerate(largs):
+            self.tab.setColumnWidth(i, w)
 
     def _pinta_tabela(self):
         rot = list(colunas_da_aba(self._aba))
@@ -2135,7 +2519,16 @@ class TicketsTab(QWidget):
         if self.tab.columnCount() != len(rot):
             self.tab.setColumnCount(len(rot))
             self._ajustar_larguras()          # colunas novas nascem sem modo de redimensionar
-        self.tab.setHorizontalHeaderLabels(rot)
+        # MAIUSCULA como na referencia; a seta de ordenacao vem junto no `rot`
+        self.tab.setHorizontalHeaderLabels([r.upper() for r in rot])
+        # O CABECALHO GANHA HOVER. Em MAIUSCULA ele fica mais largo que em caixa mista
+        # ("INICIO DA OCORRENCIA" contra "Inicio da ocorrencia") e, numa aba de 10 colunas em
+        # notebook de 1366, o encaixe pode elidi-lo. Elidir cabecalho incomoda menos que elidir
+        # dado -- o nome se aprende uma vez --, mas quem chega hoje na tela precisa poder ler.
+        for i, nome in enumerate(rot):
+            it = self.tab.horizontalHeaderItem(i)
+            if it is not None:
+                it.setToolTip(nome)
         self.tab.blockSignals(True)
         self.tab.clearContents()          # descarta também os widgets de célula da tarja
         self.tab.setRowCount(0)
@@ -2143,16 +2536,10 @@ class TicketsTab(QWidget):
         for r, oc in enumerate(self._visiveis):
             estado = oc["_estado"]
             cor_estado = tickets_spec.COR_ESTADO.get(estado, MUTED)
-            tarja = QTableWidgetItem("▐")
-            # A COR EXPLICADA NO HOVER (Levi, 31/08). A tarja dizia o estado só por cor, e cor
-            # sozinha não se explica: o mesmo texto que o painel usa vira a dica aqui, então
-            # quem passa o mouse descobre sem precisar clicar na linha.
-            tarja.setToolTip("%s — %s" % (tickets_spec.NOME_ESTADO.get(estado, estado),
-                                          _TXT_AVISO.get(estado, "")))
-            # a cor da tarja é A INFORMAÇÃO: sem isto o azul de seleção a substitui e a linha
-            # escolhida some da leitura por estado (Levi, 31/08).
-            tarja.setForeground(_cor(cor_estado))
-            self.tab.setItem(r, 0, tarja)
+            # A COR virou a borda esquerda em 06/09 (quem desenha e' a `_BordaPorCima`). Como a
+            # borda nao recebe clique nem hover, a explicacao do estado passou para a PRIMEIRA
+            # celula da linha -- que e' a que fica colada na cor. Sem isso o pedido de 31/08
+            # ("ao passar o mouse nessas cores apareca o detalhamento") se perderia na mudanca.
 
             causa = oc.get("Causa raiz")
             causa_completa = str(causa).strip() if causa not in (None, "") else "aguardando técnico"
@@ -2215,9 +2602,14 @@ class TicketsTab(QWidget):
                         TEXT if st else MUTED,
                         MUTED if causa in (None, "") else TEXT, TEXT, ha_cor])
             i_causa = colunas_da_aba(self._aba).index(_ROTULO_CAUSA)
-            for c, (v, cr) in enumerate(zip(vals, cores), start=1):
+            # `start=0` desde 06/09: a tarja deixou de ser a coluna 0, então a primeira
+            # célula de dado passou a ser a coluna 0 e não mais a 1.
+            for c, (v, cr) in enumerate(zip(vals, cores)):
                 it = QTableWidgetItem(str(v))
                 it.setForeground(_cor(cr))
+                if c == 0:
+                    # a explicacao da cor, na celula que fica colada na fita de estado
+                    it.setToolTip(self._dica_da_linha(r))
                 # a cor "de verdade" da célula fica guardada: na linha marcada o texto vira
                 # escuro para se ler sobre o dourado, e ao sair da marcação ela volta.
                 it.setData(_COR_ORIGINAL, cr)
@@ -2258,6 +2650,16 @@ class TicketsTab(QWidget):
         # DEPOIS de pintar: na construção a tabela ainda não tem largura, e a conta do 1/3 saía
         # de um viewport de poucos pixels — a tabela nascia estreita, sobrando um vão à direita.
         self._ajustar_elasticas()
+        # O AVISO fica AQUI, e não em quem chamou: este é o único ponto que sabe quantas linhas
+        # de fato entraram, então qualquer caminho que repinte a tabela acerta o aviso junto.
+        # Os dois vazios pedem reações opostas — esperar, ou mexer no filtro —, e antes davam a
+        # mesma grade nua sem dizer qual era.
+        self._mostrar_vazio(None if self.tab.rowCount() else
+                            ("carregando ocorrências…" if self._carregando else
+                             "nenhuma ocorrência com estes filtros"))
+        # a fita de estado vive DENTRO da borda desde 06/09: repintar a borda repinta as cores
+        if getattr(self, "_moldura", None) is not None:
+            self._moldura.borda.update()
 
     @slot_seguro
     def _causa_editada(self, item):
@@ -2321,7 +2723,7 @@ class TicketsTab(QWidget):
         for r in (anterior, linha):
             if not (0 <= r < self.tab.rowCount()):
                 continue
-            for c in range(1, self.tab.columnCount()):     # a coluna 0 é a tarja: não se mexe
+            for c in range(self.tab.columnCount()):
                 it = self.tab.item(r, c)
                 if it is None:
                     continue
@@ -2358,19 +2760,61 @@ class TicketsTab(QWidget):
         dlg.exec()
 
     def _usina_escolhida(self, usina):
-        """Grava o CÓDIGO da usina escolhida na planilha — é a coluna 'Usina' que passa a valer.
+        """Grava o CÓDIGO da usina escolhida em TODAS as linhas que repetiam o nome errado.
 
-        Só a linha aberta: as irmãs com o mesmo nome errado ficam como estão. Corrigir todas de
-        uma vez seria uma edição em massa disparada por um clique, e sem desfazer."""
+        Duas correções de 06/09. A primeira é que isto não mostrava nada: gravava, mexia no
+        painel e não repintava a TABELA — o nome continuava vermelho e igual, e de fora parecia
+        que escolher a usina não fazia efeito nenhum.
+
+        A segunda é o alcance. Antes só a linha aberta mudava; agora mudam todas as que traziam o
+        mesmo nome, porque o nome errado é da PLANILHA e não da linha: se 'Santarém 2' não existe
+        no cadastro, não existe em nenhuma das 17 linhas que o repetem."""
         oc = self._sel
         if oc is None or not isinstance(usina, dict):
             return
-        oc["Usina"] = str(usina.get("codigo") or "").strip()
-        self._marcar_ativos([oc], self._aba)
-        self._selecionar(oc)
-        self._sujo = True
-        self._pinta_edicao()
-        self._salvar()
+        codigo = str(usina.get("codigo") or "").strip()
+        antigo = str(oc.get("Usina") or "").strip()
+        if not codigo or codigo == antigo:
+            return
+        irmas = [o for o in self._ocs if str(o.get("Usina") or "").strip() == antigo]
+        if oc not in irmas:
+            irmas.append(oc)
+        self._b_salvar.setEnabled(False)
+        self._aviso_edicao("corrigindo %d ocorrência(s) de “%s” para “%s”…"
+                           % (len(irmas), antigo, codigo), MUTED)
+        self._w_usina = ApiWorker(_renomear_usina, self._aba, irmas, codigo)
+        self._w_usina.ok.connect(lambda par, c=codigo: self._usina_gravada(par, c))
+        self._w_usina.erro.connect(self._usina_falhou)
+        self._w_usina.start()
+
+    @slot_seguro
+    def _usina_gravada(self, par, codigo):
+        corrigidas, falhas = par
+        for o in corrigidas:                 # só o que o banco aceitou entra na memória
+            o["Usina"] = codigo
+        self._marcar_ativos(corrigidas, self._aba)
+        self._b_salvar.setEnabled(True)
+        if falhas:
+            self._aviso_edicao("corrigi %d de %d — %d linha(s) não gravaram (%s)"
+                               % (len(corrigidas), len(corrigidas) + len(falhas), len(falhas),
+                                  falhas[0][1]), tickets_spec.COR_ESTADO["aberta"])
+        else:
+            # O AVISO DO SYNC só aparece se a aba AINDA for sobrescrita. O diário não protege a
+            # coluna Usina — a chave dele ('impressao') é montada com a própria usina, então
+            # corrigir o nome muda a chave e o registro deixa de casar com a linha que deveria
+            # restaurar. Com o corte de 06/09 essas abas pararam de ser sobrescritas e o conjunto
+            # ficou vazio; se alguém religar o pipeline, o aviso volta sozinho.
+            sid = tickets_spec.ABAS[self._aba]["sheet_id"]
+            resto = (" — o sync pode desfazer"
+                     if sid in tickets_escrita.SHEETS_QUE_O_SYNC_SOBRESCREVE else "")
+            self._aviso_edicao("%d ocorrência(s) corrigidas%s" % (len(corrigidas), resto), GREEN)
+        self._repintar()                     # o que faltava: sem isto a tabela não muda na tela
+
+    @slot_seguro
+    def _usina_falhou(self, msg):
+        self._b_salvar.setEnabled(True)
+        self._aviso_edicao("não consegui corrigir a usina: %s" % str(msg)[:110],
+                           tickets_spec.COR_ESTADO["aberta"])
 
     @slot_seguro
     def _abrir_ativos(self, *_):
