@@ -171,6 +171,41 @@ def _fmt_dt(v, com_hora=True):
     return d.strftime("%d/%m/%Y %H:%M" if com_hora else "%d/%m/%Y")
 
 
+def _periodo_txt(dias):
+    """O Período em UNIDADE QUE SE LÊ: dia ate 60, depois mes, depois ano.
+
+    Ate 31/08 era "%d dias" seco, e funcionava porque as ocorrencias eram recentes. Com a base
+    inteira na tela aparecem 470 e 462 dias (medido em 06/09, aba Trackers) — ninguem converte
+    isso de cabeca, e o numero deixa de dizer o que a coluna existe para dizer: se e coisa de
+    ontem ou de um ano atras.
+
+    O CORTE EM 60 DIAS, e nao em 30: 30 e o limiar do alarme vermelho e do filtro "Abertas ha
+    +30 dias". Se a unidade virasse mes exatamente ali, "31 dias" viraria "1 mes" no mesmo ponto
+    em que a linha fica vermelha, e quem varre a lista perderia a nocao de quanto passou do
+    limite. Ate 60 o dia ainda informa; dali em diante, nao.
+
+    ARREDONDA PARA BAIXO, sempre. "1 ano" com 470 dias e' menos errado que "1 ano e 4 meses"
+    dando a entender precisao que a origem nao tem — o `_dias_desde` conta dias corridos entre
+    duas datas que muitas vezes vem so com o dia, sem hora.
+    """
+    if dias is None:
+        return "—"
+    if dias < 0:
+        return "—"
+    if dias < 60:
+        return "1 dia" if dias == 1 else "%d dias" % dias
+    # UMA escada so, em meses. Contar o ano a parte (`dias // 365`) criava um degrau feio:
+    # 364 dias saia "12 meses" e 365 saia "1 ano", os dois na mesma tela.
+    meses = dias // 30
+    if meses < 12:
+        return "1 mês" if meses == 1 else "%d meses" % meses
+    anos, resto = divmod(meses, 12)
+    txt = "1 ano" if anos == 1 else "%d anos" % anos
+    if resto:
+        txt += " e %d %s" % (resto, "mês" if resto == 1 else "meses")
+    return txt
+
+
 def _dias_desde(ini, fim):
     """Dias entre o Início e o Fim (ou até agora, se ainda aberta). None quando não dá para
     calcular — mesma régua do `indisponibilidade_horas`: número plausível e errado é pior que
@@ -2577,7 +2612,9 @@ class TicketsTab(QWidget):
             # "X dias", seco (Levi, 31/08). O "há"/"durou" saiu: a coluna passou a se chamar
             # Período, e é o nome dela que diz o que o número é — em ocorrência aberta, quanto
             # tempo já corre; em encerrada, quanto durou.
-            ha_txt = "—" if dias is None else ("%d dia" % dias if dias == 1 else "%d dias" % dias)
+            # 06/09: a UNIDADE passou a acompanhar a grandeza (ver `_periodo_txt`). Com a base
+            # inteira na tela apareceram 470 dias, e nesse tamanho o dia parou de informar.
+            ha_txt = _periodo_txt(dias)
             alarme = dias is not None and dias > 30 and estado != "encerrada"
             ha_cor = tickets_spec.COR_ESTADO["aberta"] if alarme else TEXT
 
