@@ -15,7 +15,7 @@ acontecem em dado real hoje. Não é bug — é a tela pronta para a fase 2 sem 
 import re
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, QTimer, QDate, QTime, QRectF, QEvent
+from PyQt6.QtCore import Qt, QTimer, QDate, QTime, QRectF, QEvent, QObject, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen, QPainterPath, QFont, QFontMetrics
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QFrame, QLineEdit,
@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QL
                              QAbstractItemView, QScrollArea, QTextEdit, QSizePolicy,
                              QComboBox, QAbstractScrollArea, QMenu, QCalendarWidget, QScrollBar,
                              QStyledItemDelegate, QStyleOptionViewItem,
-                             QTimeEdit, QToolTip)
+                             QTimeEdit, QToolTip, QMessageBox)
 
 import api
 import tickets_api
@@ -58,6 +58,33 @@ _ALTURA_LINHA = 38        # a linha respira mais: era 30
 # elidido apesar de a conta dizer que cabia -- 22 e' o valor em que parou de cortar.
 _PAD_CELULA = 22
 _LARG_MINIMA = 58        # nenhuma coluna encolhe abaixo disto no encaixe
+
+# ── o que os diálogos dizem ────────────────────────────────────────────────────────────────
+# Aqui em cima, e não no meio do método: o texto de diálogo é a parte que mais se relê e se
+# reescreve, e enfiado dentro de um `if` de quatro níveis ele fica ilegível nos dois sentidos —
+# o código some atrás do texto, e o texto some atrás do código.
+_SEG_POR_LINHA = 0.4     # custo medido de um PUT na Gridco Performance API (07/09)
+
+_PERGUNTA_USINA = """“%s” não existe no cadastro do Fracttal — e não existe em nenhuma das %d
+ocorrências desta aba que repetem esse nome.
+
+Trocar as %d por “%s”?
+
+Leva cerca de %d segundo(s)."""
+
+_APAGAR_QUAL = """Apagar esta ocorrência da aba %s?
+
+%s
+%s
+linha %s do banco"""
+
+_APAGAR_ALCANCE = """Não tem desfazer.
+
+A linha sai da Gridco Performance API — some para todo mundo que lê esse banco, não só desta
+tela. O diário do app guarda edição, não linha apagada, e o sync da planilha não repõe mais
+estas abas.
+
+Apagar mesmo?"""
 # O piso das DUAS ELASTICAS (Resumo e Status), que e' maior: elas sao as unicas colunas de texto
 # corrido, e em 58px nao sobra palavra nenhuma. Medido: 150px cabe "Aguardando Condi" -- o
 # bastante para separar os quatro status que comecam com "Aguardando".
@@ -1108,7 +1135,16 @@ QTableWidget QWidget{background:%s;}
 """ % (BORDER, MUTED, BORDER, MUTED, BG, CARD, CARD, CARD)
 
 
-def _renomear_usina(aba, ocs, codigo):
+class _Passos(QObject):
+    """Ponte de progresso do worker para a tela.
+
+    O worker roda noutra thread, e mexer em widget de la' e' exatamente o crash que este app ja'
+    teve (ver os_creator/CLAUDE.md). Sinal resolve sem cuidado nenhum: emissor e receptor vivem em
+    threads diferentes, entao o Qt enfileira a chamada para a thread da tela sozinho."""
+    andou = pyqtSignal(int, int)
+
+
+def _renomear_usina(aba, ocs, codigo, progresso=None):
     """Grava o CÓDIGO da usina em várias ocorrências de uma vez. → (corrigidas, falhas).
 
     Levi, 06/09: "caso eu mude de uma, todas que têm nome igual da que eu mudei também terão de
@@ -1116,8 +1152,17 @@ def _renomear_usina(aba, ocs, codigo):
     existe no cadastro, ele não existe em nenhuma das 17 linhas que o repetem, e corrigir uma a
     uma seria 17 vezes o mesmo trabalho.
 
-    Roda na thread do worker porque cada linha custa duas viagens à API — a conferência de
-    conflito e o PUT. Com 17 linhas são 34 chamadas, e na thread da tela isso congelaria o app.
+    Roda na thread do worker porque cada linha custa uma viagem à API, e na thread da tela isso
+    congelaria o app.
+
+    UMA LEITURA, E NÃO UMA POR LINHA (07/09). A conferência de conflito do `gravar_linha` relê a
+    linha antes de gravar, e essa releitura é uma viagem inteira: medido, 0,40s cada. Com as 147
+    ocorrências de "Irecê 2" davam 58 segundos só conferindo, antes do primeiro PUT — e a tela
+    ficava dizendo "corrigindo…" por quase dois minutos sem nada mudar, que é o defeito que o
+    Levi viu ("não está mudando o nome novo da usina"). A aba INTEIRA sai em 1,15s.
+
+    A conferência não ficou mais fraca; ficou melhor. Antes cada linha era comparada com um
+    instante diferente do banco, e agora todas contra o mesmo retrato.
 
     Uma linha que falha não derruba as outras: a lista de falhas volta para a tela dizer quais
     ficaram para trás, em vez de um "não consegui" que não diz o quê."""
@@ -1125,20 +1170,25 @@ def _renomear_usina(aba, ocs, codigo):
     cab = tickets_api.cabecalho_de(sheet_id)
     if not cab:
         raise RuntimeError("não sei a ordem das colunas desta aba")
+    retrato = {l.get("_row"): l for l in tickets_api.listar_linhas(sheet_id)}
     corrigidas, falhas = [], []
-    for oc in ocs:
+    for i, oc in enumerate(ocs, 1):
         antes = str(oc.get("Usina") or "")
         dados = {c: oc.get(c) for c in cab if str(c or "").strip()}
         dados["Usina"] = codigo
         try:
             # `base` com o nome ANTIGO: é o que a conferência de conflito compara contra o banco,
             # e por isso ela precisa vir antes de qualquer mudança no dicionário em memória.
+            # `ler` responde do retrato; linha que sumiu vira {} e cai como conflito, que é o certo.
             tickets_escrita.gravar_linha(sheet_id, oc.get("_row"), dados, cab,
-                                         base={"Usina": antes})
+                                         base={"Usina": antes},
+                                         ler=lambda _sid, r: retrato.get(r) or {})
         except Exception as e:                                   # noqa: BLE001
             falhas.append((oc, "%s: %s" % (type(e).__name__, str(e)[:70])))
         else:
             corrigidas.append(oc)
+        if progresso is not None:
+            progresso(i, len(ocs))
     return corrigidas, falhas
 
 
@@ -1179,7 +1229,8 @@ class TicketsTab(QWidget):
         self._todos_ativos, self._por_id = [], {}
         self._ativos_prontos = False
         self._ativos_falhou = False
-        self._w = self._wa = None
+        self._w = self._wa = self._w_apagar = None
+        self._preservar = None      # (filtros, usina, linha) a devolver depois de um Atualizar
         # edicao (fase 2): _populando cala os sinais enquanto a tela preenche os campos;
         # _sujo é o que acende o Salvar e avisa que há coisa digitada sem gravar.
         self._populando = False
@@ -1270,8 +1321,42 @@ class TicketsTab(QWidget):
         cx.addWidget(self._sub)
         cab.addLayout(cx)
         cab.addStretch(1)
+        # ATUALIZAR (Levi, 07/09). A tela buscava uma vez ao abrir e nunca mais: ocorrência nova,
+        # ou o que o colega gravou da máquina dele, só aparecia fechando e abrindo o app.
+        # Fica no cabeçalho de propósito — ele é UM para as duas abas, então o botão nasce nas
+        # duas visões sem existir duas vezes.
+        self._b_atualizar = QPushButton("Atualizar")
+        self._b_atualizar.setFixedHeight(36)
+        self._b_atualizar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._b_atualizar.setStyleSheet(
+            "QPushButton{background:transparent;color:%s;border:1px solid %s;border-radius:10px;"
+            "padding:0 16px;font-size:12px;font-weight:700;}"
+            "QPushButton:hover{border-color:%s;color:%s;}"
+            "QPushButton:disabled{color:%s;border-color:%s;}"
+            % (TEXT, BORDER, GREEN, GREEN, BORDER, BORDER))
+        self._b_atualizar.clicked.connect(self._atualizar)
+        cab.addWidget(self._b_atualizar)
         self._pinta_fonte()
         return cab
+
+    @slot_seguro
+    def _atualizar(self, *_):
+        """Relê as ocorrências do banco sem sair da tela.
+
+        MANTÉM o que a pessoa estava olhando: os filtros de estado, o de usina e a linha aberta no
+        painel. Recarregar jogando isso fora obrigaria a remontar a visão a cada clique, e o botão
+        viraria um castigo em vez de um atalho.
+
+        Não busca o catálogo de ativos junto. Ele tem cache de 24h e custa uma viagem cara ao
+        Fracttal; o caso comum aqui é ocorrência nova, não ativo novo."""
+        if self._w is not None:
+            return                  # já tem uma busca em curso: clicar de novo não adianta
+        self._preservar = (set(self._estados_filtro), self._usina_filtro,
+                           (self._sel or {}).get("_row"))
+        self._carregando = True
+        self._b_atualizar.setEnabled(False)
+        self._sub.setText("atualizando…")
+        self._buscar_ocorrencias()
 
     def _campo_busca(self):
         self._busca = QLineEdit()
@@ -1646,6 +1731,23 @@ class TicketsTab(QWidget):
             "QPushButton:disabled{background:%s;color:%s;}"
             % (GREEN, GREEN_INK, _ALTURA_BARRA, _ALTURA_BARRA, INPUT, MUTED))
         self._b_salvar.clicked.connect(self._salvar)
+        # APAGAR (Levi, 07/09) fica ao lado do Salvar, porque é a outra coisa que se faz com a
+        # ocorrência aberta — mas NÃO se parece com ele: contorno vermelho e fundo vazio, contra o
+        # verde cheio do Salvar. Botão destrutivo com o mesmo peso visual do comum é convite a
+        # clique errado, e este não tem volta.
+        self._b_apagar = QPushButton("Apagar")
+        self._b_apagar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._b_apagar.setFixedHeight(_ALTURA_BARRA)
+        self._b_apagar.setStyleSheet(
+            "QPushButton{background:transparent;color:%s;border:1px solid %s;border-radius:9px;"
+            "padding:0px 14px;min-height:%dpx;max-height:%dpx;font-size:12px;font-weight:800;}"
+            "QPushButton:hover{background:%s;color:%s;}"
+            "QPushButton:disabled{color:%s;border-color:%s;}"
+            % (tickets_spec.COR_ESTADO["aberta"], tickets_spec.COR_ESTADO["aberta"],
+               _ALTURA_BARRA, _ALTURA_BARRA, tickets_spec.COR_ESTADO["aberta"], GREEN_INK,
+               BORDER, BORDER))
+        self._b_apagar.clicked.connect(self._apagar_ocorrencia)
+        acao.addWidget(self._b_apagar)
         acao.addWidget(self._b_salvar)
         v.addLayout(acao)
         v.addStretch(1)
@@ -1798,6 +1900,7 @@ class TicketsTab(QWidget):
     def _falhou(self, msg):
         self._w = None
         self._carregando = False
+        self._b_atualizar.setEnabled(True)    # senão uma falha de rede tranca o botão para sempre
         self._sub.setText("não consegui carregar as ocorrências: %s" % str(msg)[:120])
         self._repintar()          # zera tiles/filtros/tabela em vez de deixá-los como estavam
 
@@ -1838,12 +1941,32 @@ class TicketsTab(QWidget):
                 row["_dias"] = _dias_desde(ini, fim)
                 row["_horas"] = tickets_calc.indisponibilidade_horas(ini, fim)
         self._ocs = ocs
-        self._estados_filtro.clear()
-        self._usina_filtro = ""
+        # ABRIR zera os filtros; ATUALIZAR devolve o que a pessoa estava olhando. O filtro de
+        # usina só volta se aquela usina ainda existir na aba — senão a tela reabriria vazia sem
+        # dizer por quê, que é pior do que perder o filtro.
+        guardado = getattr(self, "_preservar", None)
+        self._preservar = None
+        if guardado:
+            estados, usina, _ = guardado
+            self._estados_filtro = set(estados)
+            self._usina_filtro = usina if any(o.get("Usina") == usina for o in ocs) else ""
+        else:
+            self._estados_filtro.clear()
+            self._usina_filtro = ""
+        self._b_atualizar.setEnabled(True)
         n_txt = f"{len(ocs):,}".replace(",", ".")
         self._sub.setText("Gridco Performance API · aba %s · %s ocorrências"
                           % (tickets_spec.ABAS[self._aba]["rotulo"], n_txt))
         self._repintar()
+        if guardado and guardado[2] is not None:
+            # depois do `_repintar`, que é quem monta `_visiveis`. Por `_row`, que é o que
+            # identifica a ocorrência no banco: a posição na lista muda com filtro e ordenação.
+            # Se a linha saiu do filtro ou do teto de 400, não reabre nada e o painel fica na
+            # visão geral — que é o certo, em vez de abrir a ocorrência do vizinho.
+            for r, o in enumerate(self._visiveis):
+                if o.get("_row") == guardado[2]:
+                    self._sel_tabela(r, -1)
+                    break
 
     def _marcar_ativos(self, ocs, aba):
         """Marca em cada ocorrência se ela tem ativo do Fracttal vinculado.
@@ -2189,6 +2312,7 @@ class TicketsTab(QWidget):
 
     def _pinta_edicao(self):
         self._b_salvar.setEnabled(self._sujo and self._sel is not None)
+        self._b_apagar.setEnabled(self._sel is not None)
         if self._sujo:
             self._aviso_edicao("alterações não salvas", tickets_spec.COR_ESTADO["aberta"])
             return
@@ -2887,13 +3011,94 @@ class TicketsTab(QWidget):
         irmas = [o for o in self._ocs if str(o.get("Usina") or "").strip() == antigo]
         if oc not in irmas:
             irmas.append(oc)
+        # DIZER QUANTAS ANTES DE MEXER. O alcance é o que ele pediu — o nome errado é da
+        # planilha, não da linha —, mas "Irecê 2" são 147 ocorrências, e uma escolha de dois
+        # cliques que reescreve 147 linhas do banco tem de avisar antes, não depois. Com uma
+        # linha só, perguntar seria estorvo: aí vai direto.
+        if len(irmas) > 1 and QMessageBox.question(
+                self, "Corrigir a usina",
+                _PERGUNTA_USINA % (antigo, len(irmas), len(irmas), codigo,
+                                   max(1, round(len(irmas) * _SEG_POR_LINHA))),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
+            return
         self._b_salvar.setEnabled(False)
         self._aviso_edicao("corrigindo %d ocorrência(s) de “%s” para “%s”…"
                            % (len(irmas), antigo, codigo), MUTED)
-        self._w_usina = ApiWorker(_renomear_usina, self._aba, irmas, codigo)
+        # O AVANÇO NA TELA. Sem ele, a única diferença entre "trabalhando" e "travado" era
+        # esperar até o fim — e o fim, aqui, chega um minuto depois.
+        self._passos_usina = _Passos()
+        self._passos_usina.andou.connect(self._usina_andou)
+        self._w_usina = ApiWorker(_renomear_usina, self._aba, irmas, codigo,
+                                  progresso=self._passos_usina.andou.emit)
         self._w_usina.ok.connect(lambda par, c=codigo: self._usina_gravada(par, c))
         self._w_usina.erro.connect(self._usina_falhou)
         self._w_usina.start()
+
+    @slot_seguro
+    def _usina_andou(self, i, n):
+        self._aviso_edicao("corrigindo… %d de %d" % (i, n), MUTED)
+
+    @slot_seguro
+    def _apagar_ocorrencia(self, *_):
+        """Tira a ocorrência do banco. DUAS confirmações, como ele pediu (Levi, 07/09).
+
+        Duas, e não uma, porque isto não tem desfazer em lugar nenhum: o diário do app guarda
+        EDIÇÃO e não linha apagada (ver `tickets_escrita.apagar_linha`), e desde o corte de 06/09
+        a planilha do OneDrive também não repõe mais estas abas. Apagou, acabou.
+
+        As duas perguntas fazem trabalhos diferentes — senão a segunda seria só burocracia, e
+        burocracia se clica no automático. A primeira mostra QUAL ocorrência vai sumir, com usina,
+        identificação e a linha do banco, para pegar o caso de ter clicado na linha errada. A
+        segunda diz o que ninguém vê: que o apagar alcança todo mundo que lê esse banco."""
+        oc = self._sel
+        if oc is None:
+            return
+        # a identificação sai das colunas extras da própria aba: Cabine/Tracker em Trackers,
+        # Inversor em Strings. Escrever esses nomes à mão aqui quebraria calado numa aba nova.
+        ident = " · ".join(x for x in [str(oc.get("Usina") or "").strip()]
+                           + [str(f(oc) or "").strip() for _, f in _EXTRA_COL[self._aba]] if x)
+        causa = str(oc.get("Causa raiz") or "").strip()
+        if QMessageBox.question(
+                self, "Apagar ocorrência",
+                _APAGAR_QUAL % (tickets_spec.ABAS[self._aba]["rotulo"], ident,
+                                causa[:70] or "sem causa registrada", oc.get("_row")),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        if QMessageBox.warning(
+                self, "Confirmar exclusão", _APAGAR_ALCANCE,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        self._b_apagar.setEnabled(False)
+        self._b_salvar.setEnabled(False)
+        self._aviso_edicao("apagando…", MUTED)
+        self._w_apagar = ApiWorker(tickets_escrita.apagar_linha,
+                                   tickets_spec.ABAS[self._aba]["sheet_id"], oc.get("_row"))
+        self._w_apagar.ok.connect(self._apagou)
+        self._w_apagar.erro.connect(self._apagar_falhou)
+        self._w_apagar.start()
+
+    @slot_seguro
+    def _apagou(self, *_):
+        """Recarrega do banco em vez de só tirar a linha da memória.
+
+        Tirar da lista local acertaria a tabela por acaso e erraria o resto: a contagem dos
+        tiles, o rodapé e o "ONDE ESTÃO" saem todos de `self._ocs` e ficariam um a mais para
+        sempre. Reler custa 1,15s e deixa a tela inteira dizendo a verdade."""
+        self._w_apagar = None
+        self._sujo = False
+        self._voltar_geral()
+        self._aviso_edicao("ocorrência apagada", GREEN)
+        self._atualizar()
+
+    @slot_seguro
+    def _apagar_falhou(self, msg):
+        self._w_apagar = None
+        self._b_apagar.setEnabled(True)
+        self._aviso_edicao("não consegui apagar: %s" % str(msg)[:110],
+                           tickets_spec.COR_ESTADO["aberta"])
 
     @slot_seguro
     def _usina_gravada(self, par, codigo):

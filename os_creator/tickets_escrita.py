@@ -235,6 +235,29 @@ def gravar_linha(sheet_id: int, row_number: int, dados: dict, headers: list,
     return r.json()
 
 
+def apagar_linha(sheet_id: int, row_number: int, enviar=None) -> dict:
+    """Apaga a linha da aba. NAO TEM DESFAZER — quem chama e' que confirma com quem clicou.
+
+    Por que nao ha' conferencia de conflito aqui, se o `gravar_linha` tem: a conferencia existe
+    para nao gravar por cima da edicao de outra pessoa, e ela compara CAMPO a campo. Apagar nao
+    tem campo para comparar — o que se decide e' se aquela ocorrencia deve existir, e isso e'
+    decisao de quem esta' olhando a tela, nao do estado dos campos. O que a tela faz e' recarregar
+    depois, para ninguem seguir editando uma linha que ja' nao existe.
+
+    O DIARIO NAO SALVA DISTO. Ele guarda EDICAO (`tickets_diario.CAMPOS`), nao linha apagada: um
+    registro da linha que se foi vira orfao e e' ignorado na leitura seguinte — que e' o certo,
+    porque repor campo numa ocorrencia inexistente seria pior que perde-lo."""
+    _confere_liberada(sheet_id)
+    if enviar is not None:
+        return enviar("DELETE", sheet_id, row_number, None)
+    r = requests.delete("%s/api/sheets/%s/rows/%s" % (BASE, sheet_id, row_number),
+                        headers=_cabecalho(), timeout=TIMEOUT)
+    r.raise_for_status()
+    # a API responde 200 com corpo vazio nesta rota; `r.json()` sozinho levantaria
+    # JSONDecodeError e a tela diria "nao consegui apagar" numa exclusao que deu certo.
+    return r.json() if (r.content or b"").strip() else {}
+
+
 def criar_linha(sheet_id: int, dados: dict, headers: list, enviar=None) -> dict:
     """Acrescenta uma linha. É o que roda quando uma OS é criada no Performance."""
     _confere_liberada(sheet_id)
