@@ -108,10 +108,21 @@ def _encolher(largs, idx, divida, piso):
         largs[i] = max(piso, largs[i] + int(paga * folgas[k] / total))
     return divida - paga
 
-_REALCE = "#A27D3F"      # a linha clicada, inteira
+# A LINHA CLICADA (Levi, 07/09: "estou achando o contraste muito grande").
+#
+# Era a linha inteira pintada de #A27D3F, com o texto forçado a quase-preto para se ler sobre o
+# dourado. Duas coisas davam errado. A primeira é o berro: num fundo navy uma faixa dourada de
+# ponta a ponta puxa o olho para a linha marcada e o deixa lá, e quem está varrendo a lista
+# perde o resto. A segunda é pior e era silenciosa — forçar a tinta APAGAVA o significado das
+# células: "Sem OS" em vermelho, o alarme da coluna Período e o nome de usina solto viravam
+# todos a mesma cor escura, justo na linha que a pessoa escolheu olhar de perto.
+#
+# Agora o fundo é o mesmo dos campos, e quem marca é um fio dourado em cima e embaixo. O
+# dourado continua sendo a linguagem da seleção, mas como contorno; e cada célula fica com a
+# SUA cor, que é o que ela tem a dizer.
+_REALCE = "#1A2337"      # o fundo da linha clicada — a mesma cor dos campos (INPUT)
+_FIO_REALCE = "#A27D3F"  # o fio que a marca em cima e embaixo
 _GRADE = "#818487"       # as linhas da grade e as bordas (Levi, 31/08)
-_TINTA_REALCE = "#141824"  # o texto sobre o dourado; ver _pintar_selecao
-_COR_ORIGINAL = 260        # papel do item onde a cor "de verdade" da célula fica guardada
 _VALOR_CRU = 261           # papel do item onde fica o valor do campo, sem formatação
 
 # ordem dos estados na lista: quem precisa de gente primeiro. `a_fechar` vem junto de `com_os`
@@ -1007,7 +1018,15 @@ class _RealceDaLinha(QStyledItemDelegate):
             return
         painter.fillRect(option.rect, QColor(_REALCE))
         super().paint(painter, option, index)
-        self._divisoria(painter, option, index)
+        # o fio dourado SUBSTITUI a divisória nesta linha, em vez de somar-se a ela: as duas
+        # juntas dariam um traço duplo embaixo, que é o defeito que ele já apontou ao lado da
+        # rolagem. Vai de parede a parede, sem o recuo das pontas — é contorno, não separador.
+        painter.save()
+        painter.setPen(QColor(_FIO_REALCE))
+        r = option.rect
+        painter.drawLine(r.left(), r.top(), r.right() + 1, r.top())
+        painter.drawLine(r.left(), r.bottom(), r.right() + 1, r.bottom())
+        painter.restore()
 
     def _divisoria(self, p, opt, idx):
         """A linha horizontal embaixo da celula, RECUADA nas pontas (Levi, 06/09).
@@ -1447,7 +1466,8 @@ class TicketsTab(QWidget):
         # em cada célula é feião"). Provado por experimento: com a seleção ligada o estilo
         # desenha uma barra na aresta esquerda de cada célula e repinta o texto da linha, o que
         # apagava a cor de estado da tarja. Nenhuma regra de folha derruba isso. Quem marca a
-        # linha é o `_pintar_selecao`, com o verde da Grid, e as cores de cada célula ficam.
+        # linha é o `_RealceDaLinha`, com fundo discreto e fio dourado, e as cores de cada
+        # célula ficam — ver a nota do `_REALCE`, lá em cima.
         self.tab.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._linha_sel = -1
         self.tab.setItemDelegate(_RealceDaLinha(self))
@@ -2842,9 +2862,6 @@ class TicketsTab(QWidget):
                 if c == 0:
                     # a explicacao da cor, na celula que fica colada na fita de estado
                     it.setToolTip(self._dica_da_linha(r))
-                # a cor "de verdade" da célula fica guardada: na linha marcada o texto vira
-                # escuro para se ler sobre o dourado, e ao sair da marcação ela volta.
-                it.setData(_COR_ORIGINAL, cr)
                 # tudo centralizado menos a Causa raiz (Levi, 30/08): ela é a única coluna de
                 # texto corrido e de largura variável — centralizar faria cada linha começar
                 # num ponto diferente, e o olho perde a coluna ao descer a lista.
@@ -2935,33 +2952,22 @@ class TicketsTab(QWidget):
         self._salvar()
 
     # ── seleção ──────────────────────────────────────────────────────────────────────────
-    _FUNDO_SEL = _rgba(GREEN, 0.16)
-
     def _pintar_selecao(self, linha):
-        """Marca a linha escolhida: o fundo quem pinta é o `_RealceDaLinha`; aqui vai só o texto.
+        """Diz QUAL linha está marcada. Quem desenha é o `_RealceDaLinha`.
 
-        SOBRE O DOURADO O TEXTO ESCURECE. As cores das células (Sem OS em vermelho, o alarme da
-        coluna Período) foram escolhidas para o fundo navy e somem sobre #A27D3F. A TARJA fica
-        de fora: a cor dela é a informação, e o Levi pediu explicitamente que não mude ao
-        clicar. Trocar a paleta no delegate não resolve — com folha de estilo na tabela, quem
-        decide a cor do texto é o estilo, não a paleta da opção."""
-        anterior = getattr(self, "_linha_sel", -1)
+        NÃO MEXE MAIS NA COR DO TEXTO (07/09). Ela era repintada de quase-preto na linha marcada,
+        para se ler sobre o dourado cheio, e devolvida à cor de origem ao sair — daí o papel
+        `_COR_ORIGINAL`, que guardava a cor "de verdade" de cada célula, e o bloqueio de sinais
+        em volta, porque mexer num item dispara `itemChanged`, o mesmo sinal da digitação (sem
+        ele, clicar numa linha era lido como edição e o app chegou a gravar a string "Sem OS"
+        como número de OS: 103 registros de lixo no diário).
+
+        Com o realce virando fundo discreto e fio dourado, nada disso é mais necessário: a
+        célula nasce com a cor certa no `_pinta_tabela` e ninguém a troca. Sumiram juntos o papel
+        guardado, o laço de repintura e o risco do `itemChanged` — este método não escreve mais
+        em item nenhum. Se um dia a seleção voltar a exigir tinta diferente, o bloqueio de sinais
+        volta JUNTO."""
         self._linha_sel = linha
-        # SINAIS BLOQUEADOS: mudar a cor de um item dispara `itemChanged`, o mesmo sinal da
-        # digitação. Sem isto, cada clique numa linha era lido como edição — e como a célula da
-        # OS mostra "Sem OS" enquanto o campo está vazio, o app "salvava" a string "Sem OS" como
-        # número de OS. Aconteceu de verdade: 103 registros de lixo no diário antes de eu ver.
-        self.tab.blockSignals(True)
-        for r in (anterior, linha):
-            if not (0 <= r < self.tab.rowCount()):
-                continue
-            for c in range(self.tab.columnCount()):
-                it = self.tab.item(r, c)
-                if it is None:
-                    continue
-                original = it.data(_COR_ORIGINAL) or TEXT
-                it.setForeground(_cor(_TINTA_REALCE if r == linha else original))
-        self.tab.blockSignals(False)
         self.tab.viewport().update()
 
     @slot_seguro
