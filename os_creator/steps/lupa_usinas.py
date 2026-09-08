@@ -8,11 +8,17 @@ o cadastro do Fracttal. Medido em 31/08: das duas abas, 8 nomes não casam com n
 (17 ocorrências), 'PEIII' (13), 'PEII' (12), 'Santa Bárbara I' (7) e mais quatro, 54 ocorrências
 no total. Sem casar a usina, nenhum ativo daquela linha resolve, e a ocorrência fica órfã.
 
-O QUE É GRAVADO: o CÓDIGO da usina ('TIM100'), não o nome longo do cadastro ('Thopen - Aparecida
-3 - SP'). Dois motivos: é o formato que a maioria das linhas da planilha já usa, e é por segmento
-de código que o casamento com o ativo acontece (`_codigo_bate_usina`).
+O QUE É GRAVADO: o NOME da usina, seco — 'Petrolina 3', e não o código 'PTL300' nem o nome longo
+do cadastro 'Axis - Petrolina 3 - PE'.
+
+Era o código até 08/09, por casar com o ativo pelo segmento (`_codigo_bate_usina`) e por ser o
+formato que a maioria das linhas já usava. Levi mandou trocar: "eu não quero que fique o código
+da usina, eu quero o nome da usina". O nome continua casando o ativo — `_ativos_da_usina` tenta o
+código e cai para o nome (`_nomes_de_usina_batem`), e o nome seco está contido no longo do
+cadastro. O que se perde é precisão em nome curto demais; o que se ganha é uma coluna que se lê.
 """
 import collections
+import re
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel,
@@ -24,8 +30,55 @@ from steps.ui import CARD, INPUT, BORDER, GREEN, GREEN_INK, TEXT, MUTED
 from workers import slot_seguro
 
 
+_UF = re.compile(r"^[A-Z]{2}$")
+
+
+def nome_curto(cliente, nome):
+    """"Axis - Petrolina 3 - PE" → "Petrolina 3". O nome da usina, sem o cliente e sem o estado.
+
+    É ESTE que vai para a planilha. O Fracttal guarda o nome longo porque precisa desambiguar
+    cliente; a coluna Usina sempre teve o nome seco — 'Boa Esperança do Sul 1 e 2',
+    'Piracicaba I' —, e escrever 'Axis - Petrolina 3 - PE' ali seria trocar uma grafia estranha
+    por outra.
+
+    Conservador de propósito: só tira o começo se ele for exatamente o cliente, e só tira o fim
+    se for sigla de estado. Nome fora do padrão volta inteiro — encurtar errado faria a linha
+    casar com a usina errada no `_nomes_de_usina_batem`, que é pior que um nome comprido."""
+    nome = str(nome or "").strip()
+    cliente = str(cliente or "").strip()
+    partes = [p.strip() for p in nome.split(" - ")]
+    if len(partes) >= 2 and cliente and partes[0].casefold() == cliente.casefold():
+        partes = partes[1:]
+    if len(partes) >= 2 and _UF.match(partes[-1]):
+        partes = partes[:-1]
+    return " - ".join(partes) or nome
+
+
+def _desempatar(usinas):
+    """Nome curto que serve para DUAS usinas volta a levar o cliente na frente.
+
+    Medido no catálogo de 08/09: "Linhares 1" existe na Axis (74 ativos) e na Thopen (54). O
+    código desambiguava sozinho; o nome não. Sem isto, gravar "Linhares 1" deixaria a linha
+    apontando para duas usinas de clientes diferentes, e o `_ativos_da_usina` escolheria pela
+    ordem do catálogo — errado em silêncio, que é a classe de erro que este app não aceita.
+
+    Vale para nome CONTIDO em outro, não só igual: o casamento por nome usa substring, então
+    "Cabine 1" alcança "Cabine 1 TESTE TESTE" do mesmo jeito.
+
+    O desempate é o nome COMPLETO do cadastro, e não "cliente + curto" colado. Colar parecia mais
+    bonito e quebrou três: 'Solier - Cascavel' virou 'Solier Qair - Solier - Cascavel', que não
+    existe em ativo nenhum — o nome do cadastro nem sempre tem a forma "Cliente - Nome - UF". O
+    nome completo casa por construção: ele É o campo do ativo."""
+    def n(u):
+        return api._norm_txt(u["curto"])
+    empatados = [u for u in usinas
+                 if any(o is not u and (n(u) == n(o) or n(u) in n(o)) for o in usinas)]
+    for u in empatados:
+        u["curto"] = u["nome"]
+
+
 def usinas_do_catalogo(ativos):
-    """[{cliente, nome, codigo, n}] — uma entrada por usina do Fracttal.
+    """[{cliente, nome, curto, codigo, n}] — uma entrada por usina do Fracttal.
 
     O código sai do `code` do ativo: é o penúltimo segmento ('THPN-SDN100-INVR1.1' → 'SDN100',
     'JCD100-INVR2.1' → 'JCD100'). O formato tem 2 ou 3 segmentos conforme o cliente ter prefixo,
@@ -47,7 +100,9 @@ def usinas_do_catalogo(ativos):
         if not cods:
             continue
         out.append({"cliente": cli or "sem cliente", "nome": nome,
+                    "curto": nome_curto(cli, nome),
                     "codigo": cods.most_common(1)[0][0], "n": len(lst)})
+    _desempatar(out)
     return sorted(out, key=lambda u: (api._norm_txt(u["cliente"]), api._norm_txt(u["nome"])))
 
 

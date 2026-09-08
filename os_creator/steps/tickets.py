@@ -3076,7 +3076,11 @@ class TicketsTab(QWidget):
         oc = self._sel
         if oc is None or not isinstance(usina, dict):
             return
-        codigo = str(usina.get("codigo") or "").strip()
+        # O NOME, não o código (Levi, 08/09: "eu quero o nome da usina, não o código"). O `curto`
+        # é o nome do cadastro sem cliente e sem UF — 'Petrolina 3' —, e volta a ser o nome
+        # completo quando duas usinas o dividem (ver lupa_usinas._desempatar). Fallback para o
+        # código só se o dicionário vier sem `curto`, o que hoje não acontece.
+        codigo = str(usina.get("curto") or usina.get("codigo") or "").strip()
         antigo = str(oc.get("Usina") or "").strip()
         if not codigo or codigo == antigo:
             return

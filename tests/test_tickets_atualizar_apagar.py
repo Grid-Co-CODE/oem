@@ -194,7 +194,7 @@ def test_worker_que_estoura_abre_caixa(caixas):
 def test_recusar_a_pergunta_avisa_em_vez_de_calar(monkeypatch):
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: _NAO))
     t = _TelaUsina()
-    t._usina_escolhida({"codigo": "PTL200", "nome": "Petrolina 2"})
+    t._usina_escolhida({"codigo": "PTL200", "nome": "Axis - Petrolina 2 - PE", "curto": "Petrolina 2"})
     assert t.avisos and "nada alterado" in t.avisos[-1]
     assert all(o["Usina"] == "PEII" for o in t._ocs[:2])
 
@@ -387,7 +387,7 @@ def test_o_check_periodico_escondido_tambem_e_renomeado(monkeypatch, renomeio):
     'Em conformidade' — que a tela não mostra, mas que repete o mesmo nome errado da planilha."""
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: _SIM))
     t = _tela_com_ocultas()
-    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Axis - Petrolina 3 - PE", "curto": "Petrolina 3"})
     mandadas = sorted(o["_row"] for o in renomeio)
     assert mandadas == [2071, 2072, 2073], "a linha escondida ficou de fora"
 
@@ -399,7 +399,7 @@ def test_a_pergunta_conta_as_escondidas_e_diz_que_elas_existem(monkeypatch, reno
     monkeypatch.setattr(QMessageBox, "question",
                         staticmethod(lambda pai, tit, txt, *a, **k: visto.setdefault("txt", txt) or _SIM))
     t = _tela_com_ocultas()
-    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Axis - Petrolina 3 - PE", "curto": "Petrolina 3"})
     assert "das 3" in visto["txt"], visto["txt"]
     assert "2 ocorrência(s) e 1 linha(s) de check periódico" in visto["txt"]
 
@@ -410,14 +410,14 @@ def test_sem_escondidas_a_pergunta_nao_fala_de_check(monkeypatch, renomeio):
                         staticmethod(lambda pai, tit, txt, *a, **k: visto.setdefault("txt", txt) or _SIM))
     t = _tela_com_ocultas()
     t._ocultas = []
-    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Axis - Petrolina 3 - PE", "curto": "Petrolina 3"})
     assert "check periódico" not in visto["txt"]
 
 
 def test_escondida_de_OUTRA_usina_nao_e_tocada(monkeypatch, renomeio):
     monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: _SIM))
     t = _tela_com_ocultas()
-    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Axis - Petrolina 3 - PE", "curto": "Petrolina 3"})
     assert all(o["_row"] != 50 for o in renomeio), "renomeou o check de TIM100"
 
 
