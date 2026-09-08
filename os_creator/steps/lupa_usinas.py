@@ -228,8 +228,11 @@ class LupaUsinas(QDialog):
         termo = api._norm_txt(self._busca.text())
         if not termo:
             return self._usinas
+        # a BUSCA continua alcançando o código e o nome longo, mesmo que a lista só mostre o
+        # curto: quem digita "GTA500" ou "SP" está procurando, não escolhendo.
         return [u for u in self._usinas
-                if termo in api._norm_txt("%s %s %s" % (u["cliente"], u["nome"], u["codigo"]))]
+                if termo in api._norm_txt("%s %s %s %s"
+                                          % (u["cliente"], u["nome"], u["curto"], u["codigo"]))]
 
     def _pintar_clientes(self):
         self._vis = self._filtradas()
@@ -254,7 +257,12 @@ class LupaUsinas(QDialog):
         self._usi_vis = [u for u in self._vis if u["cliente"] == cli]
         self._l_usi.clear()
         for u in self._usi_vis:
-            self._l_usi.addItem(QListWidgetItem("%s   ·  %s" % (u["nome"], u["codigo"])))
+            # SÓ O NOME (Levi, 08/09: "quero que apareça e salve só Guaratingueta 5"). Mostrar
+            # "Thopen - Guaratingueta 5 - SP · GTA500" e gravar "Guaratingueta 5" seria pedir
+            # para a pessoa escolher uma coisa e receber outra. O cliente já está na coluna da
+            # esquerda, e a UF não decide nada aqui. Quem tem xará continua com o nome completo,
+            # que é o que vai ser gravado também — ver `_desempatar`.
+            self._l_usi.addItem(QListWidgetItem(u["curto"]))
         self._rodape.setText("%d usina(s) · clique duas vezes para vincular" % len(self._usi_vis)
                              if self._usi_vis else "nenhuma usina neste filtro.")
 

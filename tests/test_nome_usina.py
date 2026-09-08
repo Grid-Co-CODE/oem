@@ -79,3 +79,35 @@ def test_nome_contido_em_outro_tambem_desempata():
     cat = usinas_do_catalogo([_ativo("X", "Cabine 1", "CB1-INVR1.1"),
                               _ativo("X", "Cabine 1 TESTE", "CB2-INVR1.1")])
     assert all(u["curto"] == u["nome"] for u in cat)
+
+
+# ── o que a lupa MOSTRA é o que ela GRAVA ─────────────────────────────────────────────────
+def test_a_lista_mostra_o_mesmo_texto_que_sera_gravado(qapp):
+    """Levi, 08/09: "quero que apareça e salve só Guaratingueta 5". Mostrar um texto e gravar
+    outro é pedir para a pessoa escolher uma coisa e receber outra."""
+    from steps import lupa_usinas
+    ativos = [_ativo("Thopen", "Thopen - Guaratingueta 5 - SP", "THPN-GTA500-INVR1.1"),
+              _ativo("Axis", "Axis - Petrolina 3 - PE", "PTL300-INVR1.1")]
+    escolhida = {}
+    dlg = lupa_usinas.LupaUsinas(None, ativos, lambda u: escolhida.update(u))
+    dlg._l_cli.setCurrentRow(0)
+    dlg._pintar_usinas()
+    mostrados = [dlg._l_usi.item(i).text() for i in range(dlg._l_usi.count())]
+    assert mostrados and all(" · " not in t for t in mostrados), mostrados
+    dlg._l_usi.setCurrentRow(0)
+    dlg._escolher()
+    assert escolhida["curto"] in mostrados
+    dlg.deleteLater()
+
+
+def test_a_busca_ainda_acha_pelo_codigo_e_pela_uf(qapp):
+    """A lista mostra só o nome, mas quem digita 'GTA500' está procurando, não escolhendo."""
+    from steps import lupa_usinas
+    ativos = [_ativo("Thopen", "Thopen - Guaratingueta 5 - SP", "THPN-GTA500-INVR1.1"),
+              _ativo("Axis", "Axis - Petrolina 3 - PE", "PTL300-INVR1.1")]
+    dlg = lupa_usinas.LupaUsinas(None, ativos, lambda u: None)
+    for termo in ("GTA500", "guaratingueta", "SP", "Thopen"):
+        dlg._busca.setText(termo)
+        achados = [u["codigo"] for u in dlg._filtradas()]
+        assert "GTA500" in achados, "%r não achou a usina" % termo
+    dlg.deleteLater()
