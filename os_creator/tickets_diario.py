@@ -111,10 +111,8 @@ def garantir_aba(listar=None, criar=None) -> int:
     if criar is not None:
         nova = criar(corpo)
     else:
-        r = requests.post("%s/api/workbooks/%s/sheets" % (BASE, WORKBOOK),
-                          headers=_esc._cabecalho(), json=corpo, timeout=TIMEOUT)
-        r.raise_for_status()
-        nova = r.json()
+        # pelo mesmo caminho da escrita de linha (relay ou direto) — ver tickets_escrita.criar_aba
+        nova = _esc.criar_aba(WORKBOOK, corpo)
     return _liberar(nova["id"])
 
 

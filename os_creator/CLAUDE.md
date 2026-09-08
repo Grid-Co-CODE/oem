@@ -123,3 +123,18 @@ shell. Quem grava o token na pasta real é o instalador do SharePoint (o do GitH
 
 A plataforma abre este app já preenchido via `gridos://` (ativo, OS pai e responsável). Se mudar
 o formato do link, o lado da plataforma (`plataforma/app.py`) precisa acompanhar.
+
+## Escrita dos tickets: pelo relay da plataforma
+
+Desde 07/09/2026 o app **não grava no banco com token próprio**: `tickets_escrita` manda a
+alteração para a plataforma (`/api/tickets/...`, ver `plataforma/tickets_relay.py`) com o JWT do
+login do Fracttal no header `X-Fracttal-JWT`; ela confere quem é no Fracttal, carimba o nome no
+diário e grava com o token DELA. Leitura continua direta e aberta.
+
+- A plataforma não tem endereço fixo: `url_relay()` lê a URL atual do túnel no banco
+  (`os_creator/plataforma`, chave `tunnel_url`), publicada por ela mesma a cada subida.
+- Escrita direta só com `OSC_ESCRITA_DIRETA=1` **e** token local — modo de desenvolvimento.
+- Erros com nome: `RelayRecusou` (login não aceito → pedir login), `RelayIndisponivel`
+  (plataforma/túnel fora), `EscritaBloqueada` (aba fora da lista). Todos chegam à tela.
+- Testes: `tests/test_tickets_relay_app.py` (app) e, na raiz do repositório-pai,
+  `tests/test_tickets_relay.py` + `test_tickets_relay_rotas.py` (plataforma).

@@ -17,6 +17,7 @@ Gravar numa aba fora dessa lista levanta erro em vez de tentar. É trava de cód
 """
 import io
 import os
+import time
 
 import requests
 
@@ -163,6 +164,150 @@ def _confere_liberada(sheet_id):
             "área sem ninguém perceber." % sheet_id)
 
 
+# ── por onde a escrita sai ────────────────────────────────────────────────────────────────
+# RELAY POR PADRÃO (Levi, 07/09/2026: "manda uma mensagem para um canto seguro onde tem o
+# token"). A alteração vai para a plataforma, que confere o login do Fracttal e grava com o token
+# DELA. Assim o token fica num lugar só, e o instalador do GitHub basta. Escrita direta só com
+# OSC_ESCRITA_DIRETA=1 E token local — modo de desenvolvimento, fora da distribuição.
+#
+# A plataforma não tem endereço fixo (quick tunnel do Cloudflare): ela publica a URL atual no
+# banco, em os_creator/plataforma (chave/valor), e é de lá que `url_relay` a lê — aberto.
+RELAY_DIRETO_ENV = "OSC_ESCRITA_DIRETA"
+RELAY_WORKBOOK = "os_creator"
+RELAY_ABA = "plataforma"
+RELAY_URL_TTL = 300                 # s: quanto tempo a URL lida do banco vale sem reler
+_relay = {"url": "", "quando": 0.0, "sheet": None}
+
+
+class RelayIndisponivel(RuntimeError):
+    """A plataforma não respondeu (fora do ar, túnel caído ou URL não publicada)."""
+
+
+class RelayRecusou(EscritaBloqueada):
+    """A plataforma recusou o login do Fracttal que o app mandou."""
+
+
+def _jwt() -> str:
+    # import tardio: o módulo de escrita não puxa o cliente do Fracttal só por ser importado
+    import api as _api
+    return _api.jwt_sessao()
+
+
+def url_relay(buscar=None, forcar=False, agora=None) -> str:
+    """A URL atual da plataforma, lida do banco. Cache de RELAY_URL_TTL; `forcar` relê.
+
+    `buscar(caminho) -> json` é injetável para o teste. Sem nada publicado, cai para a URL que a
+    pessoa configurou na tela de sugestões (dash_config), se houver; senão RelayIndisponivel."""
+    t = time.time() if agora is None else agora
+    if _relay["url"] and not forcar and t - _relay["quando"] < RELAY_URL_TTL:
+        return _relay["url"]
+
+    def _get(caminho):
+        if buscar is not None:
+            return buscar(caminho)
+        r = requests.get(BASE + caminho, timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+
+    url = ""
+    try:
+        sid = _relay["sheet"]
+        if sid is None:
+            abas = _get("/api/sheets")
+            abas = abas if isinstance(abas, list) else (abas or {}).get("sheets") or []
+            for a in abas:
+                if a.get("workbook_key") == RELAY_WORKBOOK and a.get("sheet_name") == RELAY_ABA:
+                    sid = a.get("id")
+                    break
+        if sid is not None:
+            _relay["sheet"] = sid
+            pag = _get("/api/sheets/%s/rows?limit=100" % sid)
+            for r in ((pag.get("rows") if isinstance(pag, dict) else pag) or []):
+                v = r.get("values") or []
+                if len(v) >= 2 and str(v[0]) == "tunnel_url":
+                    url = str(v[1] or "").strip().rstrip("/")
+    except Exception:                                    # noqa: BLE001 — cai no fallback
+        url = ""
+    if not url.startswith("http"):
+        try:
+            import api as _api
+            url = _api._dash_url(_api.load_dash_config())
+        except Exception:                                # noqa: BLE001
+            url = ""
+    if not url.startswith("http"):
+        raise RelayIndisponivel(
+            "não achei a plataforma: ela ainda não publicou a URL do túnel no banco (ou está "
+            "fora do ar). Sem ela dá para ler os tickets, mas não para gravar.")
+    _relay.update(url=url, quando=t)
+    return url
+
+
+def _resposta_do_relay(r, metodo: str):
+    """Traduz a resposta da plataforma. 401 = login recusado; 403 = aba fora da lista; 5xx =
+    plataforma ou banco fora; 2xx devolve o corpo (o eco do banco), vazio vira {}."""
+    if r.status_code == 401:
+        raise RelayRecusou("a plataforma não aceitou seu login do Fracttal: %s"
+                           % _erro_de(r))
+    if r.status_code == 403:
+        raise EscritaBloqueada("a plataforma recusou: %s" % _erro_de(r))
+    if r.status_code in (502, 503, 504):
+        raise RelayIndisponivel("a plataforma respondeu %d: %s" % (r.status_code, _erro_de(r)))
+    if r.status_code >= 400:
+        raise RuntimeError("%s pela plataforma: HTTP %d — %s" % (metodo, r.status_code, _erro_de(r)))
+    conteudo = (r.content or b"").strip()
+    return r.json() if conteudo else {}
+
+
+def _erro_de(r) -> str:
+    try:
+        j = r.json()
+        if isinstance(j, dict) and j.get("error"):
+            return str(j["error"])[:300]
+    except ValueError:
+        pass
+    return (r.text or "")[:300]
+
+
+def _relay_request(metodo: str, caminho: str, corpo):
+    """Uma chamada à plataforma com o JWT no header. Se a ligação falhar, relê a URL do banco UMA
+    vez e tenta de novo: o túnel pode ter trocado de endereço desde a última leitura."""
+    cab = {"X-Fracttal-JWT": _jwt(), "Content-Type": "application/json"}
+    for tentativa in (1, 2):
+        base = url_relay(forcar=(tentativa == 2))
+        try:
+            r = requests.request(metodo, base + caminho, headers=cab, json=corpo, timeout=TIMEOUT)
+        except requests.ConnectionError as e:
+            if tentativa == 2:
+                raise RelayIndisponivel("a plataforma não respondeu em %s: %s" % (base, str(e)[:120]))
+            continue
+        return _resposta_do_relay(r, metodo)
+
+
+def _via_plataforma(metodo: str, sheet_id: int, row_number, corpo):
+    """A implementação de `enviar` que fala com a plataforma — mesma assinatura da injetada."""
+    caminho = "/api/tickets/%s/rows" % sheet_id + ("" if row_number is None else "/%s" % row_number)
+    return _relay_request(metodo, caminho, corpo)
+
+
+def _transporte():
+    """Quem grava: None = direto (requests + _cabecalho), senão a função `enviar` do relay."""
+    if os.environ.get(RELAY_DIRETO_ENV, "").strip() == "1" and _token():
+        return None
+    return _via_plataforma
+
+
+def criar_aba(workbook: str, corpo: dict, enviar=None) -> dict:
+    """Cria uma aba nova (o diário, quando precisa de coluna nova). Pelo relay, como o resto."""
+    if enviar is not None:
+        return enviar("POST", ("workbook", workbook), None, corpo)
+    if _transporte() is None:
+        r = requests.post("%s/api/workbooks/%s/sheets" % (BASE, workbook),
+                          headers=_cabecalho(), json=corpo, timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    return _relay_request("POST", "/api/tickets/workbooks/%s/sheets" % workbook, corpo)
+
+
 def para_valores(dados: dict, headers: list) -> list:
     """{coluna: valor} → lista na ORDEM do cabeçalho, que é como a API espera.
 
@@ -247,6 +392,8 @@ def gravar_linha(sheet_id: int, row_number: int, dados: dict, headers: list,
         if mudou:
             raise ConflitoDeEdicao(mudou)
     corpo = {"values": para_valores(dados, headers), "headers": list(headers)}
+    if enviar is None:
+        enviar = _transporte()
     if enviar is not None:
         return enviar("PUT", sheet_id, row_number, corpo)
     r = requests.put("%s/api/sheets/%s/rows/%s" % (BASE, sheet_id, row_number),
@@ -268,6 +415,8 @@ def apagar_linha(sheet_id: int, row_number: int, enviar=None) -> dict:
     registro da linha que se foi vira orfao e e' ignorado na leitura seguinte — que e' o certo,
     porque repor campo numa ocorrencia inexistente seria pior que perde-lo."""
     _confere_liberada(sheet_id)
+    if enviar is None:
+        enviar = _transporte()
     if enviar is not None:
         return enviar("DELETE", sheet_id, row_number, None)
     r = requests.delete("%s/api/sheets/%s/rows/%s" % (BASE, sheet_id, row_number),
@@ -282,6 +431,8 @@ def criar_linha(sheet_id: int, dados: dict, headers: list, enviar=None) -> dict:
     """Acrescenta uma linha. É o que roda quando uma OS é criada no Performance."""
     _confere_liberada(sheet_id)
     corpo = {"values": para_valores(dados, headers), "headers": list(headers)}
+    if enviar is None:
+        enviar = _transporte()
     if enviar is not None:
         return enviar("POST", sheet_id, None, corpo)
     r = requests.post("%s/api/sheets/%s/rows" % (BASE, sheet_id),

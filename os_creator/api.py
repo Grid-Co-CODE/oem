@@ -619,6 +619,13 @@ def _login_jwt() -> str:
     return jwt
 
 
+def jwt_sessao() -> str:
+    """O JWT do login, para quem grava POR MEIO da plataforma (tickets_escrita): é a identidade
+    que o relay confere no Fracttal antes de gravar. Nome público de propósito — `_login_jwt` é
+    detalhe deste módulo, e o de escrita não deve depender de um sublinhado daqui."""
+    return _login_jwt()
+
+
 def _jwt_exp(jwt: str) -> float:
     """exp (epoch) do JWT, lendo o payload base64. 0 se não der pra ler."""
     try:
