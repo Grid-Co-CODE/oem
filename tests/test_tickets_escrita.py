@@ -36,22 +36,25 @@ def test_recusa_criar_em_aba_fora_da_lista():
         esc.criar_linha(FORA_DA_LISTA, {"Usina": "TIM200"}, CABECALHO, enviar=lambda *a: None)
 
 
-def test_producao_esta_liberada_e_o_sync_nao_sobrescreve_mais():
-    """Trackers e Strings foram liberadas em 31/08 SABENDO que o pipeline ainda subia as duas, e
-    até 06/09 este teste exigia o contrário do que exige agora: que elas estivessem marcadas como
-    sobrescritas. A premissa mudou porque o CORTE foi ligado — o `sync_gridco_api.py` passou a
-    excluir as duas do upload (`ABAS_DO_APP`), conferido em modo seguro.
+def test_producao_esta_liberada_e_o_sync_AINDA_sobrescreve():
+    """As duas listas têm de andar juntas, e este teste é o único guarda disso.
 
-    O acoplamento que este teste guarda continua o mesmo, só que do outro lado: as duas listas
-    têm de andar juntas. Se alguém religar o pipeline sem repor os ids aqui, a tela dirá "salvo"
-    para uma edição que o próximo sync desfaz — e o dado some sem explicação, que é exatamente o
-    que a versão anterior deste teste existia para impedir.
+    A premissa já virou duas vezes. Trackers e Strings foram liberadas em 31/08 sabendo que o
+    pipeline subia as duas; em 06/09 o CORTE foi ligado e o conjunto esvaziou; em 08/09 o Levi
+    desligou o corte — "o OS Creator ainda não é 100% dono dessas abas... a equipe está utilizando
+    excel ainda, pode subir os dados" — e a subida daquele dia provou o custo em número: as 189
+    linhas do Excel entraram, os nomes velhos de usina voltaram, e as duas ocorrências criadas
+    pelo app horas antes sumiram (`replace=true` troca a aba inteira).
+
+    Enquanto o Excel for a origem, o aviso é a verdade: sem estes ids a tela diz "salvo" para uma
+    edição que o próximo sync desfaz, e o dado some sem explicação.
 
     A conferência não dá para automatizar: o `sync_gridco_api.py` vive em outro projeto e não é
-    importável daqui. Por isso ela está escrita, e não codada."""
+    importável daqui. Por isso ela está escrita, e não codada — quem religar o corte tem de
+    esvaziar `SHEETS_QUE_O_SYNC_SOBRESCREVE` na mesma mexida."""
     for sheet_id in (123, 128):
         assert sheet_id in esc.SHEETS_LIBERADAS
-        assert sheet_id not in esc.SHEETS_QUE_O_SYNC_SOBRESCREVE
+        assert sheet_id in esc.SHEETS_QUE_O_SYNC_SOBRESCREVE
     reg = []
     esc.gravar_linha(123, 9, {"Usina": "TIM200"}, CABECALHO, enviar=_enviar_falso(reg))
     assert reg and reg[0][1] == 123
