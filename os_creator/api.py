@@ -3067,8 +3067,26 @@ def perf_os_nome(asset: dict, base: str) -> str:
 
 
 def _eh_tracker_generalizado(a: dict) -> bool:
-    return a.get("tipo") == "Estrutura Trackers" and \
-        "estrutura trackers" in _norm_txt(a.get("label") or a.get("description"))
+    """O ativo-pai da usina, aquele que carrega o PLANO que as OS dos trackers individuais copiam.
+
+    DUAS PALAVRAS, E NÃO A FRASE EXATA (Levi, 08/09: "não está carregando os trackers de Salto do
+    Pirapora mesmo tendo esses ativos criados"). A regra exigia 'estrutura trackers' coladas, e o
+    ativo de lá se chama 'Estrutura DE Trackers' — o `get_performance_alvos` não achava o
+    generalizado, respondia "Não achei a Estrutura Trackers desta usina" e a lista abria vazia,
+    com os 14 trackers cadastrados e invisíveis.
+
+    Medido no catálogo de 08/09, 6.909 ativos do tipo: a régua nova muda a classificação de
+    exatamente DOIS — 'SPP300-ETKR1' (Salto Pirapora 3) e 'THPN-FZL100-ETKR1' (Fazenda Limão 1),
+    os dois escritos com o 'de'. Nenhum tracker individual é engolido: eles se chamam 'Tracker
+    N.M' e não têm a palavra 'estrutura'.
+
+    E NÃO basta ter 'estrutura': quatro usinas (Ouro Branco 1, Sorocaba 1, Santana do Ipanema 1,
+    Cascavel 1) têm 'Estrutura FIXA' — são plantas sem tracker nenhum, e continuam, corretamente,
+    sem generalizado."""
+    if a.get("tipo") != "Estrutura Trackers":
+        return False
+    t = _norm_txt(a.get("label") or a.get("description"))
+    return "estrutura" in t and "tracker" in t
 
 
 def get_performance_alvos(assets_usina: list, card_frase: str) -> dict:
