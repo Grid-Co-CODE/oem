@@ -78,6 +78,14 @@ _APAGAR_QUAL = """Apagar esta ocorrência da aba %s?
 %s
 linha %s do banco"""
 
+_USINA_FALHOU = """Corrigi %d de %d ocorrência(s) — %d não gravaram.
+
+O banco respondeu:
+%s
+
+As que gravaram já estão corrigidas; as outras continuam com o nome antigo. Clique de novo no
+nome vermelho para tentar só as que faltaram."""
+
 _APAGAR_ALCANCE = """Não tem desfazer.
 
 A linha sai da Gridco Performance API — some para todo mundo que lê esse banco, não só desta
@@ -1199,13 +1207,24 @@ def _renomear_usina(aba, ocs, codigo, progresso=None):
             # `base` com o nome ANTIGO: é o que a conferência de conflito compara contra o banco,
             # e por isso ela precisa vir antes de qualquer mudança no dicionário em memória.
             # `ler` responde do retrato; linha que sumiu vira {} e cai como conflito, que é o certo.
-            tickets_escrita.gravar_linha(sheet_id, oc.get("_row"), dados, cab,
-                                         base={"Usina": antes},
-                                         ler=lambda _sid, r: retrato.get(r) or {})
+            resp = tickets_escrita.gravar_linha(sheet_id, oc.get("_row"), dados, cab,
+                                                base={"Usina": antes},
+                                                ler=lambda _sid, r: retrato.get(r) or {})
         except Exception as e:                                   # noqa: BLE001
-            falhas.append((oc, "%s: %s" % (type(e).__name__, str(e)[:70])))
+            # 160 e não 70: o pedaço útil de um erro HTTP ("401 Client Error: Unauthorized for
+            # url: …") vem depois do nome da classe, e cortado em 70 sobrava só o nome.
+            falhas.append((oc, "%s: %s" % (type(e).__name__, str(e)[:160])))
         else:
-            corrigidas.append(oc)
+            # A API ECOA A LINHA GRAVADA. Conferir o eco é o que separa "respondeu 200" de
+            # "gravou": um 200 com a usina velha no corpo seria a falha mais silenciosa possível.
+            # Levi, 07/09: a tela disse que ia corrigir PEII e o banco ficou como estava —
+            # aqui não foi o eco (provado: os PUTs nem chegaram), mas a lição vale igual.
+            eco = tickets_escrita._linha_para_dict(resp) if isinstance(resp, dict) else {}
+            if eco and str(eco.get("Usina") or "").strip() != codigo:
+                falhas.append((oc, "o banco respondeu 200 mas devolveu a usina %r"
+                               % eco.get("Usina")))
+            else:
+                corrigidas.append(oc)
         if progresso is not None:
             progresso(i, len(ocs))
     return corrigidas, falhas
@@ -3027,6 +3046,9 @@ class TicketsTab(QWidget):
                                    max(1, round(len(irmas) * _SEG_POR_LINHA))),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
+            # "Não" e Esc eram silêncio total, e silêncio depois de um diálogo que "disse que ia
+            # mudar" é indistinguível de falha (Levi, 07/09).
+            self._aviso_edicao("nada alterado — a usina continua “%s”" % antigo, MUTED)
             return
         self._b_salvar.setEnabled(False)
         self._aviso_edicao("corrigindo %d ocorrência(s) de “%s” para “%s”…"
@@ -3117,6 +3139,13 @@ class TicketsTab(QWidget):
             self._aviso_edicao("corrigi %d de %d — %d linha(s) não gravaram (%s)"
                                % (len(corrigidas), len(corrigidas) + len(falhas), len(falhas),
                                   falhas[0][1]), tickets_spec.COR_ESTADO["aberta"])
+            # EM CAIXA, não só no rodapé do painel (Levi, 07/09: "disse que ia mudar só que não
+            # mudou nada"). A falha ficava num texto pequeno no fim do painel, ele saiu da tela
+            # achando que tinha gravado, e o motivo se perdeu — sem ele não dá para consertar
+            # nada. Erro que deixa de reescrever o banco precisa PARAR a pessoa e dizer o porquê.
+            QMessageBox.warning(self, "Corrigir a usina",
+                                _USINA_FALHOU % (len(corrigidas), len(corrigidas) + len(falhas),
+                                                 len(falhas), falhas[0][1]))
         else:
             # O AVISO DO SYNC só aparece se a aba AINDA for sobrescrita. O diário não protege a
             # coluna Usina — a chave dele ('impressao') é montada com a própria usina, então
@@ -3128,12 +3157,20 @@ class TicketsTab(QWidget):
                      if sid in tickets_escrita.SHEETS_QUE_O_SYNC_SOBRESCREVE else "")
             self._aviso_edicao("%d ocorrência(s) corrigidas%s" % (len(corrigidas), resto), GREEN)
         self._repintar()                     # o que faltava: sem isto a tabela não muda na tela
+        # E RELÊ O BANCO. A memória diz o que o app ACHA que gravou; a tela tem de mostrar o que
+        # o banco TEM. Se os dois discordarem, é aqui que a pessoa vê — e não dias depois, ao
+        # abrir a tela e encontrar o nome velho de volta.
+        self._atualizar()
 
     @slot_seguro
     def _usina_falhou(self, msg):
         self._b_salvar.setEnabled(True)
         self._aviso_edicao("não consegui corrigir a usina: %s" % str(msg)[:110],
                            tickets_spec.COR_ESTADO["aberta"])
+        # em caixa, pelo mesmo motivo do `_usina_gravada`: o rodapé do painel não segura ninguém
+        QMessageBox.warning(self, "Corrigir a usina",
+                            "Não consegui corrigir a usina. Nada foi gravado.\n\n%s"
+                            % str(msg)[:400])
 
     @slot_seguro
     def _abrir_ativos(self, *_):

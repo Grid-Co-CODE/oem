@@ -99,6 +99,101 @@ def test_uma_linha_que_falha_nao_derruba_as_outras(monkeypatch, espiao):
     assert falhas[0][0]["_row"] == 2
 
 
+# ── o eco da API: "respondeu 200" não é "gravou" ───────────────────────────────────────────
+def _gravar_ecoando(usina_devolvida):
+    def gravar(sheet_id, row_number, dados, headers, base=None, enviar=None, ler=None):
+        return {"headers": ["", "Usina"], "values": ["", usina_devolvida]}
+    return gravar
+
+
+def test_eco_com_a_usina_velha_conta_como_falha(monkeypatch, espiao):
+    """Levi, 07/09: a tela disse que corrigiu e o banco ficou como estava. Um 200 com a usina
+    velha no corpo seria a forma mais silenciosa de isso acontecer — e passava batido."""
+    monkeypatch.setattr(tk.tickets_escrita, "gravar_linha", _gravar_ecoando("PEII"))
+    corrigidas, falhas = tk._renomear_usina("Strings", [_oc(154, usina="PEII")], "PTL200")
+    assert corrigidas == [] and len(falhas) == 1
+    assert "PEII" in falhas[0][1]
+
+
+def test_eco_com_a_usina_nova_conta_como_corrigida(monkeypatch, espiao):
+    monkeypatch.setattr(tk.tickets_escrita, "gravar_linha", _gravar_ecoando("PTL200"))
+    corrigidas, falhas = tk._renomear_usina("Strings", [_oc(154, usina="PEII")], "PTL200")
+    assert len(corrigidas) == 1 and falhas == []
+
+
+def test_resposta_sem_eco_nao_e_tratada_como_falha(espiao):
+    """Um `enviar` injetado (ou uma API que responda vazio) não pode virar 'não gravou'."""
+    corrigidas, falhas = tk._renomear_usina("Strings", [_oc(154, usina="PEII")], "PTL200")
+    assert len(corrigidas) == 1 and falhas == []
+
+
+# ── a falha PARA a pessoa: caixa, não só rodapé ────────────────────────────────────────────
+class _TelaUsina:
+    """O bastante de `TicketsTab` para os três desfechos do renomear."""
+    _usina_gravada = tk.TicketsTab._usina_gravada.__wrapped__
+    _usina_falhou = tk.TicketsTab._usina_falhou.__wrapped__
+    _usina_escolhida = tk.TicketsTab._usina_escolhida
+
+    def __init__(self):
+        self._aba = "Strings"
+        self._sel = _oc(154, usina="PEII")
+        self._ocs = [self._sel, _oc(155, usina="PEII"), _oc(9, usina="TIM100")]
+        self._b_salvar = type("B", (), {"setEnabled": lambda *_: None})()
+        self.avisos, self.relidas, self.repintadas = [], 0, 0
+
+    def _aviso_edicao(self, txt, cor):
+        self.avisos.append(txt)
+
+    def _marcar_ativos(self, ocs, aba):
+        pass
+
+    def _repintar(self):
+        self.repintadas += 1
+
+    def _atualizar(self):
+        self.relidas += 1
+
+
+@pytest.fixture
+def caixas(monkeypatch):
+    vistas = []
+    monkeypatch.setattr(QMessageBox, "warning",
+                        staticmethod(lambda pai, titulo, texto, *a, **k: vistas.append(texto) or _SIM))
+    return vistas
+
+
+def test_linha_que_nao_gravou_abre_caixa_com_o_motivo(caixas):
+    t = _TelaUsina()
+    t._usina_gravada(([t._ocs[0]], [(t._ocs[1], "HTTPError: 401 Client Error: Unauthorized")]),
+                     "PTL200")
+    assert len(caixas) == 1, "a falha ficou só no rodapé do painel"
+    assert "401" in caixas[0], "a caixa não diz o motivo"
+    assert "1 de 2" in caixas[0]
+
+
+def test_sucesso_nao_abre_caixa_mas_RELE_o_banco(caixas):
+    """A memória diz o que o app acha que gravou; a tela tem de mostrar o que o banco tem."""
+    t = _TelaUsina()
+    t._usina_gravada((list(t._ocs[:2]), []), "PTL200")
+    assert caixas == []
+    assert t.relidas == 1
+    assert all(o["Usina"] == "PTL200" for o in t._ocs[:2])
+
+
+def test_worker_que_estoura_abre_caixa(caixas):
+    t = _TelaUsina()
+    t._usina_falhou("RuntimeError: não sei a ordem das colunas desta aba")
+    assert len(caixas) == 1 and "colunas" in caixas[0]
+
+
+def test_recusar_a_pergunta_avisa_em_vez_de_calar(monkeypatch):
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: _NAO))
+    t = _TelaUsina()
+    t._usina_escolhida({"codigo": "PTL200", "nome": "Petrolina 2"})
+    assert t.avisos and "nada alterado" in t.avisos[-1]
+    assert all(o["Usina"] == "PEII" for o in t._ocs[:2])
+
+
 # ── apagar: as DUAS confirmações ───────────────────────────────────────────────────────────
 class _TelaFalsa:
     """O bastante de `TicketsTab` para o caminho do apagar. Instanciar a tela inteira puxaria a
