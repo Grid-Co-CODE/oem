@@ -65,12 +65,17 @@ _LARG_MINIMA = 58        # nenhuma coluna encolhe abaixo disto no encaixe
 # o código some atrás do texto, e o texto some atrás do código.
 _SEG_POR_LINHA = 0.4     # custo medido de um PUT na Gridco Performance API (07/09)
 
+# LINHAS, e não "ocorrências": desde 08/09 a correção alcança também as linhas 'Em conformidade',
+# que são check periódico e a tela não mostra. Chamá-las de ocorrência seria mentir no número que
+# a pessoa usa para decidir.
 _PERGUNTA_USINA = """“%s” não existe no cadastro do Fracttal — e não existe em nenhuma das %d
-ocorrências desta aba que repetem esse nome.
+linhas desta aba que repetem esse nome%s.
 
 Trocar as %d por “%s”?
 
 Leva cerca de %d segundo(s)."""
+
+_DETALHE_CHECKS = " (%d ocorrência(s) e %d linha(s) de check periódico, que a tela não lista)"
 
 _APAGAR_QUAL = """Apagar esta ocorrência da aba %s?
 
@@ -1262,6 +1267,9 @@ class TicketsTab(QWidget):
         self._on_voltar = on_voltar
         self._aba = "Trackers"
         self._ocs, self._sel = [], None
+        # as linhas 'Em conformidade' que a tabela não mostra. Guardadas porque o nome da usina
+        # nelas é o mesmo da planilha, e corrigir só o visível deixa a correção pela metade.
+        self._ocultas = []
         self._visiveis = []
         # separa "ainda não chegou" de "chegou e não tem nada" — os dois deixam a tabela vazia e
         # pedem reações opostas de quem está olhando (esperar × mexer no filtro).
@@ -1959,6 +1967,12 @@ class TicketsTab(QWidget):
         self._carregando = False     # depois do descarte: resposta velha nao encerra a espera
         linhas, diario = par
         ocs = []
+        # AS ESCONDIDAS FICAM GUARDADAS (Levi, 08/09). Elas não são ocorrência e não entram na
+        # tabela — mas o NOME DA USINA nelas é o mesmo nome errado da planilha, e corrigir só o
+        # que está na tela deixa a correção pela metade. Foi o que aconteceu com "PEIII": 13 das
+        # 14 linhas viraram PTL300 e a 14ª (row 2072, 'Em conformidade') ficou como estava.
+        # Hoje são 1.702 linhas escondidas, 185 delas com usina fora do cadastro.
+        self._ocultas = []
         for row in (linhas or []):
             # 'Em conformidade' não é ocorrência: é o check periódico dizendo que o tracker está
             # bem. Medido em 28/08 (docs/esbocos/tickets_trackers_amostra.json, 999 linhas): 734
@@ -1967,6 +1981,7 @@ class TicketsTab(QWidget):
             # plausível e completamente errado. A coluna Status só existe em Trackers, então em
             # Strings esta linha nunca dispara (todo row.get aqui vem None).
             if str(row.get("Status") or "").strip().lower() == "em conformidade":
+                self._ocultas.append(row)
                 continue
             num_os = row.get("OS")                    # coluna nasce na fase 2 — hoje é sempre None
             status_os = row.get("Status da OS")        # idem
@@ -2010,10 +2025,19 @@ class TicketsTab(QWidget):
             # identifica a ocorrência no banco: a posição na lista muda com filtro e ordenação.
             # Se a linha saiu do filtro ou do teto de 400, não reabre nada e o painel fica na
             # visão geral — que é o certo, em vez de abrir a ocorrência do vizinho.
+            achou = False
             for r, o in enumerate(self._visiveis):
                 if o.get("_row") == guardado[2]:
                     self._sel_tabela(r, -1)
+                    achou = True
                     break
+            if not achou:
+                # SOLTA a seleção velha. `self._ocs` foi trocado por dicionários novos; deixar
+                # `self._sel` apontando para o objeto antigo faria o painel editar uma linha que
+                # não está mais na lista — e o "corrigir usina" procuraria as irmãs pelo nome de
+                # um dicionário órfão.
+                self._selecionar(None)
+                self._pintar_selecao(-1)
 
     def _marcar_ativos(self, ocs, aba):
         """Marca em cada ocorrência se ela tem ativo do Fracttal vinculado.
@@ -3042,7 +3066,13 @@ class TicketsTab(QWidget):
 
         A segunda é o alcance. Antes só a linha aberta mudava; agora mudam todas as que traziam o
         mesmo nome, porque o nome errado é da PLANILHA e não da linha: se 'Santarém 2' não existe
-        no cadastro, não existe em nenhuma das 17 linhas que o repetem."""
+        no cadastro, não existe em nenhuma das 17 linhas que o repetem.
+
+        E AS ESCONDIDAS TAMBÉM (08/09). "Todas" queria dizer todas as que a TELA mostrava, e a
+        tela esconde as linhas 'Em conformidade' — que são check periódico, não ocorrência. Só
+        que o nome errado está nelas igual: PEIII virou PTL300 em 13 linhas e a 14ª, escondida,
+        ficou para trás. Elas não viram ocorrência por serem renomeadas; só param de repetir um
+        nome que não existe no cadastro."""
         oc = self._sel
         if oc is None or not isinstance(usina, dict):
             return
@@ -3050,16 +3080,20 @@ class TicketsTab(QWidget):
         antigo = str(oc.get("Usina") or "").strip()
         if not codigo or codigo == antigo:
             return
-        irmas = [o for o in self._ocs if str(o.get("Usina") or "").strip() == antigo]
+        mesmo_nome = lambda o: str(o.get("Usina") or "").strip() == antigo
+        irmas = [o for o in self._ocs if mesmo_nome(o)]
         if oc not in irmas:
             irmas.append(oc)
+        checks = [o for o in getattr(self, "_ocultas", []) if mesmo_nome(o)]
+        irmas += checks
         # DIZER QUANTAS ANTES DE MEXER. O alcance é o que ele pediu — o nome errado é da
         # planilha, não da linha —, mas "Irecê 2" são 147 ocorrências, e uma escolha de dois
         # cliques que reescreve 147 linhas do banco tem de avisar antes, não depois. Com uma
         # linha só, perguntar seria estorvo: aí vai direto.
+        detalhe = _DETALHE_CHECKS % (len(irmas) - len(checks), len(checks)) if checks else ""
         if len(irmas) > 1 and QMessageBox.question(
                 self, "Corrigir a usina",
-                _PERGUNTA_USINA % (antigo, len(irmas), len(irmas), codigo,
+                _PERGUNTA_USINA % (antigo, len(irmas), detalhe, len(irmas), codigo,
                                    max(1, round(len(irmas) * _SEG_POR_LINHA))),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes) != QMessageBox.StandardButton.Yes:
@@ -3068,7 +3102,7 @@ class TicketsTab(QWidget):
             self._aviso_edicao("nada alterado — a usina continua “%s”" % antigo, MUTED)
             return
         self._b_salvar.setEnabled(False)
-        self._aviso_edicao("corrigindo %d ocorrência(s) de “%s” para “%s”…"
+        self._aviso_edicao("corrigindo %d linha(s) de “%s” para “%s”…"
                            % (len(irmas), antigo, codigo), MUTED)
         # O AVANÇO NA TELA. Sem ele, a única diferença entre "trabalhando" e "travado" era
         # esperar até o fim — e o fim, aqui, chega um minuto depois.
@@ -3172,7 +3206,7 @@ class TicketsTab(QWidget):
             sid = tickets_spec.ABAS[self._aba]["sheet_id"]
             resto = (" — o sync pode desfazer"
                      if sid in tickets_escrita.SHEETS_QUE_O_SYNC_SOBRESCREVE else "")
-            self._aviso_edicao("%d ocorrência(s) corrigidas%s" % (len(corrigidas), resto), GREEN)
+            self._aviso_edicao("%d linha(s) corrigidas%s" % (len(corrigidas), resto), GREEN)
         self._repintar()                     # o que faltava: sem isto a tabela não muda na tela
         # E RELÊ O BANCO. A memória diz o que o app ACHA que gravou; a tela tem de mostrar o que
         # o banco TEM. Se os dois discordarem, é aqui que a pessoa vê — e não dias depois, ao

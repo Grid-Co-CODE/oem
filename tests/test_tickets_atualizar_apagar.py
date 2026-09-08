@@ -138,8 +138,13 @@ class _TelaUsina:
         self._aba = "Strings"
         self._sel = _oc(154, usina="PEII")
         self._ocs = [self._sel, _oc(155, usina="PEII"), _oc(9, usina="TIM100")]
+        self._ocultas = []
         self._b_salvar = type("B", (), {"setEnabled": lambda *_: None})()
         self.avisos, self.relidas, self.repintadas = [], 0, 0
+        self.enviadas = []          # as linhas que o worker receberia para renomear
+
+    def _usina_andou(self, i, n):
+        pass
 
     def _aviso_edicao(self, txt, cor):
         self.avisos.append(txt)
@@ -345,6 +350,75 @@ def test_atualizar_ignora_o_clique_repetido_durante_a_busca(aba, monkeypatch):
     t._w = object()                 # como se uma busca estivesse em curso
     t._atualizar()
     assert vezes == []
+
+
+# ── as linhas que a tela ESCONDE também são renomeadas ─────────────────────────────────────
+@pytest.fixture
+def renomeio(monkeypatch):
+    """Segura o `ApiWorker` do renomear: o que interessa aqui é QUE LINHAS ele receberia.
+    Devolve a lista, que os testes leem depois de chamar `_usina_escolhida`."""
+    recebidas = []
+    _sinal = type("S", (), {"connect": lambda *_: None, "emit": lambda *_: None})()
+
+    class _W:
+        def __init__(self, fn, aba, irmas, codigo, progresso=None):
+            recebidas.extend(irmas)
+            self.ok = self.erro = _sinal
+
+        def start(self):
+            pass
+    monkeypatch.setattr(tk, "ApiWorker", _W)
+    monkeypatch.setattr(tk, "_Passos", lambda: type("P", (), {"andou": _sinal})())
+    return recebidas
+
+
+def _tela_com_ocultas():
+    """A tela com 2 ocorrências e 1 check periódico, todas com o mesmo nome errado de usina."""
+    t = _TelaUsina()
+    t._sel = _oc(2071, usina="PEIII")
+    t._ocs = [t._sel, _oc(2073, usina="PEIII"), _oc(9, usina="TIM100")]
+    # 'Em conformidade' não entra em `_ocs` — o filtro do `_ocs_chegaram` a tira da tabela
+    t._ocultas = [_oc(2072, usina="PEIII"), _oc(50, usina="TIM100")]
+    return t
+
+
+def test_o_check_periodico_escondido_tambem_e_renomeado(monkeypatch, renomeio):
+    """Levi, 08/09: PEIII virou PTL300 em 13 linhas e a 14ª ficou como estava. Ela era um
+    'Em conformidade' — que a tela não mostra, mas que repete o mesmo nome errado da planilha."""
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: _SIM))
+    t = _tela_com_ocultas()
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    mandadas = sorted(o["_row"] for o in renomeio)
+    assert mandadas == [2071, 2072, 2073], "a linha escondida ficou de fora"
+
+
+def test_a_pergunta_conta_as_escondidas_e_diz_que_elas_existem(monkeypatch, renomeio):
+    """O número que ele usa para decidir tem de incluí-las, e o texto tem de explicar o que são —
+    senão '3 linhas' para 2 ocorrências visíveis parece erro de contagem."""
+    visto = {}
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda pai, tit, txt, *a, **k: visto.setdefault("txt", txt) or _SIM))
+    t = _tela_com_ocultas()
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    assert "das 3" in visto["txt"], visto["txt"]
+    assert "2 ocorrência(s) e 1 linha(s) de check periódico" in visto["txt"]
+
+
+def test_sem_escondidas_a_pergunta_nao_fala_de_check(monkeypatch, renomeio):
+    visto = {}
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda pai, tit, txt, *a, **k: visto.setdefault("txt", txt) or _SIM))
+    t = _tela_com_ocultas()
+    t._ocultas = []
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    assert "check periódico" not in visto["txt"]
+
+
+def test_escondida_de_OUTRA_usina_nao_e_tocada(monkeypatch, renomeio):
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: _SIM))
+    t = _tela_com_ocultas()
+    t._usina_escolhida({"codigo": "PTL300", "nome": "Petrolina 3"})
+    assert all(o["_row"] != 50 for o in renomeio), "renomeou o check de TIM100"
 
 
 # ── sem credencial: parar na primeira, e dizer ONDE o arquivo tem de estar ─────────────────
