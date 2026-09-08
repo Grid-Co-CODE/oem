@@ -110,6 +110,15 @@ Aprendidas na marra, cada uma custou tempo. Nenhuma está documentada pelo forne
 `@slot_seguro` **engole a exceção** para não derrubar o app. O rastro vai para
 `%TEMP%\criaros_erros.log` — é o primeiro lugar a olhar quando "não aconteceu nada".
 
+**`%APPDATA%` visto por um agente NÃO é o `%APPDATA%` visto pelo app.** Na máquina do Levi o
+Claude é pacote MSIX, e o Windows virtualiza `AppData` para tudo que nasce dos shells dele: o que
+um script grava em `%APPDATA%\CriarOS-Fracttal` vai parar em
+`AppData\Local\Packages\Claude_…\LocalCache\Roaming\…`, e o app instalado — que roda fora do
+pacote — não vê. Custou caro em 07/09/2026: o `gridco_sql_token.txt` "existia" para todos os
+scripts e o app respondia `SemCredencial`; toda gravação de ticket falhou por uma semana. Para
+saber o que o app vê, liste a pasta **por uma tarefa agendada** (`schtasks /Run`), nunca só pelo
+shell. Quem grava o token na pasta real é o instalador do SharePoint (o do GitHub não traz).
+
 ## Deep link
 
 A plataforma abre este app já preenchido via `gridos://` (ativo, OS pai e responsável). Se mudar

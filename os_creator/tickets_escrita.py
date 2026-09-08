@@ -48,6 +48,18 @@ class EscritaBloqueada(RuntimeError):
     """Tentativa de gravar numa aba que o pipeline ainda sobrescreve."""
 
 
+class SemCredencial(EscritaBloqueada):
+    """Esta máquina não tem o GRIDCO_SQL_TOKEN.
+
+    Subclasse, e não irmã: quem já tratava `EscritaBloqueada` continua pegando o caso. A tela usa
+    o tipo mais específico para dizer O QUE FAZER — que é outro assunto do da aba fora da lista.
+
+    Levi, 07/09: o app dele dizia isto e a tela do Salvar culpava o sync da planilha. O token
+    "existia" na pasta certa para os meus shells e não para o app — o Claude é MSIX e virtualiza
+    o AppData de tudo que nasce dele, então o arquivo gravado de uma sessão minha em 31/08 ficou
+    numa camada que só os meus processos enxergam. Ver os_creator/CLAUDE.md."""
+
+
 class ConflitoDeEdicao(RuntimeError):
     """A linha mudou no banco entre a leitura da tela e o clique em salvar."""
     def __init__(self, campos):
@@ -128,9 +140,17 @@ def _token() -> str:
 def _cabecalho():
     tok = _token()
     if not tok:
-        raise EscritaBloqueada(
-            "esta máquina não tem a credencial de escrita do banco — sem ela dá para ler os "
-            "tickets, mas não para gravar. Peça o GRIDCO_SQL_TOKEN ao Levi e guarde-o em %s."
+        # Quem lê isto pode ser o próprio Levi, então "peça ao Levi" não resolve nada. O que
+        # resolve: o caminho EXATO do arquivo e o nome do instalador que o grava. O do GitHub —
+        # que o auto-update baixa — não traz a credencial de propósito, o repositório é público.
+        raise SemCredencial(
+            "Esta máquina não tem a credencial de escrita do banco — dá para ler os tickets, "
+            "mas não para gravar.\n\n"
+            "O arquivo tem de estar em:\n%s\n\n"
+            "Quem grava esse arquivo é o instalador do SharePoint (\"Criar OS - Fracttal - "
+            "Setup.exe\", na pasta \"12. Criação de OS Fractal\"). A atualização automática "
+            "baixa o instalador do GitHub, que NÃO traz a credencial. Instale uma vez pelo "
+            "SharePoint; as atualizações seguintes não apagam o arquivo."
             % os.path.join(_pasta_usuario(), ARQ_TOKEN))
     return {"Authorization": "Bearer " + tok, "Content-Type": "application/json"}
 

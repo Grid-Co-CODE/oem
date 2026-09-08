@@ -1210,10 +1210,18 @@ def _renomear_usina(aba, ocs, codigo, progresso=None):
             resp = tickets_escrita.gravar_linha(sheet_id, oc.get("_row"), dados, cab,
                                                 base={"Usina": antes},
                                                 ler=lambda _sid, r: retrato.get(r) or {})
+        except tickets_escrita.EscritaBloqueada:
+            # SEM CREDENCIAL (ou aba não liberada) não há o que tentar nas outras 146 linhas: é
+            # a mesma resposta em todas, sem nem sair para a rede. Sobe inteira para o
+            # `_usina_falhou`, que abre a caixa com a mensagem COMPLETA — e é nela que está o
+            # caminho do arquivo que falta. Levi, 07/09: a caixa de "13 não gravaram" cortou
+            # justamente o "guarde-o em C:\Us…", que era a única pista.
+            raise
         except Exception as e:                                   # noqa: BLE001
-            # 160 e não 70: o pedaço útil de um erro HTTP ("401 Client Error: Unauthorized for
-            # url: …") vem depois do nome da classe, e cortado em 70 sobrava só o nome.
-            falhas.append((oc, "%s: %s" % (type(e).__name__, str(e)[:160])))
+            # 400 e não 70: o pedaço útil de um erro HTTP ("401 Client Error: Unauthorized for
+            # url: …") vem depois do nome da classe, e cortado em 70 sobrava só o nome. O rótulo
+            # do painel corta pela largura dele; quem precisa do texto inteiro é a caixa.
+            falhas.append((oc, "%s: %s" % (type(e).__name__, str(e)[:400])))
         else:
             # A API ECOA A LINHA GRAVADA. Conferir o eco é o que separa "respondeu 200" de
             # "gravou": um 200 com a usina velha no corpo seria a falha mais silenciosa possível.
@@ -2412,6 +2420,15 @@ class TicketsTab(QWidget):
         self._aviso_edicao("salvando…", MUTED)
         try:
             tickets_escrita.gravar_linha(sheet_id, oc.get("_row"), dados, cab, base=base)
+        except tickets_escrita.SemCredencial as e:
+            # ANTES deste ramo, o Salvar sem credencial caía no `except` de baixo e culpava o
+            # sync da planilha — um texto de outro caso, para o único caso que acontece na
+            # prática (Levi, 07/09: a máquina dele não tinha o token e ninguém sabia). A
+            # mensagem da exceção diz onde o arquivo tem de estar e como consegui-lo; em caixa,
+            # porque o rodapé do painel não segura ninguém.
+            self._aviso_edicao("não dá para gravar: falta a credencial de escrita nesta máquina",
+                               tickets_spec.COR_ESTADO["aberta"])
+            QMessageBox.warning(self, "Salvar", str(e))
         except tickets_escrita.EscritaBloqueada:
             # a mensagem da exceção é para o log; na tela vale o que a pessoa pode fazer a
             # respeito. O id da aba e o replace=true não ajudam quem está tentando salvar.

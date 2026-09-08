@@ -347,6 +347,42 @@ def test_atualizar_ignora_o_clique_repetido_durante_a_busca(aba, monkeypatch):
     assert vezes == []
 
 
+# ── sem credencial: parar na primeira, e dizer ONDE o arquivo tem de estar ─────────────────
+def test_sem_credencial_o_renomear_para_na_primeira_linha(monkeypatch, espiao):
+    """Levi, 07/09: "Corrigi 0 de 13 — 13 não gravaram", treze vezes o mesmo erro sem rede, e a
+    caixa cortou o caminho do arquivo. Sem credencial não há o que tentar nas outras: sobe
+    inteira, para a caixa do `_usina_falhou` mostrar a mensagem completa."""
+    tentativas = []
+
+    def gravar(sheet_id, row_number, dados, headers, base=None, enviar=None, ler=None):
+        tentativas.append(row_number)
+        raise tickets_escrita.EscritaBloqueada("esta máquina não tem a credencial")
+
+    monkeypatch.setattr(tk.tickets_escrita, "gravar_linha", gravar)
+    with pytest.raises(tickets_escrita.EscritaBloqueada):
+        tk._renomear_usina("Trackers", [_oc(i) for i in range(1, 14)], "IRC200")
+    assert tentativas == [1], "tentou as outras linhas depois de já saber que não há credencial"
+
+
+def test_sem_token_a_mensagem_diz_o_caminho_e_o_instalador_certo(monkeypatch):
+    """Quem lê isso é o próprio Levi, então "peça ao Levi" não resolve nada. O que resolve é o
+    caminho exato do arquivo e o nome do instalador que o grava — o do SharePoint. O do GitHub
+    (que o auto-update baixa) NÃO traz a credencial, de propósito: o repositório é público."""
+    monkeypatch.setattr(tickets_escrita, "_token", lambda: "")
+    with pytest.raises(tickets_escrita.SemCredencial) as exc:
+        tickets_escrita._cabecalho()
+    msg = str(exc.value)
+    assert "gridco_sql_token.txt" in msg
+    assert "SharePoint" in msg
+    assert "GitHub" in msg
+
+
+def test_SemCredencial_ainda_e_EscritaBloqueada():
+    """Quem já tratava `EscritaBloqueada` continua pegando o caso — o ramo novo só é mais
+    específico, não uma exceção solta."""
+    assert issubclass(tickets_escrita.SemCredencial, tickets_escrita.EscritaBloqueada)
+
+
 # ── a escrita em si ────────────────────────────────────────────────────────────────────────
 def test_apagar_respeita_a_trava_de_aba_liberada():
     """A mesma trava do gravar. Sem ela, um sheet_id errado apagaria linha de outra planilha."""
