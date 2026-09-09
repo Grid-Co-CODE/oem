@@ -44,15 +44,25 @@ def aba_do_plano(descricao) -> str:
 
 
 def _identificacao(asset: dict):
-    """(skid, numero) a partir do nome do ativo. 'Tracker 02.129' → ('02', '129');
-    'Inversor 1.1' → ('', '1.1'). O nome curto é o que o cadastro mostra e o que a planilha
-    escreve na coluna do ativo."""
+    """(skid, numero) a partir do nome do ativo, para as duas colunas da planilha.
+
+    O NÚMERO É O NOME INTEIRO, sempre: 'Tracker 3.101' → '3.101', e não '3'. Até 09/09 o primeiro
+    pedaço virava skid e o resto virava o número — de 'Tracker 3.101' saía skid '3', número
+    '3.101'. Errado dos dois lados: em Diamantino o '3' é o TRACKER (o '101' é a cabine), e o
+    número com o sufixo não casava com nada, porque o índice de `steps.tickets` descartava os três
+    dígitos finais. Ou seja, ocorrência criada pelo app nunca achava o próprio ativo. Agora o
+    índice guarda o nome inteiro, e mandar o nome inteiro casa EXATO — sem depender de adivinhar o
+    que o sufixo significa naquela usina (em Diamantino é cabine; no MAB100, 'Tracker 1.102', é o
+    número do tracker, e o skid é o 1).
+
+    O SKID só sai quando o nome tem TRÊS partes — 'Tracker 1.5.101' em Boa Esperança, onde o
+    primeiro pedaço é de fato a sub-usina. Com duas partes não dá para saber se a segunda é cabine
+    ou número, e chutar enche a coluna Cabine da tela com o número do tracker."""
     nome = str(api._asset_short_name(asset) or "")
     achou = _NUM_INV.search(nome)
     num = achou.group(1) if achou else ""
-    if "." in num:
-        return num.split(".", 1)[0], num
-    return "", num
+    skid = num.split(".", 1)[0] if num.count(".") >= 2 else ""
+    return skid, num
 
 
 def usina_do_ativo(asset: dict) -> str:

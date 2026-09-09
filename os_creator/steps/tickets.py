@@ -361,34 +361,65 @@ def ativo_da_ocorrencia(aba, oc, todos):
 _SUFIXO_TRACKER = re.compile(r"^(.*)\.(\d{3})$")
 
 
-def _indice_trackers(usina, todos):
-    """{nome sem o sufixo → ativo} dos trackers de uma usina.
+def _sem_zero(s):
+    """'Tracker 01.102' → 'Tracker 1.102'. O cadastro escreve com zero à esquerda e a planilha
+    sem, e a comparação precisa das duas formas."""
+    return re.sub(r"(?<=\s)0+(?=\d)", "", s)
 
-    O nome do ativo é "Tracker <identificação>.<sufixo>" — 'Tracker 129.100' no TIM100,
-    'Tracker 1.2.101' em Boa Esperança. O sufixo de três dígitos é da nomenclatura do cadastro e
-    NÃO faz parte da identificação (Levi, 31/08: "é normal o .101 ou .100 no fim"), por isso ele
-    sai antes da comparação. A chave entra com e sem zero à esquerda: o cadastro escreve
-    'Tracker 01' e a planilha escreve '1'."""
-    m = {}
+
+def _indice_trackers(usina, todos):
+    """{chave → ativo} dos trackers de uma usina. O NOME INTEIRO é chave, e o miolo também.
+
+    A régua antiga só indexava o miolo, tratando os três dígitos finais como enfeite do cadastro
+    ("é normal o .101 no fim", 31/08). O de-para da plataforma
+    (`plataforma/trackers_depara.xlsx`, coluna 'Cabine (Fracttal)') mostrou que aquele sufixo é
+    dado, e — pior para uma régua fixa — que ele significa coisas DIFERENTES conforme a usina:
+
+    - Diamantino 1: 'Tracker 3.100' e 'Tracker 3.101' são o tracker 3 nas CABINES 100 e 101.
+      São 51 trackers em duas cabines, 102 ativos. Descartando o sufixo, os dois viravam a mesma
+      chave e o casamento ficava com o primeiro da lista — metade apontava para a cabine errada.
+      Vale para 21 das 91 usinas com tracker cadastrado.
+    - MAB100: 'Tracker 1.101', 'Tracker 1.102', 'Tracker 1.103' são o SKID 1 e os trackers 101,
+      102, 103. Aqui o sufixo é a identificação, e descartá-lo perdia o casamento inteiro.
+
+    Não dá para adivinhar qual dos dois é, e não precisa: indexando o nome INTEIRO, quem decide é
+    a forma que o ticket usa. O miolo continua no índice como último recurso, para a linha antiga
+    que só traz o número — aí a colisão resolve pela MENOR cabine, que é escolha arbitrária mas
+    determinística, e não "o primeiro que a lista trouxer".
+
+    Medido contra as 1.364 ocorrências visíveis: 670 casamentos idênticos, 6 novos, ZERO perdidos
+    e ZERO trocando de ativo."""
+    inteiro, por_miolo = {}, {}
     for a in _ativos_da_usina(usina, todos):
         if "tracker" not in api._norm_txt(a.get("tipo")):
             continue
-        casa = _SUFIXO_TRACKER.match(str(api._asset_short_name(a) or "").strip())
+        nome = str(api._asset_short_name(a) or "").strip()
+        casa = _SUFIXO_TRACKER.match(nome)
         if not casa:
             continue
-        miolo = casa.group(1).strip()
-        m.setdefault(api._norm_txt(miolo), a)
-        m.setdefault(api._norm_txt(re.sub(r"(?<=\s)0+(?=\d)", "", miolo)), a)
+        miolo, sufixo = casa.group(1).strip(), casa.group(2)
+        for k in (nome, _sem_zero(nome)):
+            inteiro.setdefault(api._norm_txt(k), a)
+        for k in (miolo, _sem_zero(miolo)):
+            por_miolo.setdefault(api._norm_txt(k), []).append((int(sufixo), a))
+    m = dict(inteiro)
+    for chave, lst in por_miolo.items():
+        m.setdefault(chave, min(lst, key=lambda x: x[0])[1])
     return m
 
 
 def _achar_tracker(oc, todos):
     """O ativo do tracker no catálogo, ou None.
 
-    Casa 540 das 1.094 ocorrências (medido em 31/08). As que sobram não são falha da régua: são
-    usinas sem tracker cadastrado (56), ticket com texto no lugar do número ('A ser verificado',
-    15) e número que simplesmente não existe no cadastro daquela usina (483) — Boa Esperança, por
-    exemplo, só tem o skid 1 cadastrado. Essas ficam para o vínculo manual, pelo card de ativos."""
+    Casa 676 das 1.364 ocorrências visíveis (medido em 09/09; eram 670 antes de o índice passar
+    a guardar o nome inteiro). As que sobram não são falha da régua: são usinas sem tracker
+    cadastrado, ticket com texto no lugar do número ('A ser verificado') e número que simplesmente
+    não existe no cadastro daquela usina — Boa Esperança, por exemplo, só tem o skid 1 cadastrado.
+    Essas ficam para o vínculo manual, pelo card de ativos.
+
+    A ORDEM DOS CANDIDATOS É A REGRA. O nome inteiro ('tracker 1.102') vem antes do miolo, e o
+    par skid+número vem por último — assim um ticket que diz a cabine ou o skid casa EXATO, e só
+    quem não diz cai na chave frouxa. Ver `_indice_trackers` para o que o sufixo significa."""
     num = str(oc.get("Nº do tracker / Identificação") or "").strip()
     if not num:
         return None

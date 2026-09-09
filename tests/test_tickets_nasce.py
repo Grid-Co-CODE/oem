@@ -30,11 +30,22 @@ def test_plano_que_nao_gera_ocorrencia():
 
 
 # ── o que vai na linha ─────────────────────────────────────────────────────────────────────
-def test_tracker_separa_skid_e_numero():
+def test_o_numero_do_tracker_e_o_NOME_INTEIRO():
+    """Premissa virada em 09/09. Antes o primeiro pedaço virava skid: de 'Tracker 02.129' saía
+    skid '02'. Errado — em Diamantino esse primeiro pedaço é o TRACKER e o segundo é a CABINE, e
+    o índice de `steps.tickets` descartava o sufixo, então a ocorrência que o app criava nunca
+    achava o próprio ativo. Agora vai o nome inteiro, que casa exato."""
     l = nasce.montar_linha("Trackers", _asset("Tracker 02.129"), "TIM100", INCIDENTE, agora=AGORA)
-    assert l["Nº do SKID"] == "02"
     assert l["Nº do tracker / Identificação"] == "02.129"
+    assert l["Nº do SKID"] == "", "com duas partes não dá para saber se a 2ª é cabine ou número"
     assert l["Usina"] == "TIM100"
+
+
+def test_o_skid_so_sai_quando_o_nome_tem_TRES_partes():
+    """'Tracker 1.5.101' em Boa Esperança: aí o primeiro pedaço é de fato a sub-usina."""
+    l = nasce.montar_linha("Trackers", _asset("Tracker 1.5.101"), "BES100", INCIDENTE, agora=AGORA)
+    assert l["Nº do SKID"] == "1"
+    assert l["Nº do tracker / Identificação"] == "1.5.101"
 
 
 def test_tracker_nasce_como_PARADO():
