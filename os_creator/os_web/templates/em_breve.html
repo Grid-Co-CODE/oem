@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block conteudo %}
+<section class="os-pagina">
+  <a class="os-btn secondary os-voltar" href="/os/">← Voltar</a>
+  <div class="os-card-info">
+    <h2>{{ titulo }}</h2>
+    <p>Esta parte ainda mora só no <b>app</b> instalado: {{ faz }}.</p>
+    <p class="os-ajuda">Ela chega à plataforma nas próximas fases. Até lá, abra o OS Creator no computador — a mesma conta do Fracttal vale nos dois.</p>
+  </div>
+</section>
+{% endblock %}

@@ -44,3 +44,6 @@ dist/
 .idea/
 Thumbs.db
 .DS_Store
+
+# log do OS Creator web (deploy/os_web.cmd escreve aqui)
+logs/

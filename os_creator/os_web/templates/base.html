@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Criar OS{% endblock %} · Grid Co.</title>
+<link rel="icon" href="/os/assets/grid-icon.png">
+<link rel="stylesheet" href="/os/static/os.css">
+{% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+{# cabeçalho igual ao do app (MainWindow._build_header): símbolo + Grid Co. + subtítulo | avatar + nome + cargo #}
+<header class="os-header">
+  <div class="os-marca">
+    <img src="/os/assets/grid-icon.png" alt="" class="os-simbolo">
+    <div><div class="os-n1">Grid Co.</div><div class="os-n2">Sistema de Ordens de Serviço</div></div>
+  </div>
+  {% if conta %}
+  <div class="os-perfil">
+    <span class="os-avatar">{{ conta.nome|iniciais }}</span>
+    <div><div class="os-nome">{{ conta.nome or 'Usuário' }}</div><div class="os-cargo">{{ conta.perfil or 'Grid Co.' }}</div></div>
+    <a class="os-sair" href="/os/logout" title="Sair do Fracttal nesta área">sair</a>
+  </div>
+  {% endif %}
+</header>
+<div class="os-sep"></div>
+{% if conta %}
+<nav class="os-tabs">
+  {% for t in abas %}
+  <a class="os-tab {% if aba == t.chave %}on{% endif %}" href="{{ t.href }}">{% if t.icone %}{{ icone(t.icone, '#c9cfe0', 18) }}{% endif %}<span>{{ t.titulo }}</span></a>
+  {% endfor %}
+</nav>
+{% endif %}
+<main class="os-main">
+{% block conteudo %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

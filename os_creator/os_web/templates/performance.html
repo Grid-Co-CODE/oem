@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block titulo %}Performance{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block conteudo %}
+{# PerformanceTab._build_cards: Voltar | Alocação de análises; a frase de ajuda; os 4 cards de plano em 2 colunas #}
+<section class="os-pagina">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/">← Voltar</a>
+    <span class="os-cresce"></span>
+    <a class="os-btn primaria" href="/os/em-breve/perf-carga" title="Quadro de alocação: o que cada analista tem em mãos">Alocação de análises</a>
+  </div>
+  <p class="os-ajuda os-intro">Escolha o tipo de atendimento. Cada opção cria <b>uma OS por ativo</b> selecionado, com tipo, classificação e criticidade já do plano. Em <b>Tickets</b> ficam as ocorrências de trackers e strings que originam essas OS.</p>
+  <div class="os-planos">
+    {% for p in planos %}
+    <a class="os-plano" href="{{ url_for('os_web.performance_criar', frase=p.frase) }}" data-frase="{{ p.frase }}">
+      <span class="os-plano-tile">{{ icone(p.icone, '#A6E22E', 22) }}</span>
+      <span class="os-plano-mid">
+        <span class="os-plano-l1"><span class="os-plano-titulo">{{ p.titulo }}</span><span class="os-plano-badge">{{ p.badge }}</span></span>
+        <span class="os-plano-sub">{{ p.sub }}</span>
+        <span class="os-plano-meta">{{ icone('list', '#8A93A8', 13) }}<span class="os-plano-subs" data-frase="{{ p.frase }}">… subtarefas</span></span>
+      </span>
+      <span class="os-plano-cta">{{ icone('arrow', '#FFFFFF', 17) }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <div id="os-subs-lista" class="os-card-info" hidden></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+// "N subtarefas · ver lista" em cada card, como no app (busca em segundo plano; se falhar, fica em "…")
+fetch('/os/api/performance/contagens').then(r => r.json()).then(j => {
+  const c = (j && j.contagens) || {};
+  document.querySelectorAll('.os-plano-subs').forEach(el => {
+    const nomes = c[el.dataset.frase];
+    if (!Array.isArray(nomes)) return;
+    const n = nomes.length;
+    el.textContent = n + ' subtarefa' + (n !== 1 ? 's' : '') + (n ? '  ·  ver lista' : '');
+    if (n) el.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation();
+      const box = document.getElementById('os-subs-lista');
+      box.innerHTML = '<h3>Subtarefas do plano</h3><ol>' + nomes.map(x => '<li>' + x.replace(/</g, '&lt;') + '</li>').join('') + '</ol>';
+      box.hidden = false; box.scrollIntoView({behavior: 'smooth'}); };
+  });
+}).catch(() => {});
+</script>
+{% endblock %}

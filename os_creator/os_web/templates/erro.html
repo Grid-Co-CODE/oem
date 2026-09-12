@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block titulo %}Aviso{% endblock %}
+{% block conteudo %}
+<section class="os-pagina">
+  <a class="os-btn secondary os-voltar" href="/os/">← Voltar</a>
+  <div class="os-card-info">
+    <h2>Não deu para continuar</h2>
+    <p class="os-erro">⚠ {{ mensagem }}</p>
+    <p class="os-ajuda">A mensagem veio do Fracttal. Se falar em sessão ou login, entre de novo em <a href="/os/login">/os/login</a>.</p>
+  </div>
+</section>
+{% endblock %}

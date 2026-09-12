@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block titulo %}{{ plano.titulo }}{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block conteudo %}
+{# PerfCriar: cabeçalho (← Planos + título [+ segmentado]), Card 1 Ativo (cascata), Card 2 Ativos (tabela),
+   Card 3 Nome da OS + resumo do plano, Card 4 Responsável e datas, botão Criar #}
+<section class="os-pagina" id="perf" data-frase="{{ plano.frase }}" data-titulo="{{ plano.titulo }}"
+         data-tem-modos="{{ 1 if tem_modos else 0 }}" data-tracker="{{ 1 if eh_tracker else 0 }}"
+         data-sug-usina="{{ sugestao.usina }}" data-sug-ativo="{{ sugestao.ativo }}" data-sug-obs="{{ sugestao.obs }}"
+         data-sug-ospai="{{ sugestao.os_pai }}" data-sug-resp="{{ sugestao.resp }}" data-sug-modo="{{ sugestao.modo }}">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/performance">← Planos</a>
+    <span class="os-head-ic">{{ icone(plano.icone, '#A6E22E', 20) }}</span>
+    <span class="os-head-titulo">{{ plano.titulo }}</span>
+    <span class="os-cresce"></span>
+    {% if tem_modos %}
+    <div class="os-seg" role="tablist">
+      {% for chave, rotulo in modos %}<button type="button" class="os-seg-btn {% if loop.first %}on{% endif %}" data-modo="{{ chave }}">{{ rotulo }}</button>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">1</span><span class="os-cardf-t">Ativo</span></div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Cliente <i>*</i></span>
+        <select id="cb_cli"><option value="">— Selecione o cliente —</option>{% for c in clientes %}<option>{{ c }}</option>{% endfor %}</select></label>
+      <label class="os-campo"><span class="os-lbl">Usina <i>*</i></span>
+        <select id="cb_usi"><option value="">— Selecione a usina —</option>{% for u in usinas %}<option>{{ u }}</option>{% endfor %}</select></label>
+    </div>
+    <label class="os-campo" id="w_filtro"><span class="os-lbl">Filtrar <small>(opcional)</small></span>
+      <input id="busca" type="search" placeholder="Filtrar ativo por código ou nome…"></label>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">2</span><span class="os-cardf-t">Ativos</span></div>
+    <div class="os-linha-ativos">
+      <span class="os-lbl" id="lb_ativos">Ativos <i>*</i> <small id="lb_ativos_extra">(marque um ou vários — cada um vira uma OS)</small></span>
+      <span class="os-cresce"></span>
+      <button type="button" class="os-btn secondary mini" id="b_all">Selecionar todos</button>
+      <button type="button" class="os-btn secondary mini" id="b_none">Limpar</button>
+    </div>
+    <div class="os-tbl-wrap">
+      <table class="os-tbl" id="tbl">
+        <thead><tr><th class="c-chk"></th><th>Ativo</th><th class="c-qtd {% if not aba_ticket %}oculta{% endif %}">{{ coluna_qtd }}</th><th class="c-pai">OS Pai</th><th>Observação</th><th class="c-img">Imagens</th></tr></thead>
+        <tbody id="tbody"><tr class="vazio"><td colspan="6">Selecione a usina para carregar os ativos com o plano.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="os-ajuda" id="hint"></div>
+    <div class="os-ajuda" id="sel_lbl">0 marcado(s)</div>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">3</span><span class="os-cardf-t">Nome da OS</span></div>
+    <span class="os-lbl" id="lb_nome">Nome da tarefa <i>*</i> <small id="lb_nome_extra">(editável; o prefixo [Ativo] entra automático por OS)</small></span>
+    <div class="os-prefix"><span class="os-chip" id="chip_prefixo">[Ativo]&nbsp;&nbsp;-</span><input id="ed_nome" type="text" value="{{ plano.titulo }}"></div>
+    <div class="os-ajuda" id="preview">A observação de cada OS vem da tabela de ativos acima.</div>
+    <div class="os-resumo" id="resumo">Selecione a usina para carregar o plano.</div>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">4</span><span class="os-cardf-t">Responsável e datas</span></div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Responsável <i>*</i> <button type="button" class="os-recarrega" id="b_resp" title="recarregar a lista">↻</button></span>
+        <select id="cb_resp"><option value="">carregando…</option></select></label>
+      <label class="os-campo"><span class="os-lbl">Data do evento</span><input id="dt_prog" type="datetime-local" value="{{ agora }}"></label>
+      <label class="os-campo"><span class="os-lbl">Programada para</span><input id="dt_exec" type="datetime-local" value="{{ programada }}"></label>
+    </div>
+    <div class="os-rodape">
+      <span class="os-ajuda" id="hint_criar"></span>
+      <span class="os-cresce"></span>
+      <button type="button" class="os-btn primaria" id="btn_criar">Criar OS</button>
+    </div>
+    <div class="os-resultado" id="resultado" hidden></div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/os/static/perf.js"></script>{% endblock %}

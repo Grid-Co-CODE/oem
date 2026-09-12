@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block titulo %}Criar OS{% endblock %}
+{% block conteudo %}
+{# o lançador da aba Criar OS (MainWindow._build_launcher): nove cards, três por linha, na ordem do app #}
+<section class="os-launcher">
+  {% for c in cards %}
+  <a class="os-card" href="{{ c.href }}" data-chave="{{ c.chave }}">
+    <div class="os-card-topo">
+      <span class="os-tile">{{ icone(c.icone, '#8fce3f', 24) }}</span>
+      {% if c.chave == 'perf' and selo %}<span class="os-selo" title="Clique para ir à Alocação de análises">{{ selo }}</span>{% endif %}
+    </div>
+    <div class="os-card-titulo">{{ c.titulo }}</div>
+    <div class="os-card-sub">{{ c.sub }}</div>
+    <div class="os-card-seta">{{ icone('arrow', '#8fce3f', 20) }}</div>
+  </a>
+  {% endfor %}
+</section>
+{% endblock %}

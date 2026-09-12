@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block titulo %}Históricos de OS{% endblock %}
+{% block conteudo %}
+{# HistoricoOS: visão (criadas / atribuídas), período BR, busca, tabela com status em card colorido; o Nº abre o detalhe #}
+<section class="os-pagina">
+  <form class="os-filtros" method="get" action="/os/historico">
+    <label class="os-campo"><span class="os-lbl">Visão</span>
+      <select name="modo"><option value="criadas" {% if modo == 'criadas' %}selected{% endif %}>Histórico Geral (criadas por mim)</option>
+        <option value="atribuidas" {% if modo == 'atribuidas' %}selected{% endif %}>Atribuídas a mim</option></select></label>
+    <label class="os-campo"><span class="os-lbl">De</span><input type="date" name="de" value="{{ de }}"></label>
+    <label class="os-campo"><span class="os-lbl">Até</span><input type="date" name="ate" value="{{ ate }}"></label>
+    <label class="os-campo os-cresce"><span class="os-lbl">Buscar</span><input type="search" name="busca" value="{{ busca }}" placeholder="nº, usina, ativo, descrição…"></label>
+    <button type="submit" class="os-btn">Atualizar</button>
+  </form>
+  {% if erro %}<p class="os-erro">⚠ {{ erro }}</p>{% endif %}
+  <div class="os-ajuda">{{ linhas|length }} OS no período {{ fmt(de + 'T03:00:00', False) }} a {{ fmt(ate + 'T03:00:00', False) }}.</div>
+  <div class="os-tbl-wrap">
+    <table class="os-tbl os-hist">
+      <thead><tr>{% for rot, chave in cols %}<th>{{ rot }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for l in linhas %}
+      <tr>
+        <td><a class="os-folio" href="/os/os/{{ l.id }}?status={{ l.status|urlencode }}">{{ l.folio }}</a></td>
+        <td>{{ l.cliente }}</td><td>{{ l.usina }}</td><td>{{ l.ativo }}</td><td class="c-desc">{{ l.descricao }}</td>
+        <td class="c-data">{{ fmt(l.data) }}</td><td class="c-data">{{ fmt(l.event_date) }}</td><td class="c-data">{{ fmt(l.data_fim) }}</td>
+        <td>{% if l.status %}<span class="os-status" {% if l._status_cor %}style="color:{{ l._status_cor }};background:{{ l._status_cor }}29;border-color:{{ l._status_cor }}6b"{% endif %}>{{ l.status }}</span>{% endif %}</td>
+        <td>{{ l._etiqueta }}</td>
+      </tr>
+      {% else %}
+      <tr class="vazio"><td colspan="{{ cols|length }}">Nenhuma OS no período.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

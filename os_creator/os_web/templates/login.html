@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titulo %}Entrar — Fracttal{% endblock %}
+{% block conteudo %}
+{# o LoginDialog do app, tal e qual: logo, "Entrar no Fracttal", e-mail + senha, Entrar, "— ou —", SSO #}
+<section class="os-login">
+  <img src="/os/assets/grid-logo.png" alt="Grid Co." class="os-logo">
+  <h1>Entrar no Fracttal</h1>
+  <p class="os-ajuda">Seu e-mail e senha do Fracttal. A OS é criada no seu nome; a senha não é armazenada.</p>
+  {% if aviso %}<p class="os-aviso">{{ aviso }}</p>{% endif %}
+  <form method="post" action="/os/login" autocomplete="on">
+    <input type="hidden" name="next" value="{{ next }}">
+    <input type="email" name="email" placeholder="e-mail" value="{{ email }}" required autofocus autocomplete="username">
+    <input type="password" name="senha" placeholder="senha" required autocomplete="current-password">
+    {% if erro %}<p class="os-erro">⚠ {{ erro }}</p>{% endif %}
+    <button type="submit" class="os-btn">Entrar</button>
+  </form>
+  <div class="os-ou">— ou —</div>
+  <button type="button" class="os-btn secondary" disabled
+          title="Pra quem entra no Fracttal pela Microsoft — no navegador ainda não é possível capturar a sessão; use o app.">Entrar com Microsoft / SSO</button>
+  <p class="os-nota">Quem entra no Fracttal pela Microsoft não tem senha lá e, por ora, só consegue pelo app instalado.</p>
+</section>
+{% endblock %}
