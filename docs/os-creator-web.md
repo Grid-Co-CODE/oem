@@ -24,7 +24,14 @@ python -m pytest tests/test_os_web_*.py -q
 O login Microsoft da plataforma não loga ninguém no Fracttal. Na web, "logar no Fracttal" é e-mail + senha do Fracttal
 (`rpc/login_new`, senha em MD5 duplo, igual ao app); a senha só serve para obter o JWT de sessão e não é guardada. Quem
 entra no Fracttal pela Microsoft (SSO) não tem senha lá — o navegador embutido do desktop captura o token, um navegador
-comum não consegue (same-origin). Três saídas, da mais simples para a mais trabalhosa:
+comum não consegue (same-origin). Quatro saídas:
+
+0. **Entrar pela tela do Fracttal (OAuth, em teste desde 12/09).** A doc oficial lista `one.fracttal.com/oauth/authorize`
+   com `authorization_code`; sondado ao vivo, o authorize manda para a tela `accessgrant` do Fracttal One levando o nosso
+   callback. `os_web/oauth_fracttal.py`: `/os/login/fracttal` (state na sessão, callback só para a nossa casa) →
+   `/os/login/fracttal/volta` troca o `code` pelo token e DIAGNOSTICA ao vivo se o RPC aceita (é ele que cria OS). Se
+   aceitar, o token vira a sessão da área /os; se não, a tela mostra o erro e nada é guardado. Falta o teste real com
+   uma conta (o token de client_credentials levava 401 no RPC; o de uma pessoa pode ser diferente).
 
 1. **Senha no Fracttal.** Se o administrador puder definir senha para as contas que hoje entram só pela Microsoft, o
    login da web (e-mail + senha) já basta — nada a instalar, nada a construir.

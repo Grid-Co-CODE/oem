@@ -61,7 +61,7 @@ def criar_app(segredo: str | None = None, testing: bool = False) -> Flask:
 
     @app.before_request
     def _abrir_sessao():
-        g._os_web_tokens = sessao.abrir(session.get("jwt") or "")
+        g._os_web_tokens = sessao.abrir(session.get("jwt") or "", ((session.get("conta") or {}).get("email") or ""))
 
     @app.after_request
     def _fechar_sessao(resp):

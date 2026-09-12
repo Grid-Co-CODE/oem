@@ -20,7 +20,11 @@
     <p class="os-ajuda" id="sso_status">Pra quem entra no Fracttal pela Microsoft. O navegador não deixa esta página ler a sessão de outro
       site, então o login Microsoft acontece na janela do <b>OS Creator instalado</b>: ele abre, você entra como sempre, e esta página entra sozinha.</p>
     <div class="os-linha-sso">
-      <a class="os-btn" id="btn_app" href="#">Abrir o login Microsoft no OS Creator</a>
+      <a class="os-btn" id="btn_oauth" href="/os/login/fracttal">Entrar pela tela do Fracttal</a>
+      <span class="os-ajuda">novo: o Fracttal abre a tela dele (Microsoft incluída), você autoriza a plataforma e volta logado.</span>
+    </div>
+    <div class="os-linha-sso">
+      <a class="os-btn secondary" id="btn_app" href="#">Abrir o login Microsoft no OS Creator</a>
       <span class="os-ajuda" id="sso_espera" hidden>Aguardando o login no Fracttal…</span>
     </div>
     <details class="os-fallback">
@@ -50,6 +54,8 @@
   var btnApp = document.getElementById('btn_app'), espera = document.getElementById('sso_espera');
   var voltar = location.origin + '/os/login' + (document.querySelector('input[name=next]').value ? '?next=' + encodeURIComponent(document.querySelector('input[name=next]').value) : '');
   btnApp.href = 'gridos://sso?volta=' + encodeURIComponent(voltar);
+  var nx = document.querySelector('input[name=next]').value;
+  document.getElementById('btn_oauth').href = '/os/login/fracttal?volta=' + encodeURIComponent(location.origin + '/os/login/fracttal/volta') + (nx ? '&next=' + encodeURIComponent(nx) : '');
   btnApp.onclick = function () { espera.hidden = false; setTimeout(function () { espera.textContent = 'Aguardando o login no Fracttal… Se o OS Creator não abriu, use o favorito abaixo.'; }, 4000); };
   campo.addEventListener('paste', function () { setTimeout(function () { if (campo.value.trim()) document.getElementById('form_sso').submit(); }, 50); });
   // 1 clique no futuro: o favorito pode abrir /os/login#sso=<jwt>; o fragmento nao vai ao servidor, esta pagina o envia pelo formulario

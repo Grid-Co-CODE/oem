@@ -19,6 +19,7 @@ import json
 
 _JWT = contextvars.ContextVar("os_web_jwt", default=None)        # None = fora de requisição; "" = requisição sem sessão
 _ESTADO = contextvars.ContextVar("os_web_estado", default=None)  # {"novo": jwt|None, "morta": bool}
+_EMAIL = contextvars.ContextVar("os_web_email", default="")      # e-mail da sessão (token OAuth pode ser opaco, sem e-mail)
 
 
 def em_requisicao() -> bool:
@@ -41,20 +42,25 @@ def morta() -> bool:
     return bool(est and est.get("morta"))
 
 
-def abrir(jwt: str) -> tuple:
-    """Entra no contexto com o JWT da pessoa. Devolve os tokens para `fechar`."""
-    return _JWT.set(jwt or ""), _ESTADO.set({"novo": None, "morta": False})
+def abrir(jwt: str, email: str = "") -> tuple:
+    """Entra no contexto com o JWT (e o e-mail) da pessoa. Devolve os tokens para `fechar`."""
+    return _JWT.set(jwt or ""), _ESTADO.set({"novo": None, "morta": False}), _EMAIL.set(email or "")
 
 
 def fechar(tokens) -> None:
-    t1, t2 = tokens
+    t1, t2, t3 = tokens
     _JWT.reset(t1)
     _ESTADO.reset(t2)
+    _EMAIL.reset(t3)
+
+
+def email_atual() -> str:
+    return _EMAIL.get() or ""
 
 
 @contextlib.contextmanager
-def contexto(jwt: str):
-    tokens = abrir(jwt)
+def contexto(jwt: str, email: str = ""):
+    tokens = abrir(jwt, email)
     try:
         yield
     finally:
@@ -117,6 +123,7 @@ def instalar(api) -> None:
         return
     orig_read, orig_save = api._read_jwt, api._save_jwt
     orig_clear, orig_refresh = api._clear_jwt, api._rpc_try_refresh
+    orig_user = api.current_user
 
     def _read_jwt() -> str:
         return jwt_atual() if em_requisicao() else orig_read()
@@ -141,8 +148,16 @@ def instalar(api) -> None:
             _definir(novo)
         return novo
 
+    def current_user() -> str:
+        """O JWT manda quando traz e-mail; um access_token OAuth opaco cai no e-mail guardado na sessão — sem isso o
+        `_current_user_info` não acha a pessoa no personnel e o histórico "criadas por mim" morre."""
+        if not em_requisicao():
+            return orig_user()
+        return email_do_jwt(jwt_atual()) or email_atual()
+
     api._read_jwt, api._save_jwt = _read_jwt, _save_jwt
     api._clear_jwt, api._rpc_try_refresh = _clear_jwt, _rpc_try_refresh
+    api.current_user = current_user
     api._os_web_sessao_instalada = True
 
 

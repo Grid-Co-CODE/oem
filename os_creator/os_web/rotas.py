@@ -9,7 +9,9 @@ from urllib.parse import quote
 from flask import (Blueprint, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for)
 
 import api
-from . import lancador, perf_web, sessao, sso
+import secrets
+
+from . import lancador, oauth_fracttal, perf_web, sessao, sso
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 _ASSETS = os.path.join(os.path.dirname(_AQUI), "assets")           # os_creator/assets (logo e ícone do app)
@@ -75,13 +77,15 @@ def _tela_login(erro=None, email="", prox="", aviso=None, sso_aberto=False, stat
                            bookmarklet=sso.bookmarklet_href()), status
 
 
-def _abrir_sessao(jwt: str, email: str, prox: str):
-    """Sessão aberta (por senha ou por SSO): o JWT vai para o cookie e o perfil é lido uma vez, como no boot do app."""
+def _abrir_sessao(jwt: str, email: str, prox: str, conta: dict | None = None):
+    """Sessão aberta (por senha, SSO ou OAuth): o JWT vai para o cookie e o perfil é lido uma vez, como no boot do app."""
     session.clear()
     session["jwt"] = jwt
     session.permanent = True
     try:
-        session["conta"] = api.get_conta_info()
+        session["conta"] = conta or api.get_conta_info()
+        if email and not session["conta"].get("email"):
+            session["conta"]["email"] = email
     except Exception:                                   # noqa: BLE001 — perfil é enfeite; a porta não trava por ele
         session["conta"] = {"nome": email or sessao.email_do_jwt(jwt) or "Usuário", "email": email, "perfil": ""}
     return redirect(_destino_local(prox))
@@ -113,6 +117,47 @@ def login():
             return _tela_login(erro="Login sem token de sessão. Tente de novo.", email=email, prox=prox, status=401)
         return _abrir_sessao(jwt, email, prox)
     return _tela_login(prox=prox, aviso=aviso)
+
+
+@bp.route("/login/fracttal")
+def login_fracttal():
+    """Entrar pela tela do Fracttal (OAuth authorization_code). A página manda o callback público (o serviço, atrás do
+    proxy, não sabe o host que o navegador vê); só a nossa casa é aceita."""
+    volta = (request.args.get("volta") or "").strip()
+    if not oauth_fracttal.callback_valido(volta):
+        return render_template("erro.html", conta={}, aba="", mensagem="Callback do OAuth fora da plataforma: recusado."), 400
+    if not (api.CLIENT_ID and api.CLIENT_SECRET):
+        return render_template("erro.html", conta={}, aba="", mensagem="Sem FRACTTAL_CLIENT_ID/FRACTTAL_CLIENT_SECRET no .env do os_creator."), 503
+    state = secrets.token_urlsafe(24)
+    session["oauth_state"], session["oauth_volta"] = state, volta
+    session["oauth_next"] = request.args.get("next") or ""
+    return redirect(oauth_fracttal.url_autorizacao(api.CLIENT_ID, volta, state))
+
+
+@bp.route("/login/fracttal/volta")
+def login_fracttal_volta():
+    """O Fracttal devolveu: confere o state, troca o code pelo token e diagnostica ao vivo o que ele pode fazer."""
+    if request.args.get("error"):
+        motivo = request.args.get("error_description") or request.args.get("error")
+        return _tela_login(erro=f"O Fracttal não autorizou: {motivo}", sso_aberto=True, status=401)
+    state, esperado = request.args.get("state") or "", session.get("oauth_state") or ""
+    if not state or state != esperado:
+        return render_template("erro.html", conta={}, aba="", mensagem="O state do OAuth não confere com o desta sessão. Comece de novo em /os/login."), 401
+    volta, prox = session.get("oauth_volta") or "", session.get("oauth_next") or ""
+    for k in ("oauth_state", "oauth_volta", "oauth_next"):
+        session.pop(k, None)
+    try:
+        t = oauth_fracttal.trocar_codigo(request.args.get("code") or "", volta)
+    except api.FracttalError as e:
+        return _tela_login(erro=str(e), sso_aberto=True, status=502)
+    token = str(t.get("access_token") or "")
+    d = oauth_fracttal.diagnosticar(token)
+    if not d.get("rpc_ok"):
+        sessao.descartar()
+        return render_template("oauth_diag.html", conta={}, aba="", d=d, expira=t.get("expires_in")), 200
+    email = d.get("email") or sessao.email_do_jwt(token)
+    conta = {"nome": d.get("nome") or email or "Usuário", "email": email, "perfil": d.get("perfil") or ""}
+    return _abrir_sessao(token, email, prox, conta=conta)
 
 
 @bp.route("/logout")

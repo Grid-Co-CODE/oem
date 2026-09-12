@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block titulo %}Entrar pela tela do Fracttal{% endblock %}
+{% block conteudo %}
+<section class="os-pagina">
+  <a class="os-btn secondary os-voltar" href="/os/login">← Voltar</a>
+  <div class="os-card-info">
+    <h2>O Fracttal autorizou, mas o token não serve para criar OS</h2>
+    <p>A ponte funcionou até a metade: o Fracttal abriu a tela dele, você entrou e devolveu um token de acesso
+      ({% if d.jwt %}um JWT{% else %}opaco{% endif %}{% if expira %}, válido por {{ (expira|int) // 60 }} min{% endif %}).
+      Só que o <b>RPC</b>, o caminho que o app usa para criar OS, histórico, fotos e responsáveis, recusou esse token:</p>
+    <p class="os-erro">⚠ {{ d.rpc_erro or 'sem detalhe' }}</p>
+    <p class="os-ajuda">Leitura via REST: não verificada aqui (o REST lê, mas não cria OS completa). Nada foi guardado; nenhuma sessão foi aberta.</p>
+    <p>Enquanto o Fracttal não aceitar esse token no RPC, os caminhos são a <b>senha do Fracttal</b> (e-mail + senha), o
+      <b>OS Creator</b> instalado (login Microsoft na janela dele) ou o <b>favorito</b> que copia a sessão.</p>
+  </div>
+</section>
+{% endblock %}
