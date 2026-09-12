@@ -128,10 +128,13 @@ def login_fracttal():
         return render_template("erro.html", conta={}, aba="", mensagem="Callback do OAuth fora da plataforma: recusado."), 400
     if not (api.CLIENT_ID and api.CLIENT_SECRET):
         return render_template("erro.html", conta={}, aba="", mensagem="Sem FRACTTAL_CLIENT_ID/FRACTTAL_CLIENT_SECRET no .env do os_creator."), 503
-    state = secrets.token_urlsafe(24)
-    session["oauth_state"], session["oauth_volta"] = state, volta
+    # o callback que o Fracttal vê é o FIXO (relay) quando configurado — o consumidor deles só aceita um endereço e o túnel muda;
+    # o state leva a volta real desta sessão para o relay devolver o navegador aqui
+    state = oauth_fracttal.novo_state(volta)
+    redirect_uri = oauth_fracttal.volta_fixa() or volta
+    session["oauth_state"], session["oauth_volta"], session["oauth_redirect"] = state, volta, redirect_uri
     session["oauth_next"] = request.args.get("next") or ""
-    return redirect(oauth_fracttal.url_autorizacao(api.CLIENT_ID, volta, state))
+    return redirect(oauth_fracttal.url_autorizacao(api.CLIENT_ID, redirect_uri, state))
 
 
 @bp.route("/login/fracttal/volta")
@@ -144,10 +147,11 @@ def login_fracttal_volta():
     if not state or state != esperado:
         return render_template("erro.html", conta={}, aba="", mensagem="O state do OAuth não confere com o desta sessão. Comece de novo em /os/login."), 401
     volta, prox = session.get("oauth_volta") or "", session.get("oauth_next") or ""
-    for k in ("oauth_state", "oauth_volta", "oauth_next"):
+    redirect_uri = session.get("oauth_redirect") or volta           # a troca repete o redirect_uri do authorize (RFC 6749 §4.1.3)
+    for k in ("oauth_state", "oauth_volta", "oauth_redirect", "oauth_next"):
         session.pop(k, None)
     try:
-        t = oauth_fracttal.trocar_codigo(request.args.get("code") or "", volta)
+        t = oauth_fracttal.trocar_codigo(request.args.get("code") or "", redirect_uri)
     except api.FracttalError as e:
         return _tela_login(erro=str(e), sso_aberto=True, status=502)
     token = str(t.get("access_token") or "")

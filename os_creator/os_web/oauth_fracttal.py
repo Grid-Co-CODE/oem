@@ -9,9 +9,19 @@ pessoa loga lá (Microsoft incluída), autoriza a plataforma e o Fracttal volta 
 O que ainda NÃO se sabe, e por isso o retorno diagnostica ao vivo: se o access_token do usuário vale no RPC
 (`rpc/proxy`, o caminho que cria OS de verdade) ou só no REST (`/api/...`, leitura). O token de `client_credentials`
 levava 401 no RPC; o de uma PESSOA pode ser diferente. Se o RPC aceitar, a ponte está completa e o token entra no lugar
-do JWT de sessão em toda a área /os. Se não, a tela diz isso, com o erro, e os outros caminhos continuam."""
+do JWT de sessão em toda a área /os. Se não, a tela diz isso, com o erro, e os outros caminhos continuam.
+
+O callback tem de ser IGUAL ao registrado no consumidor OAuth do Fracttal ("Integração mal configurada: 'callback_url'
+inválido", quando o Levi testou pelo túnel em 12/09/2026) — e o túnel muda de endereço a cada queda. Saída: uma volta FIXA
+(`FRACTTAL_OAUTH_VOLTA` no .env), uma página estática (`relay/volta.html`) que mora num endereço que não muda e é o callback
+registrado; o `state` leva, depois do nonce, a volta real desta sessão (o túnel de hoje) em base64url, e a página só faz o
+navegador seguir para lá — apenas para hosts da nossa casa. Sem a variável, o callback é o próprio túnel, como antes."""
 from __future__ import annotations
+import base64
+import binascii
+import os
 import re
+import secrets
 from urllib.parse import urlencode, urlsplit
 
 import api
@@ -29,6 +39,59 @@ def callback_valido(url: str) -> bool:
         return False
     return (u.scheme in ("http", "https") and bool(u.hostname) and bool(_HOSTS_OK.match(u.hostname))
             and u.path.rstrip("/") == CAMINHO_VOLTA)
+
+
+def volta_fixa() -> str:
+    """Endereço fixo registrado no consumidor OAuth (a página `relay/volta.html` publicada), ou "" para usar o próprio túnel."""
+    return (os.environ.get("FRACTTAL_OAUTH_VOLTA") or "").strip()
+
+
+def _b64(s: str) -> str:
+    return base64.urlsafe_b64encode(s.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def novo_state(volta: str) -> str:
+    """nonce + '.' + volta real em base64url. A sessão confere o state INTEIRO (nonce incluído); o relay só lê a volta."""
+    return secrets.token_urlsafe(18) + "." + _b64(volta)
+
+
+def volta_do_state(state: str) -> str:
+    """A volta real embutida no state — "" quando não há uma URL do nosso caminho de volta ali."""
+    try:
+        _, b = str(state or "").split(".", 1)
+        b += "=" * (-len(b) % 4)
+        volta = base64.urlsafe_b64decode(b.encode("ascii")).decode("utf-8")
+        u = urlsplit(volta)
+    except (ValueError, UnicodeDecodeError, UnicodeEncodeError, binascii.Error):
+        return ""
+    return volta if u.scheme in ("http", "https") and u.hostname and u.path.rstrip("/") == CAMINHO_VOLTA else ""
+
+
+def destino_do_relay(args) -> str | None:
+    """O que a página fixa faz, em Python (a página é a transliteração disto): a volta real com `code`+`state`, ou com
+    `error`(+`error_description`)+`state` quando o Fracttal negou. None = não segue (state forjado, host de fora, sem code)."""
+    state = str(args.get("state") or "")
+    volta = volta_do_state(state)
+    if not volta or not callback_valido(volta):
+        return None
+    if args.get("error"):
+        q = {"error": str(args.get("error"))}
+        if args.get("error_description"):
+            q["error_description"] = str(args.get("error_description"))
+        q["state"] = state
+    elif args.get("code"):
+        q = {"code": str(args.get("code")), "state": state}
+    else:
+        return None
+    return volta + "?" + urlencode(q)
+
+
+_RELAY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay", "volta.html")
+
+
+def pagina_relay() -> str:
+    with open(_RELAY, encoding="utf-8") as f:
+        return f.read()
 
 
 def url_autorizacao(client_id: str, redirect_uri: str, state: str) -> str:

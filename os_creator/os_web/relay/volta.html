@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Voltando à Plataforma de Performance</title>
+<!--
+  Volta FIXA do login com o Fracttal (OAuth). O consumidor OAuth do Fracttal aceita UM callback_url e o túnel da plataforma
+  muda de endereço a cada queda ("Integração mal configurada: 'callback_url' inválido", 12/09/2026). Esta página mora num
+  endereço que não muda (GitHub Pages, Cloudflare Pages ou qualquer host estático), é o callback registrado no Fracttal e só
+  faz uma coisa: lê `state`, que carrega a volta real da sessão (o túnel de hoje) em base64url depois do ponto, e manda o
+  navegador para lá com `code`+`state` (ou `error`+`error_description`+`state`) — apenas para hosts da nossa casa.
+  É a transliteração de `oauth_fracttal.destino_do_relay`; os testes conferem que as duas leem os mesmos campos.
+-->
+<style>
+  body{margin:0;background:#090d18;color:#e6ebf5;font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}
+  .c{max-width:520px;padding:26px 30px;border:1px solid #26304a;border-radius:12px;background:#161d30}
+  b{color:#a3d900;letter-spacing:.3px}
+  p{margin:10px 0 0;color:#9aa6c4}
+</style>
+</head>
+<body>
+<div class="c"><b>Grid Co · OS Creator</b><p id="m">Voltando à Plataforma de Performance…</p></div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var state = q.get("state") || "";
+  var i = state.indexOf(".");
+  function b64(s) {
+    s = s.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    try { return atob(s); } catch (e) { return ""; }
+  }
+  var volta = i > 0 ? b64(state.slice(i + 1)) : "";
+  var u = null;
+  try { u = new URL(volta); } catch (e) { u = null; }
+  // a mesma lista de hosts de oauth_fracttal._HOSTS_OK e o mesmo caminho CAMINHO_VOLTA
+  var casa = /^(?:[a-z0-9-]+\.trycloudflare\.com|localhost|127\.0\.0\.1|(?:[a-z0-9-]+\.)*gridco\.com\.br)$/i;
+  var ok = !!u && (u.protocol === "https:" || u.protocol === "http:") && casa.test(u.hostname)
+           && u.pathname.replace(/\/+$/, "") === "/os/login/fracttal/volta";
+  var p = new URLSearchParams();
+  if (q.get("error")) {
+    p.set("error", q.get("error"));
+    if (q.get("error_description")) p.set("error_description", q.get("error_description"));
+    p.set("state", state);
+  } else if (q.get("code")) {
+    p.set("code", q.get("code"));
+    p.set("state", state);
+  } else {
+    ok = false;
+  }
+  if (ok) {
+    location.replace(u.origin + u.pathname.replace(/\/+$/, "") + "?" + p.toString());
+  } else {
+    document.getElementById("m").textContent =
+      "Este endereço só serve de volta do login do Fracttal para a Plataforma de Performance. Abra a plataforma e entre de novo.";
+  }
+})();
+</script>
+</body>
+</html>

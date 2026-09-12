@@ -70,3 +70,31 @@ O Fracttal aceita cerca de uma sessão por conta: entrar pela web derruba o Frac
 
 35 mil linhas no OS Creator. Cerca de 7,7 mil passam como estão (`api.py` e as specs puras). As outras ~27 mil são 47
 telas Qt em `steps/`: a regra já está fora delas, mas cada tela nasce de novo em HTML. A fase 1 refez três.
+
+## Volta fixa do OAuth (o callback que o Fracttal aceita)
+
+**O que aconteceu (12/09/2026).** O Levi clicou em "Entrar pela tela do Fracttal" pelo túnel e o Fracttal One respondeu
+*"Integração mal configurada: 'callback_url' inválido — https://<túnel>/os/login/fracttal/volta não corresponde ao valor
+estabelecido no consumidor"*. O consumidor OAuth (o `client_id`) tem **um** `callback_url` registrado e compara letra a letra.
+O túnel rápido do Cloudflare muda de endereço a cada queda — registrar o túnel de hoje resolve só até a próxima queda.
+
+**A saída: uma volta que não muda.** `os_web/relay/volta.html` é uma página estática, sem segredo nenhum, feita para morar num
+endereço fixo e ser o `callback_url` registrado no consumidor. O `state` do OAuth passa a ser `nonce.<volta real em base64url>`;
+o Fracttal devolve `code`+`state` para a página fixa, e ela manda o navegador para a volta real (o túnel de hoje) com os mesmos
+parâmetros — **só para hosts da nossa casa** (`*.trycloudflare.com`, `*.gridco.com.br`, localhost), a mesma lista de
+`oauth_fracttal._HOSTS_OK`; um `state` forjado com outro host não é seguido. A sessão continua conferindo o `state` inteiro, e a
+troca do `code` repete o `redirect_uri` do authorize (RFC 6749 §4.1.3), que é o endereço fixo.
+
+Configuração: `FRACTTAL_OAUTH_VOLTA=<endereço da página publicada>` no `.env` do os_creator e o mesmo endereço no consumidor
+do Fracttal. Sem a variável, o comportamento é o antigo (callback = o próprio túnel, que então precisa estar registrado).
+
+Onde publicar a página (qualquer um serve; o endereço é o que importa):
+
+| opção | endereço | custo / dependência |
+|---|---|---|
+| GitHub Pages (repositório público `Grid-Co-CODE/os-volta`, só este HTML) | `https://grid-co-code.github.io/os-volta/` | grátis; repositório tem de ser público no plano atual da organização |
+| Cloudflare Pages ou Worker (conta grátis, sem domínio) | `https://os-volta.<conta>.pages.dev/` | grátis; precisa criar a conta Cloudflare |
+| Railway (onde já mora o dashboard do Thopen), serviço estático | `https://os-volta-production.up.railway.app/` | dentro do plano atual |
+| Subdomínio próprio (`os.gridco.com.br` apontando para um dos acima) | `https://os.gridco.com.br/volta.html` | um registro DNS pela T.I.; é o endereço definitivo |
+
+Teste local do relay sem publicar: `python -c "from os_web import oauth_fracttal as o; print(o.destino_do_relay({'code':'c','state':o.novo_state('https://x.trycloudflare.com/os/login/fracttal/volta')}))"`.
