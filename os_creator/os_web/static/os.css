@@ -122,3 +122,10 @@ body.os-form input:focus,body.os-form select:focus{outline:none;border-color:var
 .os-sub-chk{width:18px;color:var(--f-green);font-weight:700}.os-sub-desc{flex:1}.os-sub-tipo{color:var(--f-muted);font-size:11px}
 .os-sub-resp{padding:0 12px 10px 40px;color:#e6e8ef;white-space:pre-wrap}
 .os-sub.feito .os-sub-desc{color:#c4cbdb}
+/* Entrar com Microsoft / SSO: o favorito que copia a sessao na aba do Fracttal + o campo para colar */
+.os-sso{border:1px solid var(--input-b);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:rgba(22,29,48,.6)}
+.os-passos{margin:0;padding-left:20px;font-size:12.5px;color:var(--txt)}.os-passos li{margin:4px 0}
+.os-fav{display:inline-block;background:var(--sec);color:var(--sec-txt);border:1px dashed var(--verde);border-radius:8px;padding:4px 10px;font-weight:600;text-decoration:none;cursor:grab;margin-left:4px}
+.os-fav:hover{background:#2f3547}
+.os-link{color:var(--verde)}
+.os-sso form{display:flex;gap:8px}.os-sso form input{flex:1}.os-sso form .os-btn{white-space:nowrap}

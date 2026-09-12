@@ -1,22 +1,48 @@
 {% extends "base.html" %}
 {% block titulo %}Entrar — Fracttal{% endblock %}
 {% block conteudo %}
-{# o LoginDialog do app, tal e qual: logo, "Entrar no Fracttal", e-mail + senha, Entrar, "— ou —", SSO #}
+{# o LoginDialog do app, tal e qual: logo, "Entrar no Fracttal", e-mail + senha, Entrar, "— ou —", Microsoft / SSO #}
 <section class="os-login">
   <img src="/os/assets/grid-logo.png" alt="Grid Co." class="os-logo">
   <h1>Entrar no Fracttal</h1>
   <p class="os-ajuda">Seu e-mail e senha do Fracttal. A OS é criada no seu nome; a senha não é armazenada.</p>
   {% if aviso %}<p class="os-aviso">{{ aviso }}</p>{% endif %}
+  {% if erro %}<p class="os-erro">⚠ {{ erro }}</p>{% endif %}
   <form method="post" action="/os/login" autocomplete="on">
     <input type="hidden" name="next" value="{{ next }}">
     <input type="email" name="email" placeholder="e-mail" value="{{ email }}" required autofocus autocomplete="username">
     <input type="password" name="senha" placeholder="senha" required autocomplete="current-password">
-    {% if erro %}<p class="os-erro">⚠ {{ erro }}</p>{% endif %}
     <button type="submit" class="os-btn">Entrar</button>
   </form>
   <div class="os-ou">— ou —</div>
-  <button type="button" class="os-btn secondary" disabled
-          title="Pra quem entra no Fracttal pela Microsoft — no navegador ainda não é possível capturar a sessão; use o app.">Entrar com Microsoft / SSO</button>
-  <p class="os-nota">Quem entra no Fracttal pela Microsoft não tem senha lá e, por ora, só consegue pelo app instalado.</p>
+  <button type="button" class="os-btn secondary" id="btn_sso" aria-controls="sso" aria-expanded="{{ 'true' if sso_aberto else 'false' }}">Entrar com Microsoft / SSO</button>
+  <div class="os-sso" id="sso" {% if not sso_aberto %}hidden{% endif %}>
+    <p class="os-ajuda">Pra quem entra no Fracttal pela Microsoft. O navegador não deixa esta página ler a sessão de outro site,
+      então quem copia é um favorito seu, clicado na aba do Fracttal — o mesmo que o app faz por dentro.</p>
+    <ol class="os-passos">
+      <li>Arraste este botão para a barra de favoritos, uma vez só:
+        <a class="os-fav" href="{{ bookmarklet }}" title="Arraste para a barra de favoritos (clicar aqui não faz nada)">Copiar sessão do Fracttal</a></li>
+      <li><a class="os-link" href="https://app.fracttal.com/" target="_blank" rel="noopener">Abrir o Fracttal</a> e entrar pela Microsoft, como sempre.</li>
+      <li>Na aba do Fracttal, clique no favorito. Ele copia a sessão e avisa. Feche aquela aba: o Fracttal aberto renova a sessão e mata a cópia.</li>
+      <li>Cole aqui. Entra sozinho ao colar.</li>
+    </ol>
+    <form method="post" action="/os/login" id="form_sso" autocomplete="off">
+      <input type="hidden" name="next" value="{{ next }}">
+      <input type="text" name="token" id="token" placeholder="cole a sessão copiada" spellcheck="false">
+      <button type="submit" class="os-btn">Entrar com a sessão</button>
+    </form>
+  </div>
+  <p class="os-nota">Sessão por pessoa: a OS nasce no nome de quem entrou. O Fracttal aceita uma sessão por conta — entrar aqui derruba o Fracttal aberto em outra aba, e vice-versa.</p>
 </section>
+<script>
+(function () {
+  var btn = document.getElementById('btn_sso'), box = document.getElementById('sso'), campo = document.getElementById('token');
+  btn.onclick = function () { box.hidden = !box.hidden; btn.setAttribute('aria-expanded', box.hidden ? 'false' : 'true'); if (!box.hidden) campo.focus(); };
+  document.querySelector('.os-fav').onclick = function (e) { e.preventDefault(); alert('Arraste este botão para a barra de favoritos do navegador. Ele só funciona clicado na aba do Fracttal.'); };
+  campo.addEventListener('paste', function () { setTimeout(function () { if (campo.value.trim()) document.getElementById('form_sso').submit(); }, 50); });
+  // 1 clique no futuro: o favorito pode abrir /os/login#sso=<jwt>; o fragmento nao vai ao servidor, esta pagina o envia pelo formulario
+  var m = (location.hash || '').match(/#sso=([^&]+)/);
+  if (m) { history.replaceState(null, '', location.pathname + location.search); campo.value = decodeURIComponent(m[1]); box.hidden = false; document.getElementById('form_sso').submit(); }
+})();
+</script>
 {% endblock %}

@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import (Blueprint, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for)
 
 import api
-from . import lancador, perf_web, sessao
+from . import lancador, perf_web, sessao, sso
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 _ASSETS = os.path.join(os.path.dirname(_AQUI), "assets")           # os_creator/assets (logo e ícone do app)
@@ -70,29 +70,49 @@ def _conta() -> dict:
 
 
 # ── porta ─────────────────────────────────────────────────────────────────────
+def _tela_login(erro=None, email="", prox="", aviso=None, sso_aberto=False, status=200):
+    return render_template("login.html", erro=erro, email=email, next=prox, aviso=aviso, sso_aberto=sso_aberto,
+                           bookmarklet=sso.bookmarklet_href()), status
+
+
+def _abrir_sessao(jwt: str, email: str, prox: str):
+    """Sessão aberta (por senha ou por SSO): o JWT vai para o cookie e o perfil é lido uma vez, como no boot do app."""
+    session.clear()
+    session["jwt"] = jwt
+    session.permanent = True
+    try:
+        session["conta"] = api.get_conta_info()
+    except Exception:                                   # noqa: BLE001 — perfil é enfeite; a porta não trava por ele
+        session["conta"] = {"nome": email or sessao.email_do_jwt(jwt) or "Usuário", "email": email, "perfil": ""}
+    return redirect(_destino_local(prox))
+
+
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     aviso = session.pop("aviso", None)
     prox = request.values.get("next") or ""
     if request.method == "POST":
+        colado = request.form.get("token") or ""
+        if colado.strip():                              # Entrar com Microsoft / SSO: a sessão copiada pelo favorito
+            jwt = sso.extrair_jwt(colado)
+            if not jwt:
+                return _tela_login(erro=sso.ERRO_SEM_TOKEN, prox=prox, sso_aberto=True, status=401)
+            api._save_jwt(jwt)                          # entra no contexto da requisição (sessao)
+            if not api.is_logged_in():                  # exp + 1 RPC barato: a sessão pode estar morta server-side
+                sessao.descartar()
+                return _tela_login(erro=sso.ERRO_SESSAO_MORTA, prox=prox, sso_aberto=True, status=401)
+            return _abrir_sessao(jwt, sessao.email_do_jwt(jwt), prox)
         email = (request.form.get("email") or "").strip()
         senha = request.form.get("senha") or ""
         try:
             api.fracttal_login(email, senha)              # grava o JWT na sessão da requisição (sessao._save_jwt)
         except api.FracttalError as e:
-            return render_template("login.html", erro=str(e), email=email, next=prox, aviso=None), 401
+            return _tela_login(erro=str(e), email=email, prox=prox, status=401)
         jwt = sessao.jwt_atual()
         if not jwt:
-            return render_template("login.html", erro="Login sem token de sessão. Tente de novo.", email=email, next=prox, aviso=None), 401
-        session.clear()
-        session["jwt"] = jwt
-        session.permanent = True
-        try:
-            session["conta"] = api.get_conta_info()
-        except Exception:                               # noqa: BLE001 — perfil é enfeite; a porta não trava por ele
-            session["conta"] = {"nome": email, "email": email, "perfil": ""}
-        return redirect(_destino_local(prox))
-    return render_template("login.html", erro=None, email="", next=prox, aviso=aviso)
+            return _tela_login(erro="Login sem token de sessão. Tente de novo.", email=email, prox=prox, status=401)
+        return _abrir_sessao(jwt, email, prox)
+    return _tela_login(prox=prox, aviso=aviso)
 
 
 @bp.route("/logout")

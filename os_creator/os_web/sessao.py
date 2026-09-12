@@ -77,6 +77,15 @@ def _apagar() -> None:
         est["morta"] = True
 
 
+def descartar() -> None:
+    """Esquece um JWT que entrou nesta requisição sem valer (token colado que não passou na validação): nem vai para
+    o cookie, nem marca a sessão como morta — a pessoa simplesmente não entrou."""
+    _JWT.set("")
+    est = _ESTADO.get()
+    if est is not None:
+        est["novo"] = None
+
+
 def _renovar_sem_arquivo(api, jwt: str) -> str:
     """O mesmo POST /rpc/token do `api._rpc_try_refresh`, sem gravar em arquivo: na web o token novo vai para a
     sessão da pessoa. Repetido aqui de propósito — o original grava em LOGIN_JWT_FILE no meio da função, e um

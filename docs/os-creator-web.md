@@ -24,7 +24,11 @@ python -m pytest tests/test_os_web_*.py -q
 O login Microsoft da plataforma não loga ninguém no Fracttal. Na web, "logar no Fracttal" é e-mail + senha do Fracttal
 (`rpc/login_new`, senha em MD5 duplo, igual ao app); a senha só serve para obter o JWT de sessão e não é guardada. Quem
 entra no Fracttal pela Microsoft (SSO) não tem senha lá — o navegador embutido do desktop captura o token, um navegador
-comum não consegue (same-origin). Até o Fracttal oferecer OAuth, essas pessoas usam o app instalado.
+comum não consegue (same-origin). Na web o mesmo truque troca de dono: o botão **Entrar com Microsoft / SSO** mostra
+um favorito (bookmarklet, `os_web/static/sso_bookmarklet.js`) que a pessoa arrasta para a barra uma vez e clica NA ABA DO
+FRACTTAL depois de entrar pela Microsoft; ele varre localStorage/sessionStorage/cookies (o `_POLL_JS` do app), copia o JWT
+e a pessoa cola no login da web, que valida ao vivo (`api.is_logged_in`) e abre a sessão. Depois de copiar, fechar a aba do
+Fracttal: ele renova a sessão e mata a cópia. OAuth para integradores continua sendo a saída limpa, se o Fracttal oferecer.
 
 A sessão é **por pessoa**: `os_web/sessao.py` guarda o JWT num `ContextVar` durante a requisição e costura as quatro
 funções do `api.py` que tocam o token (`_read_jwt`, `_save_jwt`, `_clear_jwt`, `_rpc_try_refresh`). Fora de requisição
