@@ -24,11 +24,20 @@ python -m pytest tests/test_os_web_*.py -q
 O login Microsoft da plataforma não loga ninguém no Fracttal. Na web, "logar no Fracttal" é e-mail + senha do Fracttal
 (`rpc/login_new`, senha em MD5 duplo, igual ao app); a senha só serve para obter o JWT de sessão e não é guardada. Quem
 entra no Fracttal pela Microsoft (SSO) não tem senha lá — o navegador embutido do desktop captura o token, um navegador
-comum não consegue (same-origin). Na web o mesmo truque troca de dono: o botão **Entrar com Microsoft / SSO** mostra
-um favorito (bookmarklet, `os_web/static/sso_bookmarklet.js`) que a pessoa arrasta para a barra uma vez e clica NA ABA DO
-FRACTTAL depois de entrar pela Microsoft; ele varre localStorage/sessionStorage/cookies (o `_POLL_JS` do app), copia o JWT
-e a pessoa cola no login da web, que valida ao vivo (`api.is_logged_in`) e abre a sessão. Depois de copiar, fechar a aba do
-Fracttal: ele renova a sessão e mata a cópia. OAuth para integradores continua sendo a saída limpa, se o Fracttal oferecer.
+comum não consegue (same-origin). Três saídas, da mais simples para a mais trabalhosa:
+
+1. **Senha no Fracttal.** Se o administrador puder definir senha para as contas que hoje entram só pela Microsoft, o
+   login da web (e-mail + senha) já basta — nada a instalar, nada a construir.
+2. **O app instalado faz o login Microsoft.** O botão *Entrar com Microsoft / SSO* chama `gridos://sso?volta=<url do
+   /os/login>`; o OS Creator abre a janela de SSO que a equipe já conhece (`steps/sso_login.py`), a pessoa entra, e ele
+   devolve o navegador em `volta#sso=<jwt>` — a página entra sozinha (`sso_volta.py`; o token vai no fragmento, que
+   não chega a servidor nem a log). Exige a versão do app com o `gridos://sso` (o app se atualiza sozinho pela release).
+3. **Favorito (bookmarklet).** Reserva para quem não tem o app: `os_web/static/sso_bookmarklet.js` (o `_POLL_JS` do app)
+   varre localStorage/sessionStorage/cookies na aba do Fracttal, copia o JWT e a pessoa cola no login da web. Depois de
+   copiar, fechar a aba do Fracttal: ele renova a sessão e mata a cópia.
+
+Uma extensão de navegador reproduziria o app por inteiro (abre a aba, lê o header, fecha), mas exigiria distribuição
+pela T.I.; ficou engavetada por simplicidade (Levi, 12/09). OAuth para integradores continua sendo a saída limpa.
 
 A sessão é **por pessoa**: `os_web/sessao.py` guarda o JWT num `ContextVar` durante a requisição e costura as quatro
 funções do `api.py` que tocam o token (`_read_jwt`, `_save_jwt`, `_clear_jwt`, `_rpc_try_refresh`). Fora de requisição

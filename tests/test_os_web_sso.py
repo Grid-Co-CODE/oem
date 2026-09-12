@@ -41,6 +41,7 @@ def test_tela_de_login_oferece_o_sso_com_o_favorito_e_o_campo_para_colar(cli):
     assert 'href="javascript:' in html and "https://app.fracttal.com" in html
     assert 'name="token"' in html and "Abrir o Fracttal" in html
     assert "disabled" not in html.split("Entrar com Microsoft / SSO")[1][:400]      # o botao deixou de ser enfeite
+    assert "gridos://sso?volta=" in html and "Aguardando o login no Fracttal" in html   # o app instalado faz o login Microsoft
 
 
 def test_colar_uma_sessao_viva_entra_sem_senha(cli, monkeypatch):

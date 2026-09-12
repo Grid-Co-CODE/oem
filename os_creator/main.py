@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, QTranslator, QLibraryInfo, QLocale, QTimer
 from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 from PyQt6.QtGui import QIcon
 import api
+import sso_volta
 from app import MainWindow, DARK_QSS, LoginDialog, _asset
 from steps.updater import checar_atualizacao
 from steps.splash import mostrar_splash
@@ -72,6 +73,11 @@ def _registrar_protocolo():
 def _dispatch_uri(uri):
     """Aplica um gridos:// (do próprio arg ou vindo de outra instância) → abre a sugestão no OS Creator."""
     dados = _parse_gridos([uri])
+    # gridos://sso?volta=… (12/09/2026): a WEB pede o login Microsoft pelo app — abre a janela de SSO e devolve o
+    # navegador logado. Não precisa da janela principal; vale com o app aberto ou fechado.
+    if dados and dados.get("_acao") == "sso":
+        sso_volta.tratar(dados)
+        return
     win = _holder.get("win")
     if not (dados and win):
         return
@@ -135,6 +141,12 @@ def main():
     from steps.nowheel import instalar as _instalar_nowheel
     _instalar_nowheel(app)                 # roda do mouse não muda combos/datas sem querer
     # Splash: símbolo da Grid (grande) surge e some antes do app aparecer.
+    # SSO pedido pela WEB com o app fechado: só a janela de login Microsoft, sem splash, sem janela principal —
+    # a pessoa quer entrar na plataforma, não abrir o app.
+    _dados_uri = _parse_gridos([uri]) if uri else None
+    if _dados_uri and _dados_uri.get("_acao") == "sso":
+        sso_volta.tratar(_dados_uri)
+        sys.exit(0)
     mostrar_splash(app, _asset("grid-icon.png"))
     # Gate de login: sem JWT de sessão válido, pede e-mail + senha.
     if not api.is_logged_in():

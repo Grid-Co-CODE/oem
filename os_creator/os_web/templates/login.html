@@ -17,20 +17,27 @@
   <div class="os-ou">— ou —</div>
   <button type="button" class="os-btn secondary" id="btn_sso" aria-controls="sso" aria-expanded="{{ 'true' if sso_aberto else 'false' }}">Entrar com Microsoft / SSO</button>
   <div class="os-sso" id="sso" {% if not sso_aberto %}hidden{% endif %}>
-    <p class="os-ajuda">Pra quem entra no Fracttal pela Microsoft. O navegador não deixa esta página ler a sessão de outro site,
-      então quem copia é um favorito seu, clicado na aba do Fracttal — o mesmo que o app faz por dentro.</p>
-    <ol class="os-passos">
-      <li>Arraste este botão para a barra de favoritos, uma vez só:
-        <a class="os-fav" href="{{ bookmarklet }}" title="Arraste para a barra de favoritos (clicar aqui não faz nada)">Copiar sessão do Fracttal</a></li>
-      <li><a class="os-link" href="https://app.fracttal.com/" target="_blank" rel="noopener">Abrir o Fracttal</a> e entrar pela Microsoft, como sempre.</li>
-      <li>Na aba do Fracttal, clique no favorito. Ele copia a sessão e avisa. Feche aquela aba: o Fracttal aberto renova a sessão e mata a cópia.</li>
-      <li>Cole aqui. Entra sozinho ao colar.</li>
-    </ol>
-    <form method="post" action="/os/login" id="form_sso" autocomplete="off">
-      <input type="hidden" name="next" value="{{ next }}">
-      <input type="text" name="token" id="token" placeholder="cole a sessão copiada" spellcheck="false">
-      <button type="submit" class="os-btn">Entrar com a sessão</button>
-    </form>
+    <p class="os-ajuda" id="sso_status">Pra quem entra no Fracttal pela Microsoft. O navegador não deixa esta página ler a sessão de outro
+      site, então o login Microsoft acontece na janela do <b>OS Creator instalado</b>: ele abre, você entra como sempre, e esta página entra sozinha.</p>
+    <div class="os-linha-sso">
+      <a class="os-btn" id="btn_app" href="#">Abrir o login Microsoft no OS Creator</a>
+      <span class="os-ajuda" id="sso_espera" hidden>Aguardando o login no Fracttal…</span>
+    </div>
+    <details class="os-fallback">
+      <summary>O OS Creator não abriu ou não está instalado? Use o favorito.</summary>
+      <ol class="os-passos">
+        <li>Arraste este botão para a barra de favoritos, uma vez só:
+          <a class="os-fav" href="{{ bookmarklet }}" title="Arraste para a barra de favoritos (clicar aqui não faz nada)">Copiar sessão do Fracttal</a></li>
+        <li><a class="os-link" href="https://app.fracttal.com/" target="_blank" rel="noopener">Abrir o Fracttal</a> e entrar pela Microsoft, como sempre.</li>
+        <li>Na aba do Fracttal, clique no favorito. Ele copia a sessão e avisa. Feche aquela aba: o Fracttal aberto renova a sessão e mata a cópia.</li>
+        <li>Cole aqui. Entra sozinho ao colar.</li>
+      </ol>
+      <form method="post" action="/os/login" id="form_sso" autocomplete="off">
+        <input type="hidden" name="next" value="{{ next }}">
+        <input type="text" name="token" id="token" placeholder="cole a sessão copiada" spellcheck="false">
+        <button type="submit" class="os-btn">Entrar com a sessão</button>
+      </form>
+    </details>
   </div>
   <p class="os-nota">Sessão por pessoa: a OS nasce no nome de quem entrou. O Fracttal aceita uma sessão por conta — entrar aqui derruba o Fracttal aberto em outra aba, e vice-versa.</p>
 </section>
@@ -39,6 +46,11 @@
   var btn = document.getElementById('btn_sso'), box = document.getElementById('sso'), campo = document.getElementById('token');
   btn.onclick = function () { box.hidden = !box.hidden; btn.setAttribute('aria-expanded', box.hidden ? 'false' : 'true'); if (!box.hidden) campo.focus(); };
   document.querySelector('.os-fav').onclick = function (e) { e.preventDefault(); alert('Arraste este botão para a barra de favoritos do navegador. Ele só funciona clicado na aba do Fracttal.'); };
+  // o app instalado atende gridos://sso: abre a janela de login Microsoft dele e devolve o navegador em /os/login#sso=<jwt>
+  var btnApp = document.getElementById('btn_app'), espera = document.getElementById('sso_espera');
+  var voltar = location.origin + '/os/login' + (document.querySelector('input[name=next]').value ? '?next=' + encodeURIComponent(document.querySelector('input[name=next]').value) : '');
+  btnApp.href = 'gridos://sso?volta=' + encodeURIComponent(voltar);
+  btnApp.onclick = function () { espera.hidden = false; setTimeout(function () { espera.textContent = 'Aguardando o login no Fracttal… Se o OS Creator não abriu, use o favorito abaixo.'; }, 4000); };
   campo.addEventListener('paste', function () { setTimeout(function () { if (campo.value.trim()) document.getElementById('form_sso').submit(); }, 50); });
   // 1 clique no futuro: o favorito pode abrir /os/login#sso=<jwt>; o fragmento nao vai ao servidor, esta pagina o envia pelo formulario
   var m = (location.hash || '').match(/#sso=([^&]+)/);

@@ -129,3 +129,7 @@ body.os-form input:focus,body.os-form select:focus{outline:none;border-color:var
 .os-fav:hover{background:#2f3547}
 .os-link{color:var(--verde)}
 .os-sso form{display:flex;gap:8px}.os-sso form input{flex:1}.os-sso form .os-btn{white-space:nowrap}
+.os-linha-sso{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.os-fallback summary{cursor:pointer;color:var(--muted2);font-size:12px;margin-top:4px}
+.os-fallback[open] summary{color:var(--txt)}
+.os-fallback ol{margin-top:6px}
