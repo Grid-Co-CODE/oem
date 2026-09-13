@@ -337,30 +337,126 @@ def api_performance_criar():
 COLS = [("Nº", "folio"), ("Cliente", "cliente"), ("Usina", "usina"), ("Ativo", "ativo"), ("Descrição", "descricao"),
         ("Data de Criação", "data"), ("Data do Evento", "event_date"), ("Data Fim", "data_fim"), ("Status", "status"),
         ("Etiqueta", "etiqueta")]
+# Visão COS: espelha a do Power BI, na ordem do print do Levi (steps/historico.py::COLS_COS)
+COLS_COS = [("Data da programação", "programada"), ("Tipo de tarefa", "tipo_tarefa"), ("Usina", "usina"), ("Cliente", "cliente"),
+            ("Descrição", "descricao"), ("Equipe", "equipe"), ("Data Início da OS", "inicio"), ("Data Fim da OS", "data_fim"),
+            ("Descrição gatilho", "gatilho"), ("Descrição EQP", "ativo"), ("Nº Da OS", "folio"), ("Criado por", "criado_por")]
+DATAS = {"data", "event_date", "data_fim", "programada", "inicio"}
+
+
+def _catalogo_clientes_usinas() -> dict:
+    """{cliente: {usinas}} do catálogo de ativos — só pares de PLANTA (api.CARTEIRA_EQUIP), como o `_catalogo_loc` do app:
+    sem o discriminador o combo listava o almoxarifado inteiro como se fosse usina (print do Levi, 28/07). Best-effort."""
+    m: dict = {}
+    try:
+        for cli, usi, tipo in api._code_to_loc().values():
+            if cli and usi and tipo in api.CARTEIRA_EQUIP:
+                m.setdefault(cli, set()).add(usi)
+    except Exception:                                   # noqa: BLE001 — sem catálogo, valem só as linhas carregadas
+        pass
+    return m
 
 
 @bp.route("/historico")
 @exige_sessao
 def historico():
-    modo = "atribuidas" if request.args.get("modo") == "atribuidas" else "criadas"
+    """Históricos de OS com os filtros do app (steps/historico.py): três visões (Histórico Geral / Atribuídas a mim /
+    Visão COS), Buscar OS pelo nº (direto, ignora filtros), Buscar (local), Limpar filtros, e a grade Criado por, Etiqueta,
+    Status, Cliente, Usina, Tipo de ativo, Tipo de tarefa, Período. Como no app: Visão, Criado por, Etiqueta, Status e
+    Período valem NO SERVIDOR (re-buscam); Cliente, Usina, Tipo de ativo, Tipo de tarefa e a busca são locais (JS sobre
+    a lista carregada). O tipo de tarefa chega depois, por /historico/meta — 3,5 s por 60 OS no Fracttal."""
+    modo = request.args.get("modo") or "criadas"
+    if modo not in ("criadas", "atribuidas", "cos"):
+        modo = "criadas"
+    modo_srv = "atribuidas" if modo == "atribuidas" else "criadas"      # a COS é a busca de 'criadas' com outras colunas
     hoje = dt.date.today()
     de = request.args.get("de") or (hoje - dt.timedelta(days=30)).isoformat()
     ate = request.args.get("ate") or hoje.isoformat()
-    busca = (request.args.get("busca") or "").strip().lower()
+    busca = (request.args.get("busca") or "").strip()
+    # Criado por: o padrão do app é o usuário logado (None); a Visão COS é de EQUIPE (Todos); em Atribuídas não existe
+    pessoa = (request.args.get("pessoa") or "").strip()
+    if modo == "atribuidas":
+        id_account = None
+    elif pessoa == "TODOS" or (modo == "cos" and not pessoa):
+        id_account = "TODOS"
+    elif pessoa.isdigit():
+        id_account = int(pessoa)
+    else:
+        id_account = None
+    etq = (request.args.get("etiqueta") or "").strip()
+    id_label = int(etq) if etq.isdigit() else None
+    nome_para_id = {v: k for k, v in api.WO_STATUS.items()}
+    status_sel = [x for x in request.args.getlist("status") if x in nome_para_id]
+    status_ids = [nome_para_id[x] for x in status_sel] or None
     linhas, erro = [], None
     try:
-        linhas = api.list_minhas_os(modo=modo, id_account=None, id_label=None, de=de, ate=ate) or []
+        linhas = api.list_minhas_os(modo=modo_srv, id_account=id_account, id_label=id_label, de=de, ate=ate, status_ids=status_ids) or []
     except api.FracttalError as e:
         if sessao.morta() or isinstance(e, api.SessionExpired):
             raise
         erro = str(e)
-    if busca:
-        linhas = [l for l in linhas if busca in " ".join(str(l.get(k) or "") for k in ("folio", "usina", "ativo", "descricao", "cliente")).lower()]
+    if busca:                                            # a busca é local (JS); aqui só para quem está sem JS
+        b = busca.lower()
+        linhas = [l for l in linhas if b in " ".join(str(l.get(k) or "") for k in ("folio", "usina", "ativo", "descricao", "cliente", "status")).lower()]
+    labels, pessoas, eu = [], [], None
+    try:
+        labels = sorted(api.get_labels() or [], key=lambda x: (x.get("description") or "").lower())
+    except Exception:                                    # noqa: BLE001 — sem etiquetas o filtro fica em 'Todas'
+        pass
+    try:
+        r = api.get_pessoas_contas() or {}
+        pessoas, eu = (r.get("pessoas") or []), r.get("eu")
+    except Exception:                                    # noqa: BLE001 — idem
+        pass
+    cat = _catalogo_clientes_usinas()
+    clientes = sorted(set(cat) | {l.get("cliente") for l in linhas if l.get("cliente") and l.get("cliente") != "—"})
+    usina_cli = {u: c for c, us in cat.items() for u in us}
+    for l in linhas:
+        if l.get("usina") and l.get("usina") != "—":
+            usina_cli.setdefault(l["usina"], l.get("cliente") or "")
+    tipos_ativo = sorted({l.get("tipo") for l in linhas if l.get("tipo") and l.get("tipo") != "—"})
+    tarefa_sel = list(api.TIPOS_COS) if modo == "cos" else []        # a COS já vem com os tipos do COS marcados
     for l in linhas:
         l["_status_cor"] = STATUS_COR.get(l.get("status") or "")
         l["_etiqueta"] = ", ".join(e.get("nome") or "" for e in (l.get("etiquetas") or []) if isinstance(e, dict))
-    return render_template("historico.html", conta=_conta(), aba="hist", linhas=linhas, modo=modo, de=de, ate=ate,
-                           busca=request.args.get("busca") or "", erro=erro, cols=COLS, fmt=api.fmt_data_br)
+        l["_texto"] = (" ".join(str(l.get(k) or "") for k in ("folio", "cliente", "usina", "ativo", "descricao", "status")) + " " + l["_etiqueta"]).lower()
+    pessoa_sel = "TODOS" if id_account == "TODOS" else (str(id_account) if isinstance(id_account, int) else (str(eu) if eu is not None else ""))
+    return render_template("historico.html", conta=_conta(), aba="hist", linhas=linhas, modo=modo, de=de, ate=ate, busca=busca, erro=erro,
+                           cols=(COLS_COS if modo == "cos" else COLS), datas=DATAS, fmt=api.fmt_data_br,
+                           labels=labels, pessoas=pessoas, pessoa_sel=pessoa_sel, etiqueta_sel=str(id_label or ""),
+                           status_opts=list(api.WO_STATUS.values()), status_sel=status_sel, clientes=clientes,
+                           usinas=sorted(usina_cli), usina_cli=usina_cli, tipos_ativo=tipos_ativo,
+                           tipos_tarefa=sorted(set(tarefa_sel)), tarefa_sel=tarefa_sel)
+
+
+@bp.route("/historico/meta")
+@exige_sessao
+def historico_meta():
+    """Tipo de tarefa e datas da tarefa por OS, DEPOIS da lista (como o app: 3,5 s por 60 ids contra 0,7 s da página)."""
+    from flask import jsonify
+    ids = [int(x) for x in (request.args.get("ids") or "").split(",") if x.strip().isdigit()]
+    if not ids:
+        return jsonify({})
+    try:
+        meta = api.meta_tarefas_por_os(ids) or {}
+    except api.FracttalError as e:
+        if sessao.morta() or isinstance(e, api.SessionExpired):
+            raise
+        return jsonify({})
+    return jsonify({str(k): v for k, v in meta.items()})
+
+
+@bp.route("/os/folio/<int:folio>")
+@exige_sessao
+def os_detalhe_por_folio(folio):
+    """Buscar OS pelo nº — direto, ignora filtros e período (a barra do app). Resolve o nº para o id e cai no detalhe."""
+    wid = api._wo_id_por_folio(str(folio))
+    if not wid:
+        msg = f"Não achei nenhuma OS com o nº {folio}."
+        if request.args.get("parcial") or request.headers.get("X-Requested-With") == "fetch":
+            return f'<p class="os-erro" style="padding:24px">{msg}</p>', 404
+        return render_template("erro.html", conta=_conta(), aba="hist", mensagem=msg), 404
+    return os_detalhe(wid)
 
 
 @bp.route("/os/<int:wid>")

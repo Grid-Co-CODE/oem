@@ -1,30 +1,67 @@
 {% extends "base.html" %}
 {% block titulo %}Históricos de OS{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{# HistoricoOS (steps/historico.py) na web, com os mesmos filtros e a mesma divisão de trabalho: Visão, Criado por, Etiqueta,
+   Status e Período re-buscam no servidor (o formulário); Cliente, Usina, Tipo de ativo, Tipo de tarefa e a busca são locais
+   (JS sobre a lista carregada, como o `_aplica` do app). O nº abre o card do detalhe; "Buscar OS pelo nº" abre direto,
+   ignorando filtros e período. O tipo de tarefa chega depois por /historico/meta e preenche coluna e filtro. #}
+{% macro multi(nome, rotulo, todos, opcoes, marcados, local, extra) -%}
+<details class="os-multi" data-nome="{{ nome }}"{% if local %} data-local="1"{% endif %}>
+  <summary><span class="os-lbl">{{ rotulo }}</span><span class="os-multi-txt" data-todos="{{ todos }}">{{ todos }}</span></summary>
+  <div class="os-multi-lista">
+    {% for o in opcoes %}<label{% if extra and extra.get(o) is not none %} data-cliente="{{ extra.get(o) }}"{% endif %}><input type="checkbox"{% if not local %} name="{{ nome }}"{% endif %} value="{{ o }}"{% if o in marcados %} checked{% endif %}> {{ o }}</label>{% endfor %}
+  </div>
+</details>
+{%- endmacro %}
 {% block conteudo %}
-{# HistoricoOS: visão (criadas / atribuídas), período BR, busca, tabela com status em card colorido; o Nº abre o detalhe #}
 <section class="os-pagina">
-  <form class="os-filtros" method="get" action="/os/historico">
-    <label class="os-campo"><span class="os-lbl">Visão</span>
-      <select name="modo"><option value="criadas" {% if modo == 'criadas' %}selected{% endif %}>Histórico Geral (criadas por mim)</option>
-        <option value="atribuidas" {% if modo == 'atribuidas' %}selected{% endif %}>Atribuídas a mim</option></select></label>
-    <label class="os-campo"><span class="os-lbl">De</span><input type="date" name="de" value="{{ de }}"></label>
-    <label class="os-campo"><span class="os-lbl">Até</span><input type="date" name="ate" value="{{ ate }}"></label>
-    <label class="os-campo os-cresce"><span class="os-lbl">Buscar</span><input type="search" name="busca" value="{{ busca }}" placeholder="nº, usina, ativo, descrição…"></label>
-    <button type="submit" class="os-btn">Atualizar</button>
+  <form id="f_hist" method="get" action="/os/historico" autocomplete="off">
+    <input type="hidden" name="modo" value="{{ modo }}">
+    <div class="os-hist-topo">
+      <div class="os-seg" role="group" aria-label="Visão">
+        <button type="button" data-modo="criadas" class="{% if modo == 'criadas' %}on{% endif %}">Histórico Geral</button>
+        <button type="button" data-modo="atribuidas" class="{% if modo == 'atribuidas' %}on{% endif %}">Atribuídas a mim</button>
+        <button type="button" data-modo="cos" class="{% if modo == 'cos' %}on{% endif %}" title="Corretivas, emergenciais e religamentos — com programação, equipe e gatilho, como no Power BI">Visão COS</button>
+      </div>
+      <label class="os-busca-os" title="Digite o número da OS e tecle Enter — abre a OS direto, mesmo fora do período e dos filtros">{{ icone('search', '#A6E22E', 15) }}<input type="text" id="busca_os" placeholder="Buscar OS pelo nº — direto, ignora filtros" inputmode="numeric"></label>
+      <label class="os-cell os-cresce" style="max-width:260px"><span class="os-lbl">Buscar</span><input type="search" name="busca" id="busca_no" value="{{ busca }}" placeholder="nº, ativo, descrição, status…" title="Filtra as OS do período por nº, cliente, usina, ativo, descrição, status, tipo de tarefa e etiqueta  [Ctrl+F]"></label>
+      <button type="button" class="os-btn secondary" id="b_limpar" title="Limpa Cliente/Usina/Status/Tipos, a busca e a Etiqueta">Limpar filtros</button>
+      <button type="submit" class="os-btn">Atualizar</button>
+    </div>
+    <div class="os-hist-grid">
+      {% if modo != 'atribuidas' %}
+      <label class="os-cell"><span class="os-lbl">Criado por</span>
+        <select name="pessoa"><option value="TODOS" {% if pessoa_sel == 'TODOS' %}selected{% endif %}>Todos os usuários</option>
+          {% for p in pessoas %}<option value="{{ p.id_account }}" {% if pessoa_sel == p.id_account|string %}selected{% endif %}>{{ p.nome }}</option>{% endfor %}</select></label>
+      {% else %}<div class="os-cell"></div>{% endif %}
+      <label class="os-cell"><span class="os-lbl">Etiqueta</span>
+        <select name="etiqueta"><option value="">Todas as etiquetas</option>
+          {% for l in labels %}<option value="{{ l.id }}" {% if etiqueta_sel == l.id|string %}selected{% endif %}>{{ l.description }}</option>{% endfor %}</select></label>
+      <div class="os-cell">{{ multi('status', 'Status', 'Todos os status', status_opts, status_sel, False, None) }}</div>
+      <div class="os-cell">{{ multi('cliente', 'Cliente', 'Todos os clientes', clientes, [], True, None) }}</div>
+      <div class="os-cell">{{ multi('usina', 'Usina', 'Todas as usinas', usinas, [], True, usina_cli) }}</div>
+      <div class="os-cell">{{ multi('tipo', 'Tipo de ativo', 'Todos os tipos', tipos_ativo, [], True, None) }}</div>
+      <div class="os-cell">{{ multi('tarefa', 'Tipo de tarefa', 'Todos os tipos de tarefa', tipos_tarefa, tarefa_sel, True, None) }}</div>
+      <div class="os-cell os-cell-2"><span class="os-lbl">Período</span>
+        <div class="os-periodo"><input type="date" name="de" value="{{ de }}"><span>até</span><input type="date" name="ate" value="{{ ate }}"></div></div>
+    </div>
   </form>
   {% if erro %}<p class="os-erro">⚠ {{ erro }}</p>{% endif %}
-  <div class="os-ajuda">{{ linhas|length }} OS no período {{ fmt(de + 'T03:00:00', False) }} a {{ fmt(ate + 'T03:00:00', False) }}.</div>
+  <div class="os-hist-hint" id="hint">{{ linhas|length }} OS no período {{ fmt(de + 'T03:00:00', False) }} a {{ fmt(ate + 'T03:00:00', False) }}.</div>
   <div class="os-tbl-wrap">
-    <table class="os-tbl os-hist">
+    <table class="os-tbl os-hist" id="tab_hist">
       <thead><tr>{% for rot, chave in cols %}<th>{{ rot }}</th>{% endfor %}</tr></thead>
       <tbody>
       {% for l in linhas %}
-      <tr>
-        <td><a class="os-folio" href="/os/os/{{ l.id }}?status={{ l.status|urlencode }}">{{ l.folio }}</a></td>
-        <td>{{ l.cliente }}</td><td>{{ l.usina }}</td><td>{{ l.ativo }}</td><td class="c-desc">{{ l.descricao }}</td>
-        <td class="c-data">{{ fmt(l.data) }}</td><td class="c-data">{{ fmt(l.event_date) }}</td><td class="c-data">{{ fmt(l.data_fim) }}</td>
-        <td>{% if l.status %}<span class="os-status" {% if l._status_cor %}style="color:{{ l._status_cor }};background:{{ l._status_cor }}29;border-color:{{ l._status_cor }}6b"{% endif %}>{{ l.status }}</span>{% endif %}</td>
-        <td>{{ l._etiqueta }}</td>
+      <tr data-id="{{ l.id }}" data-cliente="{{ l.cliente }}" data-usina="{{ l.usina }}" data-tipo="{{ l.tipo }}" data-status="{{ l.status }}" data-tarefa="{{ l.tipo_tarefa or '' }}" data-texto="{{ l._texto }}">
+        {% for rot, chave in cols %}
+        {% if chave == 'folio' %}<td><a class="os-folio" href="/os/os/{{ l.id }}?status={{ l.status|urlencode }}">{{ l.folio }}</a></td>
+        {% elif chave == 'status' %}<td>{% if l.status %}<span class="os-status" {% if l._status_cor %}style="color:{{ l._status_cor }};background:{{ l._status_cor }}29;border-color:{{ l._status_cor }}6b"{% endif %}>{{ l.status }}</span>{% endif %}</td>
+        {% elif chave == 'etiqueta' %}<td>{{ l._etiqueta }}</td>
+        {% elif chave == 'descricao' %}<td class="c-desc">{{ l.descricao }}</td>
+        {% elif chave in datas %}<td class="c-data" data-k="{{ chave }}">{{ fmt(l[chave]) if l.get(chave) else '—' }}</td>
+        {% else %}<td data-k="{{ chave }}">{{ l.get(chave) or '—' }}</td>{% endif %}
+        {% endfor %}
       </tr>
       {% else %}
       <tr class="vazio"><td colspan="{{ cols|length }}">Nenhuma OS no período.</td></tr>
@@ -46,23 +83,23 @@
 {% block scripts %}
 <script>
 (function () {
+  // ── card do detalhe (o nº abre sobreposto; "Buscar OS pelo nº" tambem) ──
   var modal = document.getElementById("os_card"), corpo = document.getElementById("os_card_corpo");
-  if (!modal) return;
+  function anexos(raiz) {
+    var el = raiz.querySelector("[data-anexos]"); if (!el) return;
+    fetch(el.getAttribute("data-anexos"), {credentials: "same-origin", headers: {"Accept": "application/json"}})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { raiz.querySelectorAll(".det-n").forEach(function (n) { var v = j ? j[n.getAttribute("data-n")] : null; n.textContent = (v === null || v === undefined) ? "—" : v; }); })
+      .catch(function () { raiz.querySelectorAll(".det-n").forEach(function (n) { n.textContent = "—"; }); });
+  }
   function abrir(url) {
-    corpo.innerHTML = '<p class="os-ajuda" style="padding:24px">Carregando a OS\u2026</p>';
+    corpo.innerHTML = '<p class="os-ajuda" style="padding:24px">Carregando a OS…</p>';
     modal.hidden = false; document.body.classList.add("os-modal-aberto");
     var sep = url.indexOf("?") >= 0 ? "&" : "?";
     fetch(url + sep + "parcial=1", {headers: {"X-Requested-With": "fetch"}, credentials: "same-origin"})
       .then(function (r) { return r.text(); })
       .then(function (h) { corpo.innerHTML = h; corpo.scrollTop = 0; anexos(corpo); })
-      .catch(function () { corpo.innerHTML = '<p class="os-erro" style="padding:24px">N\u00e3o consegui carregar a OS aqui. <a class="os-link" href="' + url + '">Abrir a p\u00e1gina</a></p>'; });
-  }
-  function anexos(raiz) {
-    var el = raiz.querySelector("[data-anexos]"); if (!el) return;
-    fetch(el.getAttribute("data-anexos"), {credentials: "same-origin", headers: {"Accept": "application/json"}})
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { raiz.querySelectorAll(".det-n").forEach(function (n) { var v = j ? j[n.getAttribute("data-n")] : null; n.textContent = (v === null || v === undefined) ? "\u2014" : v; }); })
-      .catch(function () { raiz.querySelectorAll(".det-n").forEach(function (n) { n.textContent = "\u2014"; }); });
+      .catch(function () { corpo.innerHTML = '<p class="os-erro" style="padding:24px">Não consegui carregar a OS aqui. <a class="os-link" href="' + url + '">Abrir a página</a></p>'; });
   }
   function fechar() { modal.hidden = true; corpo.innerHTML = ""; document.body.classList.remove("os-modal-aberto"); }
   document.querySelectorAll("a.os-folio").forEach(function (a) {
@@ -70,7 +107,134 @@
   });
   modal.addEventListener("click", function (e) { if (e.target.hasAttribute("data-fechar")) fechar(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !modal.hidden) fechar(); });
+
+  // ── visoes (botoes, como no app) ──
+  var form = document.getElementById("f_hist");
+  document.querySelectorAll(".os-seg [data-modo]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      form.querySelector("input[name=modo]").value = b.getAttribute("data-modo");
+      form.querySelectorAll("input[name=status]:checked").forEach(function (c) { c.checked = false; });   // troca de visao zera filtros locais
+      form.submit();
+    });
+  });
+
+  // ── combos multi: texto do resumo (placeholder / o unico marcado / "N selecionados"), como o CheckableComboBox ──
+  function resumo(det) {
+    var txt = det.querySelector(".os-multi-txt"), sel = [];
+    det.querySelectorAll("input[type=checkbox]:checked").forEach(function (c) { if (!c.closest("label").hidden) sel.push(c.value); });
+    txt.textContent = sel.length === 0 ? txt.getAttribute("data-todos") : (sel.length === 1 ? sel[0] : sel.length + " selecionados");
+    det.title = sel.join("\n");
+  }
+  function marcados(nome) {
+    var out = [];
+    document.querySelectorAll('.os-multi[data-nome="' + nome + '"] input:checked').forEach(function (c) { if (!c.closest("label").hidden) out.push(c.value); });
+    return out;
+  }
+  document.querySelectorAll(".os-multi").forEach(resumo);
+  document.addEventListener("click", function (e) {                 // fecha o combo aberto ao clicar fora
+    document.querySelectorAll(".os-multi[open]").forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute("open"); });
+  });
+
+  // ── filtros locais (Cliente, Usina, Tipo de ativo, Tipo de tarefa, Status tambem, e a busca) ──
+  var linhas = Array.prototype.slice.call(document.querySelectorAll("#tab_hist tbody tr[data-id]"));
+  var hint = document.getElementById("hint"), total = linhas.length;
+  var periodo = "{{ fmt(de + 'T03:00:00', False) }} a {{ fmt(ate + 'T03:00:00', False) }}";
+  function cascataUsinas() {                                        // usinas dos clientes marcados (ou todas), como o _rebuild_usinas
+    var clis = marcados("cliente");
+    document.querySelectorAll('.os-multi[data-nome="usina"] label').forEach(function (l) {
+      var c = l.getAttribute("data-cliente") || "";
+      var mostra = !clis.length || clis.indexOf(c) >= 0;
+      l.hidden = !mostra; if (!mostra) l.querySelector("input").checked = false;
+    });
+  }
+  function aplica() {
+    var stats = marcados("status"), clis = marcados("cliente"), usis = marcados("usina"), tips = marcados("tipo"), tars = marcados("tarefa");
+    var no = (document.getElementById("busca_no").value || "").trim().toLowerCase(), n = 0;
+    linhas.forEach(function (tr) {
+      var d = tr.dataset, tarefas = (d.tarefa || "").split(" / ");
+      var ok = (!stats.length || stats.indexOf(d.status) >= 0) && (!clis.length || clis.indexOf(d.cliente) >= 0)
+            && (!usis.length || usis.indexOf(d.usina) >= 0) && (!tips.length || tips.indexOf(d.tipo) >= 0)
+            && (!tars.length || tarefas.some(function (t) { return tars.indexOf(t) >= 0; }))
+            && (!no || (d.texto + " " + (d.tarefa || "").toLowerCase()).indexOf(no) >= 0);
+      tr.hidden = !ok; if (ok) n++;
+    });
+    hint.textContent = n + " OS exibidas" + (n !== total ? " · " + total + " carregadas" : "") + " · período " + periodo;
+  }
+  document.querySelectorAll('.os-multi[data-local] input, .os-multi[data-nome="status"] input').forEach(function (c) {
+    c.addEventListener("change", function () {
+      var det = c.closest(".os-multi"); resumo(det);
+      if (det.getAttribute("data-nome") === "cliente") { cascataUsinas(); resumo(document.querySelector('.os-multi[data-nome="usina"]')); }
+      aplica();
+    });
+  });
+  var tmr; document.getElementById("busca_no").addEventListener("input", function () { clearTimeout(tmr); tmr = setTimeout(aplica, 260); });
+  document.getElementById("busca_no").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); aplica(); } });
+  document.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); var b = document.getElementById("busca_no"); b.focus(); b.select(); } });
+
+  // Buscar OS pelo nº: direto, ignora filtros e periodo
+  document.getElementById("busca_os").addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    var n = (this.value || "").replace(/\D/g, "");
+    if (n) { abrir("/os/os/folio/" + n); this.value = ""; }
+  });
+
+  // Limpar filtros: Cliente/Usina/Status/Tipos, a busca e a Etiqueta (mantem visao, Criado por e periodo), como no app
+  document.getElementById("b_limpar").addEventListener("click", function () {
+    var q = new URLSearchParams();
+    q.set("modo", form.querySelector("input[name=modo]").value);
+    var pessoa = form.querySelector("select[name=pessoa]"); if (pessoa) q.set("pessoa", pessoa.value);
+    q.set("de", form.querySelector("input[name=de]").value); q.set("ate", form.querySelector("input[name=ate]").value);
+    location.href = "/os/historico?" + q.toString();
+  });
+
+  // ── meta das tarefas (tipo de tarefa, programacao, inicio, gatilho) chega DEPOIS, em lotes de 60, como no app ──
+  var ids = linhas.map(function (tr) { return tr.dataset.id; }), preset = {{ tarefa_sel|tojson }}, mexeuTarefa = false;
+  function tarefasOpcoes() {
+    var det = document.querySelector('.os-multi[data-nome="tarefa"]'), lista = det.querySelector(".os-multi-lista");
+    var marc = marcados("tarefa"), tipos = {};
+    preset.forEach(function (t) { tipos[t] = 1; });
+    linhas.forEach(function (tr) { (tr.dataset.tarefa || "").split(" / ").forEach(function (t) { if (t) tipos[t] = 1; }); });
+    var nomes = Object.keys(tipos).sort();
+    if (!nomes.length) return;
+    lista.innerHTML = "";
+    nomes.forEach(function (t) {
+      var l = document.createElement("label"), i = document.createElement("input");
+      i.type = "checkbox"; i.value = t;
+      i.checked = mexeuTarefa ? marc.indexOf(t) >= 0 : (marc.indexOf(t) >= 0 || preset.indexOf(t) >= 0);
+      i.addEventListener("change", function () { mexeuTarefa = true; resumo(det); aplica(); });
+      l.appendChild(i); l.appendChild(document.createTextNode(" " + t)); lista.appendChild(l);
+    });
+    resumo(det);
+  }
+  function brData(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || "");
+    if (!m) return iso || "—";
+    var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    d.setUTCHours(d.getUTCHours() - 3);                                              // Brasilia, como api.fmt_data_br
+    var p = function (x) { return (x < 10 ? "0" : "") + x; };
+    return p(d.getUTCDate()) + "/" + p(d.getUTCMonth() + 1) + "/" + d.getUTCFullYear() + " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes());
+  }
+  function lote(i) {
+    if (i >= ids.length) { tarefasOpcoes(); aplica(); return; }
+    var fatia = ids.slice(i, i + 60);
+    fetch("/os/historico/meta?ids=" + fatia.join(","), {credentials: "same-origin", headers: {"Accept": "application/json"}})
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (m) {
+        fatia.forEach(function (id) {
+          var d = m[id]; if (!d) return;
+          var tr = document.querySelector('#tab_hist tr[data-id="' + id + '"]'); if (!tr) return;
+          if (d.tipo_tarefa) tr.dataset.tarefa = d.tipo_tarefa;
+          ["tipo_tarefa", "programada", "inicio", "gatilho", "event_date", "data_fim"].forEach(function (k) {
+            var td = tr.querySelector('td[data-k="' + k + '"]'); if (td && d[k]) td.textContent = (td.classList.contains("c-data") ? brData(d[k]) : d[k]);
+          });
+        });
+        tarefasOpcoes(); aplica(); lote(i + 60);
+      })
+      .catch(function () { lote(i + 60); });
+  }
+  cascataUsinas(); aplica();
+  if (ids.length) lote(0);
 })();
 </script>
 {% endblock %}
-
