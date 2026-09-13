@@ -133,3 +133,6 @@ body.os-form input:focus,body.os-form select:focus{outline:none;border-color:var
 .os-fallback summary{cursor:pointer;color:var(--muted2);font-size:12px;margin-top:4px}
 .os-fallback[open] summary{color:var(--txt)}
 .os-fallback ol{margin-top:6px}
+.os-dir{display:flex;align-items:center;gap:16px}
+.os-topo-voltar{color:var(--muted);text-decoration:none;font-size:13px;font-weight:500;padding:6px 12px;border:1px solid rgba(255,255,255,.12);border-radius:8px;white-space:nowrap;transition:color .15s,border-color .15s}
+.os-topo-voltar:hover{color:var(--verde);border-color:var(--verde)}

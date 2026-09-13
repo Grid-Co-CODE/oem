@@ -15,13 +15,16 @@
     <img src="/os/assets/grid-icon.png" alt="" class="os-simbolo">
     <div><div class="os-n1">Grid Co.</div><div class="os-n2">Sistema de Ordens de Serviço</div></div>
   </div>
-  {% if conta %}
-  <div class="os-perfil">
-    <span class="os-avatar">{{ conta.nome|iniciais }}</span>
-    <div><div class="os-nome">{{ conta.nome or 'Usuário' }}</div><div class="os-cargo">{{ conta.perfil or 'Grid Co.' }}</div></div>
-    <a class="os-sair" href="/os/logout" title="Sair do Fracttal nesta área">sair</a>
+  <div class="os-dir">
+    <a class="os-topo-voltar" href="/" title="Voltar para a Plataforma de Performance">&larr; Plataforma</a>
+    {% if conta %}
+    <div class="os-perfil">
+      <span class="os-avatar">{{ conta.nome|iniciais }}</span>
+      <div><div class="os-nome">{{ conta.nome or 'Usuário' }}</div><div class="os-cargo">{{ conta.perfil or 'Grid Co.' }}</div></div>
+      <a class="os-sair" href="/os/logout" title="Sair do Fracttal nesta área">sair</a>
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
 </header>
 <div class="os-sep"></div>
 {% if conta %}

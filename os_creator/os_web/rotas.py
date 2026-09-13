@@ -72,9 +72,9 @@ def _conta() -> dict:
 
 
 # ── porta ─────────────────────────────────────────────────────────────────────
-def _tela_login(erro=None, email="", prox="", aviso=None, sso_aberto=False, status=200):
+def _tela_login(erro=None, email="", prox="", aviso=None, sso_aberto=False, status=200, auto=False):
     return render_template("login.html", erro=erro, email=email, next=prox, aviso=aviso, sso_aberto=sso_aberto,
-                           bookmarklet=sso.bookmarklet_href()), status
+                           bookmarklet=sso.bookmarklet_href(), auto=auto), status
 
 
 def _abrir_sessao(jwt: str, email: str, prox: str, conta: dict | None = None):
@@ -116,7 +116,9 @@ def login():
         if not jwt:
             return _tela_login(erro="Login sem token de sessão. Tente de novo.", email=email, prox=prox, status=401)
         return _abrir_sessao(jwt, email, prox)
-    return _tela_login(prox=prox, aviso=aviso)
+    # abre direto na tela do Fracttal (Levi, 13/09): sem erro/aviso, sem ?manual=1, e com OAuth configurado
+    auto = not aviso and not request.args.get("manual") and bool(api.CLIENT_ID and api.CLIENT_SECRET)
+    return _tela_login(prox=prox, aviso=aviso, auto=auto)
 
 
 @bp.route("/login/fracttal")

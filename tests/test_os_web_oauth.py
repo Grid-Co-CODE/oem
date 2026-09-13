@@ -148,3 +148,14 @@ def test_diagnostico_acha_o_nome_pelo_personnel_quando_o_token_nao_traz_email_no
     with sessao.contexto(""):
         d = oauth_fracttal.diagnosticar(_jwt_com(preferred_username="levi.maia@gridco.com.br", id_company=4987))
     assert d["rpc_ok"] and d["email"] == "levi.maia@gridco.com.br" and d["nome"] == "Levi Maia" and d["perfil"] == "TECNICO"
+
+
+def test_login_abre_direto_no_fracttal_e_oferece_volta_para_a_plataforma(cli):
+    """Levi (13/09/2026): a pagina de login deve abrir DIRETO no Fracttal, e ter um botao para voltar a plataforma. O
+    redirecionamento vai no <head> (sem piscar o formulario) e so quando nao ha erro/aviso e nao se pediu ?manual=1."""
+    html = cli.get("/os/login").get_data(as_text=True)
+    assert "location.replace" in html and "/os/login/fracttal" in html          # abre direto no Fracttal
+    assert 'class="os-topo-voltar"' in html and 'href="/"' in html                    # botao Voltar para a plataforma
+    manual = cli.get("/os/login?manual=1").get_data(as_text=True)
+    assert "location.replace" not in manual                                       # modo manual nao redireciona
+    assert 'name="email"' in manual and "Entrar pela tela do Fracttal" in manual  # mostra formulario + SSO

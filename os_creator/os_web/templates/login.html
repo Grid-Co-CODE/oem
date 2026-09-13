@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block titulo %}Entrar — Fracttal{% endblock %}
+{% block head %}{% if auto %}
+<script>
+  // Levi (13/09): abre DIRETO na tela do Fracttal. No <head> para nao piscar o formulario; ?manual=1 mostra o form.
+  (function () {
+    var nx = {{ (next or '')|tojson }};
+    var u = "/os/login/fracttal?volta=" + encodeURIComponent(location.origin + "/os/login/fracttal/volta")
+            + (nx ? "&next=" + encodeURIComponent(nx) : "");
+    location.replace(u);
+  })();
+</script>
+{% endif %}{% endblock %}
 {% block conteudo %}
 {# o LoginDialog do app, tal e qual: logo, "Entrar no Fracttal", e-mail + senha, Entrar, "— ou —", Microsoft / SSO #}
 <section class="os-login">
