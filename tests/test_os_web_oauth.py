@@ -125,3 +125,26 @@ def test_email_da_sessao_vale_quando_o_token_nao_e_um_jwt_com_email():
     jwt = "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFuYUBncmlkY28uY29tLmJyIiwiZXhwIjo5OTk5OTk5OTk5fQ.c2lnbmF0dXJlLWZha2UtcGFyYS10ZXN0ZQ"
     with sessao.contexto(jwt, email="outro@gridco.com.br"):
         assert api.current_user() == "ana@gridco.com.br"                   # o JWT, quando diz, manda
+
+
+def test_diagnostico_acha_o_nome_pelo_personnel_quando_o_token_nao_traz_email_no_load_account_info(monkeypatch):
+    """13/09/2026: o Levi logou por SSO e o app o mostrou como 'Usuario' generico. O token do OAuth NAO traz e-mail como o
+    de senha, e o companies.load_account_info nao devolveu o nome com esse token. A resolucao passa a: (1) tirar o e-mail dos
+    claims do token (varios nomes de campo); (2) se o load_account_info nao trouxer o nome, procurar no personnel pelo e-mail."""
+    import base64 as _b64, json as _json
+    from os_web import sessao
+    def _jwt_com(**claims):
+        h = _b64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').decode().rstrip("=")
+        p = _b64.urlsafe_b64encode(_json.dumps(claims).encode()).decode().rstrip("=")
+        return f"{h}.{p}.sig"
+    def fake_rpc(method, params, timeout=45):
+        if method == "companies.load_account_info":
+            return {"data": [{"profiles_description": "TECNICO"}]}          # tem perfil, mas SEM name/email
+        if method == "personnel.personnel_list":
+            return {"data": [{"account_email": "levi.maia@gridco.com.br", "full_name": "Levi Maia", "id": 1414413}]}
+        return {}
+    monkeypatch.setattr(api, "_rpc_call", fake_rpc)
+    monkeypatch.setattr(api, "_save_jwt", lambda t: None)
+    with sessao.contexto(""):
+        d = oauth_fracttal.diagnosticar(_jwt_com(preferred_username="levi.maia@gridco.com.br", id_company=4987))
+    assert d["rpc_ok"] and d["email"] == "levi.maia@gridco.com.br" and d["nome"] == "Levi Maia" and d["perfil"] == "TECNICO"

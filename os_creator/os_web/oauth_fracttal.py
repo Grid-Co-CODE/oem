@@ -19,6 +19,7 @@ navegador seguir para lá — apenas para hosts da nossa casa. Sem a variável, 
 from __future__ import annotations
 import base64
 import binascii
+import json
 import os
 import re
 import secrets
@@ -120,11 +121,73 @@ def trocar_codigo(code: str, redirect_uri: str) -> dict:
     raise api.FracttalError(f"O Fracttal não trocou o código pelo token ({ultimo}).")
 
 
+_CAMPOS_EMAIL = ("email", "account_email", "user_email", "preferred_username", "upn", "unique_name", "mail")
+
+
+def claims_do_token(token: str) -> dict:
+    """Claims do payload do JWT, ou {} se o token for opaco/mal formado (o token do OAuth pode nao ser um JWT)."""
+    try:
+        pl = token.split(".")[1]
+        pl += "=" * (-len(pl) % 4)
+        c = json.loads(base64.urlsafe_b64decode(pl.encode()))
+        return c if isinstance(c, dict) else {}
+    except Exception:                                     # noqa: BLE001 - token opaco: sem claims
+        return {}
+
+
+def email_dos_claims(claims: dict) -> str:
+    """E-mail dentro dos claims, sob qualquer um dos nomes usuais (o token de senha usa email; o do SSO pode variar)."""
+    for k in _CAMPOS_EMAIL:
+        v = claims.get(k)
+        if isinstance(v, str) and "@" in v:
+            return v.strip()
+    return ""
+
+
+def _pessoa_no_personnel(alvos: dict) -> tuple:
+    """Acha (nome, email) da pessoa logada no personnel (Recursos Humanos), casando por qualquer identificador que o token
+    traga: e-mail, id_account (a conta da pessoa), id_client ou id. O token do SSO nao traz e-mail e o
+    companies.load_account_info devolve a EMPRESA (plano, limites) - o vinculo com a PESSOA e o id_account. Best-effort,
+    100 por pagina, com teto."""
+    email = str(alvos.get("email") or "").strip().lower()
+    acc = str(alvos.get("id_account") or "").strip()
+    cli = str(alvos.get("id_client") or "").strip()
+    idt = str(alvos.get("id") or "").strip()
+    if not (email or acc or cli or idt):
+        return ("", "")
+    start = 0
+    for _ in range(50):                                   # teto de 5000 pessoas: nunca roda para sempre
+        try:
+            res = api._rpc_call("personnel.personnel_list", {"page": start // 100 + 1, "limit": 100,
+                                                             "start": start, "append": True, "filter": [], "sort": []})
+        except Exception:                                 # noqa: BLE001 - sem RH, nao da para resolver
+            return ("", "")
+        data = res.get("data") if isinstance(res, dict) else res
+        data = data if isinstance(data, list) else []
+        for pessoa in data:
+            p_email = str(pessoa.get("account_email") or pessoa.get("email") or "").strip().lower()
+            p_acc = str(pessoa.get("id_account") or "").strip()
+            p_id = str(pessoa.get("id") or "").strip()
+            if ((email and p_email == email) or (acc and p_acc == acc)
+                    or (cli and p_acc == cli) or (idt and p_id == idt)):
+                return (str(pessoa.get("full_name") or pessoa.get("name") or "").strip(),
+                        str(pessoa.get("account_email") or pessoa.get("email") or "").strip())
+        if len(data) < 100:
+            break
+        start += 100
+    return ("", "")
+
+
 def diagnosticar(token: str) -> dict:
-    """Com o token no contexto da requisição: o RPC aceita? Quem é a pessoa? → {rpc_ok, rpc_erro, nome, perfil, email, jwt}.
-    REST não é verificado aqui: o que decide a ponte é o RPC (é ele que cria OS como o app)."""
-    api._save_jwt(token)                                   # entra no contexto (sessao) — quem chama decide se persiste
-    d = {"rpc_ok": False, "rpc_erro": "", "nome": "", "perfil": "", "email": "", "jwt": token.count(".") == 2, "rest_ok": None}
+    """Com o token no contexto da requisicao: o RPC aceita? Quem e a pessoa? -> {rpc_ok, rpc_erro, nome, perfil, email, jwt}.
+    REST nao e verificado aqui: o que decide a ponte e o RPC (e ele que cria OS como o app).
+
+    O token do SSO nao traz e-mail e o companies.load_account_info devolve a EMPRESA; por isso a identidade da pessoa vem
+    do personnel, casada pelo id_account do token (13/09/2026)."""
+    api._save_jwt(token)                                   # entra no contexto (sessao); quem chama decide se persiste
+    claims = claims_do_token(token)
+    d = {"rpc_ok": False, "rpc_erro": "", "nome": "", "perfil": "",
+         "email": email_dos_claims(claims), "jwt": token.count(".") == 2, "rest_ok": None}
     try:
         r = api._rpc_call("companies.load_account_info", {"page": 1, "limit": 200, "start": 0, "append": True})
         data = r.get("data") if isinstance(r, dict) else r
@@ -133,9 +196,18 @@ def diagnosticar(token: str) -> dict:
         d["rpc_ok"] = True
         d["nome"] = str(rec.get("name") or (str(rec.get("first_name") or "") + " " + str(rec.get("last_name") or "")).strip()).strip()
         d["perfil"] = str(rec.get("profiles_description") or rec.get("profile_description") or rec.get("profile") or "").strip()
-        d["email"] = str(rec.get("email") or rec.get("account_email") or "").strip()
+        d["email"] = d["email"] or str(rec.get("email") or rec.get("account_email") or "").strip()
     except api.FracttalError as e:
         d["rpc_erro"] = str(e)
-    except Exception as e:                                 # noqa: BLE001 — diagnostico nunca derruba
-        d["rpc_erro"] = f"{type(e).__name__}: {e}"
+    except Exception as e:                                 # noqa: BLE001 - diagnostico nunca derruba
+        d["rpc_erro"] = "%s: %s" % (type(e).__name__, e)
+    # o load_account_info deu a EMPRESA, nao a pessoa: acha a PESSOA no personnel pelo id_account do token (ou e-mail/id).
+    # Dai vem o nome - e o e-mail, para a autoria "criadas por mim" / "atribuidas a voce" funcionar.
+    if d["rpc_ok"] and not d["nome"]:
+        nome, email = _pessoa_no_personnel({"email": d["email"], "id_account": claims.get("id_account"),
+                                            "id_client": claims.get("id_client"), "id": claims.get("id")})
+        if nome:
+            d["nome"] = nome
+        if email and not d["email"]:
+            d["email"] = email
     return d
