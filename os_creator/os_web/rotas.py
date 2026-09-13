@@ -346,9 +346,15 @@ def historico():
 @bp.route("/os/<int:wid>")
 @exige_sessao
 def os_detalhe(wid):
+    # o Historico abre a OS num card sobreposto (Levi, 13/09): ?parcial=1 (ou fetch) devolve so o fragmento do detalhe,
+    # sem o cabecalho/abas, para injetar no card. Sem isso, e a pagina cheia de sempre (fallback quando o JS nao roda).
+    parcial = bool(request.args.get("parcial")) or request.headers.get("X-Requested-With") == "fetch"
     det = api.get_os_detalhes(wid) or {}
     if not det.get("folio"):
+        if parcial:
+            return f'<p class="os-erro" style="padding:24px">Não achei a OS de id {wid} no Fracttal.</p>', 404
         return render_template("erro.html", conta=_conta(), aba="hist", mensagem=f"Não achei a OS de id {wid} no Fracttal."), 404
     status = request.args.get("status") or ""
-    return render_template("os_detalhe.html", conta=_conta(), aba="hist", d=det, wid=wid, status=status,
+    template = "os_detalhe_conteudo.html" if parcial else "os_detalhe.html"
+    return render_template(template, conta=_conta(), aba="hist", d=det, wid=wid, status=status, parcial=parcial,
                            status_cor=STATUS_COR.get(status), fmt=api.fmt_data_br, duracao=api.duracao_os)

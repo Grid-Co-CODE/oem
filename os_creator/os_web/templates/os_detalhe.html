@@ -2,52 +2,5 @@
 {% block titulo %}OS {{ d.folio }}{% endblock %}
 {% block body_class %}os-form{% endblock %}
 {% block conteudo %}
-{# o card de detalhe do app (steps/os_detalhe.py): Nº + selo, banner do ativo, metadados em grade, Título/Notas,
-   tarefas, subtarefas com a resposta, etiquetas #}
-<section class="os-pagina os-detalhe">
-  <div class="os-topo-linha">
-    <a class="os-btn secondary os-voltar" href="/os/historico">← Voltar</a>
-    <span class="os-head-titulo">OS Nº {{ d.folio }}</span>
-    {% if status %}<span class="os-status" {% if status_cor %}style="color:{{ status_cor }};background:{{ status_cor }}29;border-color:{{ status_cor }}6b"{% endif %}>{{ status }}</span>{% endif %}
-    <span class="os-cresce"></span>
-    {% for e in d.etiquetas %}<span class="os-etq" style="border-color:{{ e.cor or '#A6A6A6' }};color:{{ e.cor or '#A6A6A6' }}">{{ e.nome }}</span>{% endfor %}
-  </div>
-
-  <div class="os-cardf os-banner"><div class="os-banner-ativo">{{ d.ativo or '—' }}</div><div class="os-ajuda">{{ d.code or '' }}</div></div>
-
-  <div class="os-cardf">
-    <div class="os-meta">
-      <div><span class="os-lbl">Tipo</span><b>{{ d.tipo or '—' }}</b></div>
-      <div><span class="os-lbl">Classificação</span><b>{{ d.classif or '—' }}</b></div>
-      <div><span class="os-lbl">Criticidade</span><b>{{ d.criticidade or '—' }}</b></div>
-      <div><span class="os-lbl">Data do evento</span><b>{{ fmt(d.event_date) }}</b></div>
-      <div><span class="os-lbl">Data fim</span><b>{{ fmt(d.data_fim) }}</b></div>
-      <div><span class="os-lbl">Duração</span><b>{{ duracao(d.event_date, d.data_fim) or '—' }}</b></div>
-      <div><span class="os-lbl">Responsável</span><b>{{ d.responsavel or '—' }}</b></div>
-      <div><span class="os-lbl">Criado por</span><b>{{ d.criado_por or '—' }}</b></div>
-      <div><span class="os-lbl">OS pai</span><b>{{ d.os_pai or '—' }}</b></div>
-      <div><span class="os-lbl">Solicitação</span><b>{{ d.solicitacao or '—' }}</b></div>
-    </div>
-    {% if d.cancel_motivo or d.cancel_nota %}<p class="os-erro">Cancelada: {{ d.cancel_motivo }} {{ d.cancel_nota }}</p>{% endif %}
-  </div>
-
-  <div class="os-cardf"><div class="os-cardf-h"><span class="os-cardf-t">Título</span></div><p class="os-texto">{{ d.descricao or '—' }}</p>
-    <div class="os-cardf-h"><span class="os-cardf-t">Notas</span></div><p class="os-texto os-pre">{{ d.notas or '—' }}</p></div>
-
-  {% if d.tarefas and d.tarefas|length > 1 %}
-  <div class="os-cardf"><div class="os-cardf-h"><span class="os-cardf-t">Tarefas ({{ d.tarefas|length }})</span></div>
-    <div class="os-tbl-wrap"><table class="os-tbl"><thead><tr><th>Tarefa</th><th>Ativo</th><th>Tipo</th><th>Programada</th><th>Início</th><th>Fim</th></tr></thead><tbody>
-      {% for t in d.tarefas %}<tr><td>{{ t.titulo }}</td><td>{{ t.ativo }}</td><td>{{ t.tipo }}</td><td class="c-data">{{ fmt(t.programada) }}</td><td class="c-data">{{ fmt(t.inicio) }}</td><td class="c-data">{{ fmt(t.fim) }}</td></tr>{% endfor %}
-    </tbody></table></div></div>
-  {% endif %}
-
-  <div class="os-cardf"><div class="os-cardf-h"><span class="os-cardf-t">Subtarefas ({{ d.subtarefas|length }})</span></div>
-    {% for s in d.subtarefas %}
-    <details class="os-sub {% if s.feito %}feito{% endif %}">
-      <summary><span class="os-sub-chk">{% if s.feito %}✓{% endif %}</span><span class="os-sub-desc">{{ s.descricao }}</span><span class="os-sub-tipo">{{ s.tipo }}</span></summary>
-      <div class="os-sub-resp">{% if s.resposta %}{{ s.resposta }}{% else %}<span class="os-ajuda">sem resposta</span>{% endif %}</div>
-    </details>
-    {% else %}<p class="os-ajuda">Sem subtarefas.</p>{% endfor %}
-  </div>
-</section>
+{% include "os_detalhe_conteudo.html" %}
 {% endblock %}

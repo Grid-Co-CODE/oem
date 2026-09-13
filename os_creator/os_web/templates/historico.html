@@ -33,4 +33,37 @@
     </table>
   </div>
 </section>
+
+<div class="os-modal" id="os_card" hidden>
+  <div class="os-modal-fundo" data-fechar></div>
+  <div class="os-modal-card os-form" role="dialog" aria-modal="true" aria-label="Detalhe da OS">
+    <button type="button" class="os-modal-x" data-fechar aria-label="Fechar">&times;</button>
+    <div class="os-modal-corpo" id="os_card_corpo"></div>
+  </div>
+</div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var modal = document.getElementById("os_card"), corpo = document.getElementById("os_card_corpo");
+  if (!modal) return;
+  function abrir(url) {
+    corpo.innerHTML = '<p class="os-ajuda" style="padding:24px">Carregando a OS\u2026</p>';
+    modal.hidden = false; document.body.classList.add("os-modal-aberto");
+    var sep = url.indexOf("?") >= 0 ? "&" : "?";
+    fetch(url + sep + "parcial=1", {headers: {"X-Requested-With": "fetch"}, credentials: "same-origin"})
+      .then(function (r) { return r.text(); })
+      .then(function (h) { corpo.innerHTML = h; corpo.scrollTop = 0; })
+      .catch(function () { corpo.innerHTML = '<p class="os-erro" style="padding:24px">N\u00e3o consegui carregar a OS aqui. <a class="os-link" href="' + url + '">Abrir a p\u00e1gina</a></p>'; });
+  }
+  function fechar() { modal.hidden = true; corpo.innerHTML = ""; document.body.classList.remove("os-modal-aberto"); }
+  document.querySelectorAll("a.os-folio").forEach(function (a) {
+    a.addEventListener("click", function (e) { e.preventDefault(); abrir(a.getAttribute("href")); });
+  });
+  modal.addEventListener("click", function (e) { if (e.target.hasAttribute("data-fechar")) fechar(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !modal.hidden) fechar(); });
+})();
+</script>
+{% endblock %}
+

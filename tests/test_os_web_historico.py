@@ -100,3 +100,27 @@ def test_detalhe_inexistente_e_404_amigavel(cli, monkeypatch):
     monkeypatch.setattr(api, "get_os_detalhes", lambda wid: {})
     r = cli.get("/os/os/999")
     assert r.status_code == 404 and "não achei" in r.get_data(as_text=True).lower()
+
+
+def test_detalhe_parcial_devolve_so_o_fragmento_para_o_card(cli, monkeypatch):
+    """Levi (13/09/2026): clicar no numero abre um CARD grande na propria pagina (nao uma aba/pagina nova). A rota devolve
+    so o fragmento do detalhe (?parcial=1), sem o cabecalho/base, para injetar no card; e sem o 'Voltar' (o card tem o X)."""
+    det = {"folio": 9812, "descricao": "[Inversor 2.18] - Recomposicao de String", "tipo": "Corretiva", "classif": "Eletrica",
+           "criticidade": "Alto", "event_date": "2026-09-12T01:10:00", "data_fim": None, "responsavel": "Luiz Silva",
+           "criado_por": "Levi Maia", "notas": "verificar strings", "subtarefas": [], "tarefas": [],
+           "etiquetas": [{"id": 1, "nome": "PERFORMANCE", "cor": "#8fce3f"}], "code": "TNB200-INVR2.18", "ativo": "Inversor 2.18"}
+    monkeypatch.setattr(api, "get_os_detalhes", lambda wid: det if wid == 501 else {})
+    r = cli.get("/os/os/501?parcial=1")
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200
+    assert "9812" in html and "Recomposicao de String" in html and "TNB200-INVR2.18" in html    # tem o conteudo do detalhe
+    assert "<!doctype" not in html.lower() and "Sistema de Ordens" not in html                   # SEM o chrome do base
+    assert "os-topo-voltar" not in html and "/os/historico" not in html                          # sem 'Voltar' no card
+
+
+def test_historico_abre_a_os_em_card_e_nao_em_nova_aba(cli, monkeypatch):
+    monkeypatch.setattr(api, "list_minhas_os", lambda modo="criadas", **k: LINHAS)
+    html = cli.get("/os/historico?de=2026-09-01&ate=2026-09-12").get_data(as_text=True)
+    assert "target=\"_blank\"" not in html                        # nao abre aba
+    assert "id=\"os_card\"" in html and "parcial=1" in html        # o card existe e busca o fragmento
+    assert "href=\"/os/os/501" in html                             # link cheio continua (fallback sem JS)
