@@ -166,6 +166,26 @@ def login_fracttal_volta():
     return _abrir_sessao(token, email, prox, conta=conta)
 
 
+@bp.route("/os/<int:wid>/anexos")
+@exige_sessao
+def os_anexos_contagem(wid):
+    """Contagem dos anexos da OS para os dois cards do detalhe (verde = das subtarefas, azul = da OS), como a janela do app:
+    o anexo que ja e de uma subtarefa nao conta de novo na OS (`_os_uniq` do steps/os_detalhe.py). Vem depois do detalhe,
+    por fetch, porque sao duas chamadas RPC a mais e o card tem de abrir na hora; falha aqui vira '—', nunca erro."""
+    from flask import jsonify
+    def chave(a):
+        return str(a.get("value") or a.get("url") or a.get("nome") or "").lower()
+    try:
+        subs = api.get_os_subtarefa_anexos(wid) or []
+        oss = api.get_os_anexos(wid) or []
+    except api.FracttalError as e:
+        if sessao.morta() or isinstance(e, api.SessionExpired):
+            raise
+        return jsonify({"sub": None, "os": None, "erro": str(e)[:160]})
+    vistos = {chave(a) for a in subs if chave(a)}
+    return jsonify({"sub": len(subs), "os": sum(1 for a in oss if chave(a) not in vistos)})
+
+
 @bp.route("/logout")
 def logout():
     session.clear()

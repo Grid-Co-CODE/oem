@@ -124,3 +124,44 @@ def test_historico_abre_a_os_em_card_e_nao_em_nova_aba(cli, monkeypatch):
     assert "target=\"_blank\"" not in html                        # nao abre aba
     assert "id=\"os_card\"" in html and "parcial=1" in html        # o card existe e busca o fragmento
     assert "href=\"/os/os/501" in html                             # link cheio continua (fallback sem JS)
+
+
+def test_card_da_os_copia_a_estrutura_do_detalhe_original(cli, monkeypatch):
+    """Levi (13/09/2026, prints do app): o card tem de ser o detalhe ORIGINAL -- cabecalho com Nº + badge do tipo + pilula
+    da Solicitacao; banner do ativo; datas/pessoas com avatar ao lado de DURACAO TOTAL + etiqueta; TITULO e NOTAS em caixa;
+    SUBTAREFAS com barra e 'X de N concluidas'; ANEXOS DA OS em dois cards (verde/azul); REGISTRO NO FRACTTAL; rodape com
+    Clonar/Fluxo/Abrir chamado/Concluir/Cancelar/Fechar."""
+    det = {"folio": 13448, "descricao": "[Estrutura Trackers] - Verificacao de Tracker Parado", "tipo": "Corretiva",
+           "classif": "Programada / Eletrica", "criticidade": "Alto", "event_date": "2026-09-09T09:00:00", "data_fim": None,
+           "responsavel": "Marcos Duarte", "criado_por": "Levi Maia", "solicitacao": None, "os_pai": None, "notas": "",
+           "subtarefas": [{"descricao": "O tracker encontra-se parado?", "feito": True, "tipo": "Sim/Nao", "resposta": "Sim"},
+                          {"descricao": "Reset realizado?", "feito": False, "tipo": "Sim/Nao", "resposta": ""}],
+           "tarefas": [], "etiquetas": [{"id": 1, "nome": "PERFORMANCE", "cor": "#8fce3f"}],
+           "code": "SMT-TRK-B", "ativo": "Estrutura Trackers BR 101 KM 80 Sao Mateus Espirito Santo B",
+           "cancel_motivo": "", "cancel_nota": ""}
+    monkeypatch.setattr(api, "get_os_detalhes", lambda wid: det if wid == 777 else {})
+    monkeypatch.setattr(api, "get_os_subtarefa_anexos", lambda wid: [{"value": "a.jpg"}, {"value": "b.jpg"}, {"value": "c.jpg"}])
+    monkeypatch.setattr(api, "get_os_anexos", lambda wid: [{"value": "a.jpg"}, {"value": "z.pdf"}])   # a.jpg repete a subtarefa
+    html = cli.get("/os/os/777?parcial=1&status=Em+Processo").get_data(as_text=True)
+    # cabecalho
+    assert "OS 13448" in html and 'class="det-badge"' in html and "Corretiva" in html and "criada sem solicita" in html
+    # banner + duas colunas
+    assert "Estrutura Trackers BR 101" in html and "DURA" in html and "OS ainda sem data de fim" in html
+    assert "MD" in html and "Marcos Duarte" in html and "LM" in html and "Levi Maia" in html         # avatares (iniciais)
+    assert "ETIQUETA" in html and "PERFORMANCE" in html
+    # caixas, subtarefas com barra e contagem
+    assert "TULO" in html and "NOTAS" in html and "SUBTAREFAS" in html and "1 de 2 conclu" in html
+    assert 'style="width:50%"' in html and "O tracker encontra-se parado?" in html and "Sim/Nao" in html
+    # anexos: 3 das subtarefas e 1 da OS (a.jpg deduplicado), verde e azul
+    assert "ANEXOS DA OS" in html and "Anexos das subtarefas" in html and "Anexos da OS" in html
+    assert 'data-anexos="/os/os/777/anexos"' in html                            # o card busca a contagem depois
+    assert cli.get("/os/os/777/anexos").get_json() == {"sub": 3, "os": 1}
+    # registro e rodape
+    assert "REGISTRO NO FRACTTAL" in html and "Programada / Eletrica" in html and "Alto" in html
+    for b in ("Clonar esta OS", "Fluxo", "Abrir chamado", "Concluir OS", "Cancelar OS", "Fechar"):
+        assert b in html, b
+    assert "2 subtarefa(s)" in html
+    # no card (parcial) nada aponta para a pagina cheia; na pagina cheia o Fechar volta ao historico
+    assert "/os/historico" not in html
+    cheia = cli.get("/os/os/777").get_data(as_text=True)
+    assert 'href="/os/historico"' in cheia and "Sistema de Ordens" in cheia

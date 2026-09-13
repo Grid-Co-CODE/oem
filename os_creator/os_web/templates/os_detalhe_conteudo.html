@@ -1,49 +1,94 @@
-{# Conteudo do detalhe da OS (steps/os_detalhe.py): Nº + selo, banner do ativo, metadados em grade, Titulo/Notas,
-   tarefas, subtarefas com a resposta, etiquetas. Reaproveitado em dois lugares: a pagina cheia (os_detalhe.html, com
-   o botao Voltar) e o card sobreposto do Historico (parcial=1, sem Voltar -- o card tem o X). #}
-<section class="os-pagina os-detalhe">
-  <div class="os-topo-linha">
-    {% if not parcial %}<a class="os-btn secondary os-voltar" href="/os/historico">← Voltar</a>{% endif %}
-    <span class="os-head-titulo">OS Nº {{ d.folio }}</span>
+{# Detalhe da OS — cópia da janela do OS Creator (steps/os_detalhe.py; prints do Levi, 13/09/2026): cabeçalho com Nº + badge do
+   tipo + pílula da Solicitação; banner do ativo; datas/pessoas (com avatar) ao lado de DURAÇÃO TOTAL + etiqueta; TÍTULO e NOTAS
+   em caixa; SUBTAREFAS com barra de progresso e uma linha-card por subtarefa (checkbox, chip do tipo, seta — o clique abre a
+   resposta); ANEXOS DA OS em dois cards (verde = das subtarefas, azul = da OS; a contagem chega depois, por /anexos);
+   REGISTRO NO FRACTTAL; rodapé fixo com as ações nas cores do original. As ações de escrita ainda vivem só no app instalado:
+   ficam visíveis e desabilitadas, com o aviso no título. Usado pela página cheia (os_detalhe.html) e pelo card sobreposto do
+   Histórico (parcial=1). #}
+{% set n_sub = d.subtarefas|length %}
+{% set n_feitas = d.subtarefas|selectattr('feito')|list|length %}
+{% set pct = ((100 * n_feitas / n_sub)|round|int) if n_sub else 0 %}
+{% set completo = n_sub and n_feitas == n_sub %}
+{% set dur = duracao(d.event_date, d.data_fim) %}
+{% set indisp = 'Disponível no OS Creator instalado' %}
+<section class="det">
+  <header class="det-top">
+    <span class="det-ico-round">{{ icone('copy', '#A6E22E', 20) }}</span>
+    <div class="det-num"><div class="det-os">OS {{ d.folio }}</div><div class="det-sub">Ordem de serviço</div></div>
+    {% if d.tipo %}<span class="det-badge">{{ d.tipo }}</span>{% endif %}
     {% if status %}<span class="os-status" {% if status_cor %}style="color:{{ status_cor }};background:{{ status_cor }}29;border-color:{{ status_cor }}6b"{% endif %}>{{ status }}</span>{% endif %}
     <span class="os-cresce"></span>
-    {% for e in d.etiquetas %}<span class="os-etq" style="border-color:{{ e.cor or '#A6A6A6' }};color:{{ e.cor or '#A6A6A6' }}">{{ e.nome }}</span>{% endfor %}
-  </div>
+    <span class="det-pill">{{ icone('doc', '#8A93A8', 16) }}<span>Solicitação</span><i>{{ d.solicitacao or 'criada sem solicitação' }}</i></span>
+  </header>
 
-  <div class="os-cardf os-banner"><div class="os-banner-ativo">{{ d.ativo or '—' }}</div><div class="os-ajuda">{{ d.code or '' }}</div></div>
-
-  <div class="os-cardf">
-    <div class="os-meta">
-      <div><span class="os-lbl">Tipo</span><b>{{ d.tipo or '—' }}</b></div>
-      <div><span class="os-lbl">Classificação</span><b>{{ d.classif or '—' }}</b></div>
-      <div><span class="os-lbl">Criticidade</span><b>{{ d.criticidade or '—' }}</b></div>
-      <div><span class="os-lbl">Data do evento</span><b>{{ fmt(d.event_date) }}</b></div>
-      <div><span class="os-lbl">Data fim</span><b>{{ fmt(d.data_fim) }}</b></div>
-      <div><span class="os-lbl">Duração</span><b>{{ duracao(d.event_date, d.data_fim) or '—' }}</b></div>
-      <div><span class="os-lbl">Responsável</span><b>{{ d.responsavel or '—' }}</b></div>
-      <div><span class="os-lbl">Criado por</span><b>{{ d.criado_por or '—' }}</b></div>
-      <div><span class="os-lbl">OS pai</span><b>{{ d.os_pai or '—' }}</b></div>
-      <div><span class="os-lbl">Solicitação</span><b>{{ d.solicitacao or '—' }}</b></div>
+  <div class="det-corpo">
+    <div class="det-card det-banner">
+      <span class="det-ico-sq v">{{ icone('clipboard', '#A6E22E', 22) }}</span>
+      <span class="det-banner-t">{{ d.ativo or '—' }}</span>
+      {% if d.code %}<span class="det-banner-code">{{ d.code }}</span>{% endif %}
     </div>
+
+    <div class="det-cols">
+      <div class="det-card det-rows">
+        <div class="det-row">{{ icone('calendar', '#8A93A8', 18) }}<span class="det-k">Data do evento</span><span class="det-v">{{ fmt(d.event_date) if d.event_date else '—' }}</span></div>
+        <div class="det-row">{{ icone('calendar', '#8A93A8', 18) }}<span class="det-k">Data fim</span><span class="det-v">{{ fmt(d.data_fim) if d.data_fim else '—' }}</span></div>
+        <div class="det-row">{{ icone('user', '#8A93A8', 18) }}<span class="det-k">Atribuído a</span>
+          <span class="det-pessoa">{% if d.responsavel %}<span class="det-av">{{ d.responsavel|iniciais }}</span>{% endif %}<b>{{ d.responsavel or '—' }}</b></span>
+          <button type="button" class="det-mini" disabled title="{{ indisp }}">trocar</button></div>
+        <div class="det-row">{{ icone('userplus', '#8A93A8', 18) }}<span class="det-k">Criado por</span>
+          <span class="det-pessoa">{% if d.criado_por %}<span class="det-av">{{ d.criado_por|iniciais }}</span>{% endif %}<b>{{ d.criado_por or '—' }}</b></span></div>
+      </div>
+      <div class="det-card det-dur">
+        <div class="det-sec-h"><span class="det-ico-round s">{{ icone('clock', '#A6E22E', 16) }}</span><span class="det-sec">DURAÇÃO TOTAL</span></div>
+        <div class="det-dur-v">{{ dur or '—' }}</div>
+        <div class="det-ajuda">{% if dur %}do evento ao fim{% elif not d.data_fim %}OS ainda sem data de fim{% else %}datas sem intervalo válido{% endif %}</div>
+        <div class="det-etq-l"><span class="det-sec">ETIQUETA</span>
+          {% for e in d.etiquetas %}{% set c = e.cor or '#A6A6A6' %}<span class="det-chip" style="color:{{ c }};border-color:{{ c }};background:{{ c }}22">{{ e.nome }}</span>{% else %}<span class="det-ajuda">sem etiqueta</span>{% endfor %}
+          <span class="det-dot">·</span><button type="button" class="det-link" disabled title="{{ indisp }}">editar</button></div>
+      </div>
+    </div>
+
+    <div class="det-sec">TÍTULO</div>
+    <div class="det-box det-box-t">{{ d.descricao or '—' }}</div>
+
+    <div class="det-sec-line"><span class="det-sec">NOTAS</span><span class="os-cresce"></span><button type="button" class="det-ghost" disabled title="{{ indisp }}">Editar</button></div>
+    <div class="det-box det-pre">{{ d.notas or '—' }}</div>
+
+    <div class="det-sec-line"><span class="det-sec">SUBTAREFAS</span><span class="det-ajuda">clique para ver a resposta</span><span class="os-cresce"></span>
+      <span class="det-pill-ok">{{ n_feitas }} de {{ n_sub }} concluídas</span></div>
+    <div class="det-prog"><div class="det-prog-f{% if n_sub and not completo %} parcial{% endif %}" style="width:{{ pct }}%"></div></div>
+    {% for s in d.subtarefas %}
+    <details class="det-sub{% if s.feito %} feito{% endif %}">
+      <summary><span class="det-chk">{% if s.feito %}✓{% endif %}</span><span class="det-sub-t">{{ s.descricao }}</span>{% if s.tipo %}<span class="det-kind">{{ s.tipo }}</span>{% endif %}<span class="det-chev">›</span></summary>
+      <div class="det-ans{% if not s.resposta %} vazia{% endif %}">{{ s.resposta or 'Sem resposta registrada.' }}</div>
+    </details>
+    {% else %}<div class="det-ajuda">Sem subtarefas.</div>{% endfor %}
+
+    {% if d.tarefas and d.tarefas|length > 1 %}
+    <div class="det-sec">TAREFAS ({{ d.tarefas|length }})</div>
+    <div class="det-card det-tbl-wrap"><table class="os-tbl"><thead><tr><th>Tarefa</th><th>Ativo</th><th>Tipo</th><th>Programada</th><th>Início</th><th>Fim</th></tr></thead><tbody>
+      {% for t in d.tarefas %}<tr><td>{{ t.titulo }}</td><td>{{ t.ativo }}</td><td>{{ t.tipo }}</td><td class="c-data">{{ fmt(t.programada) }}</td><td class="c-data">{{ fmt(t.inicio) }}</td><td class="c-data">{{ fmt(t.fim) }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% endif %}
+
+    <div class="det-sec">ANEXOS DA OS</div>
+    <div class="det-cols" data-anexos="/os/os/{{ wid }}/anexos">
+      <div class="det-card det-anexo v"><span class="det-ico-sq v">{{ icone('camera', '#A6E22E', 22) }}</span><div class="det-anexo-t"><b>Anexos das subtarefas</b><div class="det-ajuda">do técnico</div></div><span class="det-n v" data-n="sub">…</span></div>
+      <div class="det-card det-anexo a"><span class="det-ico-sq a">{{ icone('monitor', '#57B6F5', 22) }}</span><div class="det-anexo-t"><b>Anexos da OS</b><div class="det-ajuda">por usuário</div></div><span class="det-n a" data-n="os">…</span></div>
+    </div>
+
+    <div class="det-sec">REGISTRO NO FRACTTAL</div>
+    <p class="det-reg">Tipo de tarefa <b>{{ d.tipo or '—' }}</b><span class="det-dot">·</span>Classificação <b>{{ d.classif or '—' }}</b><span class="det-dot">·</span>Criticidade <b>{{ d.criticidade or '—' }}</b>{% if d.os_pai %}<span class="det-dot">·</span>OS pai <b>{{ d.os_pai }}</b>{% endif %}</p>
     {% if d.cancel_motivo or d.cancel_nota %}<p class="os-erro">Cancelada: {{ d.cancel_motivo }} {{ d.cancel_nota }}</p>{% endif %}
   </div>
 
-  <div class="os-cardf"><div class="os-cardf-h"><span class="os-cardf-t">Título</span></div><p class="os-texto">{{ d.descricao or '—' }}</p>
-    <div class="os-cardf-h"><span class="os-cardf-t">Notas</span></div><p class="os-texto os-pre">{{ d.notas or '—' }}</p></div>
-
-  {% if d.tarefas and d.tarefas|length > 1 %}
-  <div class="os-cardf"><div class="os-cardf-h"><span class="os-cardf-t">Tarefas ({{ d.tarefas|length }})</span></div>
-    <div class="os-tbl-wrap"><table class="os-tbl"><thead><tr><th>Tarefa</th><th>Ativo</th><th>Tipo</th><th>Programada</th><th>Início</th><th>Fim</th></tr></thead><tbody>
-      {% for t in d.tarefas %}<tr><td>{{ t.titulo }}</td><td>{{ t.ativo }}</td><td>{{ t.tipo }}</td><td class="c-data">{{ fmt(t.programada) }}</td><td class="c-data">{{ fmt(t.inicio) }}</td><td class="c-data">{{ fmt(t.fim) }}</td></tr>{% endfor %}
-    </tbody></table></div></div>
-  {% endif %}
-
-  <div class="os-cardf"><div class="os-cardf-h"><span class="os-cardf-t">Subtarefas ({{ d.subtarefas|length }})</span></div>
-    {% for s in d.subtarefas %}
-    <details class="os-sub {% if s.feito %}feito{% endif %}">
-      <summary><span class="os-sub-chk">{% if s.feito %}✓{% endif %}</span><span class="os-sub-desc">{{ s.descricao }}</span><span class="os-sub-tipo">{{ s.tipo }}</span></summary>
-      <div class="os-sub-resp">{% if s.resposta %}{{ s.resposta }}{% else %}<span class="os-ajuda">sem resposta</span>{% endif %}</div>
-    </details>
-    {% else %}<p class="os-ajuda">Sem subtarefas.</p>{% endfor %}
-  </div>
+  <footer class="det-foot">
+    <span class="det-ajuda">{{ n_sub }} subtarefa(s)</span><span class="os-cresce"></span>
+    <button type="button" class="det-b verde" disabled title="{{ indisp }}">{{ icone('copy', '#0B1020', 16) }}Clonar esta OS</button>
+    <button type="button" class="det-b verde" disabled title="{{ indisp }}">{{ icone('branch', '#0B1020', 16) }}Fluxo</button>
+    <button type="button" class="det-b ambar" disabled title="{{ indisp }}">Abrir chamado</button>
+    <button type="button" class="det-b ok" disabled title="{{ indisp }}">Concluir OS</button>
+    <button type="button" class="det-b perigo" disabled title="{{ indisp }}">Cancelar OS</button>
+    {% if parcial %}<button type="button" class="det-b ghost" data-fechar>Fechar</button>{% else %}<a class="det-b ghost" href="/os/historico">Fechar</a>{% endif %}
+  </footer>
 </section>
