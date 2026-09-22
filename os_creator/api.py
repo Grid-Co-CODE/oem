@@ -22,6 +22,7 @@ import threading
 import requests
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import contextvars
 from dotenv import load_dotenv
 
 try:                       # cofre do SO (Windows Credential Manager) — opcional
@@ -96,6 +97,28 @@ def _data_dir() -> str:
     except OSError:
         pass
     return d
+
+
+class _ExecutorComContexto(ThreadPoolExecutor):
+    """ThreadPoolExecutor que LEVA O CONTEXTO da requisição para dentro das threads.
+
+    O os_web guarda o JWT de quem está logado num `contextvars.ContextVar` — é o que permite duas
+    pessoas usarem o serviço ao mesmo tempo sem misturar sessão. E ContextVar NÃO atravessa para
+    as threads de um executor: cada worker nasce num contexto vazio, `em_requisicao()` devolve
+    False e o `_read_jwt` costurado pelo os_web cai no ARQUIVO de token do app de mesa.
+
+    No servidor esse arquivo não existe, então toda chamada paralela morria em FracttalError — e
+    quem chama costuma engolir o erro com `return []`. O sintoma era mudo: escolher a usina no
+    card "Inspeção Geral do Inversor" não trazia ativo nenhum, com a tela dizendo que a usina não
+    tinha o plano (Levi, 17/09). Pior: onde o arquivo EXISTE, a thread trabalharia com o token de
+    outra conta.
+
+    `submit` é o único ponto a consertar: o `map` passa por ele. Uma cópia do contexto POR tarefa
+    porque `Context.run` não é reentrante — duas threads no mesmo objeto levantam RuntimeError."""
+
+    def submit(self, fn, /, *args, **kwargs):
+        return super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
+
 
 
 # JWT do login: obtido por fracttal_login() (a pessoa digita e-mail+senha). Guardado em
@@ -297,7 +320,7 @@ def get_assets() -> list:
     starts = list(range(200, total, 200))
     if starts:
         res = {}
-        with ThreadPoolExecutor(max_workers=6) as ex:
+        with _ExecutorComContexto(max_workers=6) as ex:
             futs = {ex.submit(_items_page_rpc, s): s for s in starts}
             for f in as_completed(futs):
                 res[futs[f]] = f.result()
@@ -1493,7 +1516,7 @@ def list_minhas_os(modo: str = "criadas", id_account=None, id_label=None,
     paginas = [first]
     starts = list(range(limit, min(total, cap), limit))
     if starts:
-        with ThreadPoolExecutor(max_workers=min(6, len(starts))) as ex:
+        with _ExecutorComContexto(max_workers=min(6, len(starts))) as ex:
             paginas.extend(ex.map(_fetch_page, starts))
     vistos = {}
     for res in paginas:
@@ -1547,7 +1570,7 @@ def listar_periodo_completo(modo: str = "criadas", id_account=None, id_label=Non
     n_pag = -(-total // limite)                       # teto da divisão
     restantes = list(range(2, min(n_pag, max_paginas) + 1))
     if restantes:
-        with ThreadPoolExecutor(max_workers=min(8, len(restantes))) as ex:
+        with _ExecutorComContexto(max_workers=min(8, len(restantes))) as ex:
             futuros = {ex.submit(list_minhas_os_pagina, modo, id_account, id_label, de, ate,
                                  status_ids, busca, p, limite): p for p in restantes}
             for f in as_completed(futuros):
@@ -1707,7 +1730,7 @@ def _meta_tarefa_por_os(wo_ids):
 
     tipos_out, evt_out, fim_out, notas_out = {}, {}, {}, {}
     ini_out, gat_out = {}, {}
-    with ThreadPoolExecutor(max_workers=min(8, len(chunks))) as ex:
+    with _ExecutorComContexto(max_workers=min(8, len(chunks))) as ex:
         for tipos, evt, fim, notas, ini, gat in ex.map(_fetch, chunks):
             for wid, s in tipos.items():
                 tipos_out.setdefault(wid, set()).update(s)
@@ -1905,7 +1928,12 @@ def get_os_detalhes(id_work_order) -> dict:
                            # 13 tarefas e 45 subtarefas) a lista corrida não diz nada — é este id que
                            # deixa o card filtrar por tarefa. Casa com `id` da tarefa (join conferido
                            # ao vivo: 45/45 sem órfã).
-                           "id_tarefa": it.get("id_work_order_task")})
+                           "id_tarefa": it.get("id_work_order_task"),
+                           # os dois ids que a ESCRITA precisa (21/09): sem eles a tela so consegue
+                           # LER o checklist — e o pedido era justamente poder preenche-lo na hora
+                           # de concluir, em vez de mandar a pessoa para o Fracttal.
+                           "id_form_item": it.get("id_work_orders_tasks_form_items"),
+                           "tipo_id": tid})
     code0 = (t0.get("code_item") or "").strip() or _extrai_code(str(t0.get("items_description") or ""))
     ativo0 = (str(t0.get("items_description") or "").split("{")[0]).strip()[:60] or code0
     # cabeçalho da WO (sempre) → responsável + quem criou + solicitação ligada
@@ -2206,7 +2234,7 @@ def status_chamado_em_massa(ids, max_workers: int = 8) -> dict:
                 out[k] = v
         return i, out
 
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(ids))) as ex:
+    with _ExecutorComContexto(max_workers=min(max_workers, len(ids))) as ex:
         return dict(ex.map(_um, ids))
 
 
@@ -2478,7 +2506,7 @@ def get_os_anexos(id_work_order) -> list:
     faltam = [a for a in out if a.get("is_image") and not a.get("url") and a.get("value")]
     if faltam:
         try:
-            with ThreadPoolExecutor(max_workers=8) as ex:
+            with _ExecutorComContexto(max_workers=8) as ex:
                 for a, u in zip(faltam, ex.map(lambda x: s3_get_url(x["value"]), faltam)):
                     if u:
                         a["url"] = u
@@ -2526,7 +2554,7 @@ def get_os_subtarefa_anexos(id_work_order) -> list:
         return (res.get("data") if isinstance(res, dict) else res) or []
 
     try:
-        with ThreadPoolExecutor(max_workers=8) as ex:
+        with _ExecutorComContexto(max_workers=8) as ex:
             resultados = list(ex.map(_fetch, alvos))
     except Exception:
         resultados = [_fetch(a) for a in alvos]
@@ -2553,7 +2581,7 @@ def get_os_subtarefa_anexos(id_work_order) -> list:
     arquivos = [a for a in out if not a["is_text"] and a["value"]]   # resolve URL pré-assinada (S3)
     if arquivos:
         try:
-            with ThreadPoolExecutor(max_workers=8) as ex:
+            with _ExecutorComContexto(max_workers=8) as ex:
                 for a, u in zip(arquivos, ex.map(lambda x: s3_get_url(x["value"]), arquivos)):
                     if u:
                         a["url"] = u
@@ -2704,6 +2732,192 @@ def get_tipos_classif() -> dict:
 
 
 # ── PCM: planos de tarefa de um ativo (MPS/MPA/MPM/Handover) ──────────────────
+# ── EXECUTAR a tarefa: preencher subtarefa → salvar → registrar início/fim ───────────────────
+# Protocolo colhido do Fracttal web em 21/09/2026 (OS 38299179 / tarefa 59150414). O app de mesa
+# não fazia isto: ele CRIA a OS e depois manda o técnico para o Fracttal. O que faltava para
+# fechar o ciclo era a parte de escrita do checklist e do registro de horas.
+#
+# A ORDEM IMPORTA, e é a que a tela deles usa:
+#   1. `..._form_items_values_insert`  — grava os valores do checklist
+#   2. `..._security_validations_validate` — o Fracttal pergunta a si mesmo se pode registrar
+#   3. `..._execution_insert`          — o "Adicionar" do Registro, com início e fim
+#   4. `wo_task_get_execution`         — relê para confirmar que entrou
+# Pular o passo 2 pode dar um registro recusado sem mensagem clara; ele é barato e é o que a
+# própria tela faz antes de abrir a janela de registro.
+RPC_WO_FORMIT_VALUES = "tasks.work_orders_task_form_items_values_insert"
+RPC_WO_EXEC_LIST     = "tasks.wo_tasks_execution_list"
+RPC_WO_EXEC_INSERT   = "tasks.wo_tasks_execution_insert"
+RPC_WO_EXEC_GET      = "tasks.wo_task_get_execution"
+RPC_WO_SEC_VALIDATE  = "tasks.wo_tasks_security_validations_validate"
+
+# id_task_form_item_type → como o campo se comporta. Os quatro primeiros saem do `solic_spec.TIPO_ID`,
+# que foi sondado ao vivo nesta conta. O 4 (Verificação) manda o valor como "1"/"2"/"3" — a ordem
+# Aprovado/Alerta/Falhou é a do próprio `solic_spec`, mas NÃO foi confirmada chamando a API: por
+# isso a tela mostra os três rótulos e manda o número, em vez de o código escolher sozinho.
+TIPO_CAMPO = {1: "texto", 2: "simnao", 3: "num", 4: "verif", 7: "lista"}
+VERIF_OPCOES = [("1", "Aprovado"), ("2", "Alerta"), ("3", "Falhou")]
+SIMNAO_OPCOES = [("1", "Sim"), ("2", "Não"), ("3", "N/A")]
+
+
+def subtarefas_da_tarefa(id_work_order_task) -> list:
+    """O checklist de UMA tarefa, com o valor que já está lá.
+
+    → [{'id_form_item','descricao','tipo','tipo_nome','valor','obrigatorio','anexo_obrigatorio',
+        'n_anexos','opcoes'}], na ordem em que o Fracttal devolve (é a ordem da tela)."""
+    if not id_work_order_task:
+        return []
+    r = _rpc_call(RPC_WO_FORMIT, {"filter": [], "sort": [], "page": 1, "limit": 2500, "start": 0,
+                                  "is_tree": False, "node": None,
+                                  "id_work_order_task": id_work_order_task})
+    data = r.get("data") if isinstance(r, dict) else r
+    out = []
+    for it in (data if isinstance(data, list) else []):
+        if not isinstance(it, dict):
+            continue
+        tipo = it.get("id_task_form_item_type")
+        try:
+            tipo = int(tipo)
+        except (TypeError, ValueError):
+            tipo = 1
+        nome = TIPO_CAMPO.get(tipo, "texto")
+        opcoes = []
+        if nome == "verif":
+            opcoes = [{"valor": v, "rotulo": t} for v, t in VERIF_OPCOES]
+        elif nome == "simnao":
+            opcoes = [{"valor": v, "rotulo": t} for v, t in SIMNAO_OPCOES]
+        elif nome == "lista":
+            # a lista traz as opções do próprio cadastro; sem elas o campo vira texto livre,
+            # que é melhor que um <select> vazio que não deixa preencher nada
+            for o in (it.get("dropdown_options") or it.get("options") or []):
+                if isinstance(o, dict):
+                    d = str(o.get("description") or o.get("value") or "").strip()
+                    if d:
+                        opcoes.append({"valor": d, "rotulo": d})
+        try:
+            n_anexos = int(it.get("num_attachments") or 0)
+        except (TypeError, ValueError):
+            n_anexos = 0
+        out.append({
+            "id_form_item": it.get("id_work_orders_tasks_form_items"),
+            "id_work_order": it.get("id_work_order"),
+            "descricao": str(it.get("description") or "").strip(),
+            "tipo": tipo, "tipo_nome": nome,
+            "valor": "" if it.get("value") is None else str(it.get("value")),
+            "obrigatorio": bool(it.get("is_required")),
+            "anexo_obrigatorio": bool(it.get("attachments_required")),
+            "n_anexos": n_anexos, "opcoes": opcoes})
+    return out
+
+
+def salvar_subtarefas(id_work_order, id_work_order_task, valores: list) -> dict:
+    """Grava os valores do checklist. `valores` = [{'id_form_item','valor','tipo'}].
+
+    SÓ VAI O QUE TEM VALOR, e é assim de propósito: na captura, o campo que a pessoa esvaziou
+    simplesmente saiu da lista da segunda gravação. Mandar `value:""` seria inventar um contrato
+    que a tela deles não usa — e este endpoint escreve em OS de produção."""
+    if not (id_work_order and id_work_order_task):
+        raise FracttalError("Sem id da OS ou da tarefa — não dá para gravar o checklist.")
+    params = []
+    for v in (valores or []):
+        if not isinstance(v, dict):
+            continue
+        fid = v.get("id_form_item")
+        val = v.get("valor")
+        if fid is None or val is None or str(val).strip() == "":
+            continue
+        try:
+            tipo = int(v.get("tipo") or 1)
+        except (TypeError, ValueError):
+            tipo = 1
+        params.append({"id_work_orders_tasks_form_items": fid, "id_work_order": id_work_order,
+                       "id_meter": None, "id_unit": None, "id_work_order_task": id_work_order_task,
+                       "value": str(val), "attachments": [], "is_offline": None,
+                       "id_task_form_item_type": tipo})
+    if not params:
+        return {"ok": False, "n": 0, "erro": "Nenhum campo preenchido para gravar."}
+    res = _rpc_call(RPC_WO_FORMIT_VALUES, params)
+    if isinstance(res, dict) and res.get("success") is False:
+        raise FracttalError("O Fracttal recusou o checklist: "
+                            + (str(res.get("message") or "").replace("_", " ").strip()
+                               or "motivo não informado"))
+    return {"ok": True, "n": len(params), "raw": res}
+
+
+def validar_seguranca_tarefa(id_work_order_task) -> dict:
+    """As validações de segurança que a tela roda ANTES de abrir o registro de execução.
+
+    Não levanta: quando a conta não tem validação configurada a resposta vem vazia, e isso não é
+    erro. Quem chama decide o que fazer com o que voltar."""
+    try:
+        res = _rpc_call(RPC_WO_SEC_VALIDATE, {"id_work_order_task": id_work_order_task})
+    except FracttalError as e:
+        return {"ok": False, "erro": str(e)}
+    return {"ok": True, "raw": res}
+
+
+def execucoes_da_tarefa(id_work_order_task) -> list:
+    """Os registros de execução já lançados (o que a aba Registro mostra), do mais novo ao mais velho."""
+    if not id_work_order_task:
+        return []
+    r = _rpc_call(RPC_WO_EXEC_LIST, {"sort": [{"property": "initial_date", "direction": "desc"},
+                                              {"property": "id", "direction": "desc"}],
+                                     "page": 1, "limit": 200, "start": 0, "is_tree": False,
+                                     "node": None, "id_work_order_task": id_work_order_task})
+    data = r.get("data") if isinstance(r, dict) else r
+    out = []
+    for d in (data if isinstance(data, list) else []):
+        if isinstance(d, dict):
+            out.append({"id": d.get("id"), "nome": str(d.get("name") or "").strip(),
+                        "inicio": d.get("initial_date"), "fim": d.get("final_date"),
+                        "nota": str(d.get("note") or "").strip(), "done": bool(d.get("done"))})
+    return out
+
+
+def registrar_execucao(id_work_order_task, inicio, fim=None, note: str = "",
+                       nome: str = "", validar: bool = True) -> dict:
+    """O "Adicionar" do Registro: lança a execução com data/hora de início e de fim.
+
+    `inicio`/`fim` são datetime COM fuso (o `_iso_z` converte para UTC, que é o que o Fracttal
+    guarda). Sem `fim`, usa agora — é o que a tela deles faz.
+
+    `done=True` fecha o registro. `id_wo_tasks_stop_reasons=1` é o motivo de parada que a tela
+    manda quando o técnico conclui; os dois saíram da captura e não são escolha do código."""
+    if not id_work_order_task:
+        raise FracttalError("Sem id da tarefa — não dá para registrar a execução.")
+    if inicio is None:
+        raise FracttalError("Informe a data e a hora de início da execução.")
+    fim = fim or datetime.now(timezone.utc)
+    if fim < inicio:
+        raise FracttalError("A data de fim não pode ser anterior à de início.")
+    if validar:
+        validar_seguranca_tarefa(id_work_order_task)      # o que a tela faz antes de abrir o registro
+    uid = str(uuid.uuid4())
+    params = {"id": uid, "id_work_order_task": id_work_order_task, "id_accounts_log": 0,
+              "id_account": None, "id_wo_tasks_execution_types": None, "note": note or "",
+              "name": nome or current_user_name() or "",
+              "initial_date": _iso_z(inicio), "final_date": _iso_z(fim),
+              "done": True, "to_pause": False, "to_stop": False,
+              "id_wo_tasks_stop_reasons": 1, "id_wo_tasks_execution_categorizations": None,
+              "categorization_description": None, "security_validations": None,
+              "actions": [], "idInternal": uid}
+    res = _rpc_call(RPC_WO_EXEC_INSERT, params)
+    if isinstance(res, dict) and res.get("success") is False:
+        raise FracttalError("O Fracttal recusou o registro: "
+                            + (str(res.get("message") or "").replace("_", " ").strip()
+                               or "motivo não informado"))
+    # RELÊ para confirmar: o insert pode voltar 200 sem ter gravado, e a tela deles relê também.
+    # Sem isto, "registrado" seria uma afirmação que ninguém conferiu.
+    try:
+        _rpc_call(RPC_WO_EXEC_GET, {"page": 1, "limit": 200, "start": 0, "append": True,
+                                    "id_work_order_task": id_work_order_task})
+        gravadas = execucoes_da_tarefa(id_work_order_task)
+    except FracttalError:
+        gravadas = []
+    achou = any(str(e.get("id")) == uid for e in gravadas)
+    return {"ok": True, "id": uid, "confirmado": achou, "n_registros": len(gravadas),
+            "inicio": _iso_z(inicio), "fim": _iso_z(fim)}
+
+
 RPC_TASK_EVENTS = "tasks.task_events_list"
 
 
@@ -2801,7 +3015,7 @@ def _react_insert_post(body: list) -> dict:
 def create_planned_os(asset: dict, plan: dict, id_responsible=None, responsible_name: str = "",
                       event_date: datetime = None, to_work_order: bool = True, id_parent=None,
                       descricao: str = None, note: str = "", linkar_plano: bool = True,
-                      prog_date: datetime = None) -> dict:
+                      prog_date: datetime = None, duracao: int = None) -> dict:
     """Cria 1 tarefa planejada (tasks_noscheduled_react_insert com o plano: id_task + subtarefas +
     tipo do plano). `to_work_order=True` → vira WO direto (1 ativo). `to_work_order=False` → tarefa
     PENDENTE no kanban (p/ depois juntar várias numa OS só, via create_planned_os_one_wo).
@@ -2826,7 +3040,11 @@ def create_planned_os(asset: dict, plan: dict, id_responsible=None, responsible_
     prog = prog_date if prog_date is not None else ev + timedelta(minutes=10)
     if prog.tzinfo is None:
         prog = prog.replace(tzinfo=timezone.utc)
-    dur = int(plan.get("duration") or 900)
+    # A DURAÇÃO PODE VIR DA TELA (Levi, 14/09: "mostrar o tempo da tarefa e permitir editar o
+    # tempo de cada"). Sem isso vale a do plano, que é o que sempre valeu. Ela não é decorativa:
+    # é ela que fecha a janela de programação (`final_date` abaixo), então mudar o tempo aqui
+    # muda quanto a OS ocupa na agenda do técnico no Fracttal.
+    dur = int(duracao) if duracao else int(plan.get("duration") or 900)
     id_ref = plan.get("id_task") if linkar_plano else None       # tracker individual = OS não-linkada
     # A JANELA COMEÇA NA HORA ESCOLHIDA. Medido na OS 10402 (30/07): o Fracttal IGNORA o
     # `date_maintenance` que a gente manda e grava o `initial_date` como data de programação —
@@ -3000,7 +3218,7 @@ def get_plans_for_assets(assets: list) -> list:
                             "asset_label": a.get("label") or a.get("code") or "?"})
         return res
     out = []
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with _ExecutorComContexto(max_workers=8) as ex:
         for r in ex.map(_one, alist):
             out.extend(r)
     return out
@@ -3008,6 +3226,12 @@ def get_plans_for_assets(assets: list) -> list:
 
 # ═══════════════════ PERFORMANCE — OS por ativo a partir de plano ═══════════════════
 PERF_TIPOS = ("Inversor", "Estrutura Trackers", "Estação Meteorológica")   # tipos da aba Performance
+# Tipos que AGRUPAM trackers e por isso também podem receber a OS de tracker parado (Levi, 11/09).
+# Medido no catálogo em 11/09: NCU existe como tipo de equipamento, 103 ativos, código
+# `<USINA>-NCU1`. SKC e TCU ainda NÃO existem como equipamento de planta, só como peça de
+# almoxarifado (bateria, antena); ficam declarados para o dia em que forem cadastrados, e até lá
+# simplesmente não aparecem em usina nenhuma.
+PERF_TIPOS_TRACKER_CONJUNTO = ("NCU", "SKC", "TCU")
 
 # Tipos de equipamento que SÓ plantas têm — o discriminador entre PLANTA e MATERIAL/INVENTÁRIO.
 # O catálogo tem materiais com "usina" e "cliente" próprios ("0,3P75 - G2", "0,6/1 kV"…), e
@@ -3104,8 +3328,21 @@ def get_performance_alvos(assets_usina: list, card_frase: str) -> dict:
             return {"is_tracker": True, "ativos": [], "erro": "A Estrutura Trackers não tem esse plano."}
         pt, pi = planos[0]["id_task"], gen.get("id")
         indiv = [a for a in uativos if a.get("tipo") == "Estrutura Trackers" and not _eh_tracker_generalizado(a)]
+        # O GENERALIZADO e as CONTROLADORAS entram na lista (Levi, 11/09). Antes só os trackers
+        # individuais apareciam, e não havia como abrir uma OS que cobrisse um conjunto — que é
+        # justamente o caso em que a quantidade de trackers parados deixa de ser 1. A tela mostra
+        # um grupo de cada vez, com os individuais como padrão.
+        conj = sorted((a for a in (assets_usina or [])
+                       if isinstance(a, dict)
+                       and str(a.get("tipo") or "").strip().upper() in PERF_TIPOS_TRACKER_CONJUNTO),
+                      key=lambda a: str(a.get("code") or ""))
+        # `linkar=False` para TODOS, inclusive o generalizado, que é o dono do plano. Ligar a OS
+        # ao plano dele a faria contar como execução do plano de manutenção do ativo, mexendo no
+        # cronograma do PCM por um efeito colateral que ninguém pediu. Aqui a OS nasce com as
+        # subtarefas COPIADAS, igual à dos individuais.
         return {"is_tracker": True, "base": plano_base_nome(planos[0].get("description")),
-                "ativos": [{"asset": a, "plano_id_task": pt, "plano_id_item": pi, "linkar": False} for a in indiv]}
+                "ativos": [{"asset": a, "plano_id_task": pt, "plano_id_item": pi, "linkar": False}
+                           for a in ([gen] + conj + indiv)]}
     # inversor / estação: cada ativo com o SEU plano
     cands = [a for a in uativos if a.get("tipo") in ("Inversor", "Estação Meteorológica")]
     planos = [p for p in get_plans_for_assets(cands) if frase in _norm_txt(p.get("description"))]
@@ -3298,6 +3535,45 @@ def _label_performance_id():
     return label_id_por_nome("performance")
 
 
+def nascer_ticket(item: dict, asset: dict, plano_desc, folio, event_date) -> dict:
+    """A ocorrência de tickets que nasce junto da OS (Levi, 31/08 — "o pulo do gato").
+
+    → {'aba', 'ok', 'quantidade', 'erro', 'aviso_os'}. `aba` vazia = este plano não gera
+    ocorrência nenhuma (só Recomposição de String e Verificação de Tracker Parado geram).
+
+    EXTRAÍDA EM 10/09 porque agora são DOIS caminhos chamando: a criação de N OS e a agrupada,
+    que até aqui não criava ocorrência alguma — marcar "Agrupar em UMA OS" significava, sem
+    nenhum aviso, nenhum ticket. Uma cópia do bloco em cada uma sairia do ar na primeira
+    correção feita só de um lado.
+
+    O item pode trazer `gerar_ticket` (a caixa da tela, marcada por padrão) e `qtd_ticket` (o
+    card ao lado do ativo). A `note` do item é a observação daquele ativo, e é dela que sai a
+    frase de "Comentários gerais".
+
+    FALHAR AQUI NÃO DERRUBA A OS. Ela é o que a equipe precisa; a linha de ticket é registro.
+    O erro volta em `aviso_os`, para a tela dizer o que ficou faltando."""
+    if not item.get("gerar_ticket", True):
+        return {"aba": "", "ok": False, "quantidade": 0, "desligado": True}
+    try:
+        # import tardio: o tickets_nasce importa este módulo, e no topo daria import circular.
+        import tickets_nasce
+        aba = tickets_nasce.aba_do_plano(plano_desc)
+        if not aba:
+            return {"aba": "", "ok": False, "quantidade": 0}
+        tk = tickets_nasce.criar(aba, asset, tickets_nasce.usina_do_ativo(asset), folio,
+                                 quando=event_date, quantidade=item.get("qtd_ticket"),
+                                 nota=item.get("note") or "")
+        tk["aba"] = aba
+        if not tk.get("ok"):
+            tk["aviso_os"] = "ocorrência não registrada: %s" % tk.get("erro")
+        elif tk.get("aviso"):
+            tk["aviso_os"] = tk["aviso"]
+        return tk
+    except Exception as e:                           # noqa: BLE001
+        return {"aba": "", "ok": False, "quantidade": 0, "erro": str(e)[:120],
+                "aviso_os": "ocorrência não registrada (%s)" % str(e)[:80]}
+
+
 def create_performance_os(itens: list, id_responsible=None, responsible_name: str = "",
                           event_date: datetime = None, id_parent=None, progresso=None,
                           prog_date: datetime = None, etiquetas_extra=None) -> list:
@@ -3365,23 +3641,9 @@ def create_performance_os(itens: list, id_responsible=None, responsible_name: st
                     apply_labels(res["id_work_order"], lbls)
                 except Exception:
                     pass
-            # A OCORRÊNCIA NASCE COM A OS (Levi, 31/08 — "o pulo do gato"). Import tardio: o
-            # tickets_nasce importa este módulo, e no topo daria import circular.
-            try:
-                import tickets_nasce
-                aba_tk = tickets_nasce.aba_do_plano(plan.get("description"))
-                if aba_tk:
-                    tk = tickets_nasce.criar(aba_tk, a, tickets_nasce.usina_do_ativo(a),
-                                             res.get("wo_folio"), quando=event_date)
-                    if not tk.get("ok"):
-                        res["aviso"] = ((res.get("aviso") or "")
-                                        + " ocorrência não registrada: %s" % tk.get("erro")).strip()
-                    elif tk.get("aviso"):
-                        res["aviso"] = ((res.get("aviso") or "") + " " + tk["aviso"]).strip()
-            except Exception as e:                       # noqa: BLE001
-                # a OS é o que a equipe precisa; a linha de ticket é registro. Nunca derruba.
-                res["aviso"] = ((res.get("aviso") or "")
-                                + " ocorrência não registrada (%s)" % str(e)[:80]).strip()
+            tk = nascer_ticket(it, a, plan.get("description"), res.get("wo_folio"), event_date)
+            if tk.get("aviso_os"):
+                res["aviso"] = ((res.get("aviso") or "") + " " + tk["aviso_os"]).strip()
             nok, nerr = 0, []
             for img in (it.get("imagens") or []):
                 try:
@@ -3391,7 +3653,7 @@ def create_performance_os(itens: list, id_responsible=None, responsible_name: st
                 except Exception as e:
                     nerr.append(str(e)[:600])
             out.append({"ok": True, "asset": a.get("label") or a.get("code"), "folio": res.get("wo_folio"),
-                        "n_img_ok": nok, "img_erro": nerr})
+                        "n_img_ok": nok, "img_erro": nerr, "ticket": tk})
         except SessionExpired:
             raise
         except Exception as e:
@@ -3399,6 +3661,16 @@ def create_performance_os(itens: list, id_responsible=None, responsible_name: st
         if progresso:
             progresso(i + 1, len(itens))
     return out
+
+
+# duração (segundos) de cada plano, preenchida de carona no `get_subtask_counts` — ver lá.
+_DURACAO_PLANO = {}
+
+
+def duracao_do_plano(id_task, padrao: int = 900) -> int:
+    """Quanto o plano diz que a tarefa dura, em segundos. `padrao` quando ainda não se leu o plano
+    (a tela mostra esse valor e a pessoa corrige, que é melhor do que um campo vazio)."""
+    return int(_DURACAO_PLANO.get(id_task) or padrao)
 
 
 def get_subtask_counts(pares: list) -> dict:
@@ -3417,13 +3689,17 @@ def get_subtask_counts(pares: list) -> dict:
         idt, idi = item
         try:
             det = get_plan_details(idt, idi)
+            # a DURAÇÃO vem na mesma resposta, e a tela do PCM precisa dela para mostrar o tempo
+            # de cada tarefa. Guardar aqui evita uma segunda rodada de `tasks_details` por plano,
+            # que é a chamada mais cara desta tela.
+            _DURACAO_PLANO[idt] = int(det.get("duration") or 0)
             return (idt, len(det.get("subtasks") or []))
         except Exception:
             return (idt, None)
     out = {}
     if not uniq:
         return out
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with _ExecutorComContexto(max_workers=8) as ex:
         for idt, n in ex.map(_one, list(uniq.items())):
             if n is not None:
                 out[idt] = n
@@ -3453,7 +3729,7 @@ def get_subtask_names(pares: list) -> dict:
     out = {}
     if not uniq:
         return out
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with _ExecutorComContexto(max_workers=8) as ex:
         for idt, nomes in ex.map(_one, list(uniq.items())):
             if nomes is not None:
                 out[idt] = nomes
@@ -3477,7 +3753,8 @@ def create_planned_os_multi(selecoes: list, id_responsible, responsible_name: st
             if not plan.get("subtasks"):
                 erros.append(f"{asset.get('code')}: plano sem subtarefas"); continue
             r = create_planned_os(asset, plan, event_date=s.get("event_date") or event_date,
-                                  to_work_order=False, id_parent=id_parent)
+                                  to_work_order=False, id_parent=id_parent,
+                                  duracao=s.get("duracao"))    # o tempo editado na linha da tela
             if r.get("id_task"):
                 id_tasks.append(r["id_task"])
             else:
@@ -4209,7 +4486,8 @@ def _tarefa_da_solicitacao(id_request):
 
 def aprovar_solicitacao(asset: dict, descricao: str, subtarefas: list, id_request,
                         id_responsible, responsible_name: str = "", note: str = "",
-                        tipo: str = "Corretiva", etiqueta_ids: list = None) -> dict:
+                        tipo: str = "Corretiva", etiqueta_ids: list = None,
+                        id_parent=None, classif=None) -> dict:
     """Converte a solicitacao em OS NUMERADA. Mesmo envelope do `clonar_os`.
 
     Aguenta ser chamada duas vezes: se a tentativa anterior parou no meio (tarefa criada, OS
@@ -4233,10 +4511,14 @@ def aprovar_solicitacao(asset: dict, descricao: str, subtarefas: list, id_reques
     except FracttalError:
         pass   # sem a checagem seguimos pelo caminho normal; o pior caso e o erro de sempre
     if rec is None:
+        c1, c2 = (classif or ("", ""))
+        # pelo NOME: o `clonar_os` resolve o id no catalogo vivo (`_classif_ids`), que e o mesmo
+        # caminho da OS clonada — um lugar so decidindo o que vai no payload.
         return clonar_os([{"asset": asset, "tipo": tipo, "descricao": descricao,
+                           "classif_1": c1, "classif_2": c2,
                            "subtarefas": subtarefas or []}],
                          id_responsible, responsible_name, etiqueta_ids=etiqueta_ids,
-                         note=note, id_request=id_request)
+                         note=note, id_request=id_request, id_parent=id_parent)
     if not id_responsible:
         return {"ok": False, "erro": "Escolha o responsavel: sem ele a tarefa nao vira OS numerada.",
                 "n_tarefas": 1, "n_criadas": 0}
@@ -4393,6 +4675,85 @@ def get_solicitacao_por_os(id_work_order):
 
 
 RPC_REQ_STATUS_INSERT = "requests.requests_x_status_insert"
+RPC_REQ_STATUS_LIST = "requests.status_list"      # catálogo id → código do status
+RPC_REQ_UPDATE = "requests.requests_update"       # edita campos da solicitação (ex.: observação)
+
+# Os status que faz sentido o PCM escolher na Fila (Levi, 14/09: "mudar o status da Solicitação
+# pela visualização do Fila do PCM e pôr o motivo, como no Fracttal"). Ids conferidos ao vivo em
+# 14/09 pelo `requests.status_list`, que devolve 13.
+#
+# A LISTA É CURTA DE PROPÓSITO. Os outros existem mas são CONSEQUÊNCIA, não escolha: OT_IN_PROCESS,
+# OT_IN_REVIEW, OT_FINALIZED e OT_CANCEL descrevem a OS que nasceu da solicitação e quem os move é
+# o andamento dela; CREATED_GUEST_PORTAL e DELETE_TASK_TODO são de outro fluxo. Oferecer todos
+# convidaria a marcar à mão um estado que o Fracttal recalcula sozinho, e aí a tela mentiria.
+STATUS_SOLICITACAO = [
+    (1,  "OPEN_STATUS",              "Aberta"),
+    (7,  "REQUEST_TODO",             "Pendente"),
+    (2,  "PROCESS_STATUS",           "Em processo"),
+    (4,  "SOLVED_WITHOUT_OT_STATUS", "Resolvida sem OS"),
+    (10, "AGAIN_REQUEST_TODO",       "Reaberta (refazer)"),
+    (12, "REJECTED",                 "Rejeitada"),
+    (5,  "CANCEL_STATUS",            "Cancelada"),
+]
+
+
+def status_solicitacao_catalogo() -> list:
+    """[(id, código, rótulo)] do que o Fracttal aceita HOJE, cruzado com a lista curta acima.
+
+    Vai à API para não oferecer um id que aquela conta não tenha; se a chamada falhar, devolve a
+    lista local — perder a rede não pode impedir a pessoa de cancelar uma solicitação."""
+    try:
+        res = _rpc_call(RPC_REQ_STATUS_LIST, {"filter": [], "sort": [], "page": 1,
+                                              "limit": 100, "start": 0})
+        vivos = {s.get("id") for s in ((res.get("data") if isinstance(res, dict) else res) or [])
+                 if isinstance(s, dict)}
+    except Exception:                                # noqa: BLE001
+        return list(STATUS_SOLICITACAO)
+    return [t for t in STATUS_SOLICITACAO if not vivos or t[0] in vivos]
+
+
+def mudar_status_solicitacao(id_request, id_status: int, codigo: str, note: str = "") -> dict:
+    """Muda o status de uma solicitação, com o motivo — a mesma rota que o cancelamento usa desde
+    25/06, e que por isso já se sabe que funciona em produção.
+
+    `id_request` é o id_code (o Nº que aparece), `codigo` é o texto estável do status
+    (CANCEL_STATUS, REJECTED...), e `note` é o motivo, que o Fracttal guarda no histórico."""
+    if id_request in (None, ""):
+        raise FracttalError("Solicitação sem número (id) — recarregue a lista.")
+    if not codigo:
+        raise FracttalError("Status sem código — escolha um status da lista.")
+    res = _rpc_call(RPC_REQ_STATUS_INSERT, {"id_request": str(id_request), "id_status": int(id_status),
+                                            "requests_x_status_description": codigo,
+                                            "notes": (note or "").strip()})
+    if isinstance(res, dict) and res.get("success") is False:
+        raise FracttalError(str(res.get("message") or "O Fracttal recusou a mudança de status "
+                                                      "(sua conta tem permissão para isso?)."))
+    return {"ok": True, "raw": res}
+
+
+def editar_observacao_solicitacao(id_code, observacao: str) -> dict:
+    """Reescreve a OBSERVAÇÃO de uma solicitação (Levi, 14/09).
+
+    CUIDADO QUE ESTA FUNÇÃO TEM E O RESTO DO ARQUIVO NÃO PRECISA TER: o `requests_update` aceita
+    campos parciais — sondado em 14/09, ele responde ACTION_DONE com só o `id_code` —, mas não há
+    documentação dizendo o que acontece com os campos que NÃO vão no corpo. Se ele tratasse a
+    chamada como substituição, mandar só a observação apagaria título, ativo e classificação de
+    uma solicitação real.
+
+    Por isso a linha atual é LIDA antes e reenviada inteira, com a observação trocada. Custa uma
+    consulta e elimina a dúvida: o que volta é o que estava lá."""
+    if not id_code:
+        raise FracttalError("Solicitação sem número (id).")
+    linha = _solicitacao_row(id_code)
+    if not isinstance(linha, dict):
+        raise FracttalError("Não achei a solicitação %s no Fracttal." % id_code)
+    corpo = {k: v for k, v in linha.items() if not isinstance(v, (dict, list))}
+    corpo["id_code"] = linha.get("id_code") or id_code
+    corpo["observation"] = observacao or ""
+    res = _rpc_call(RPC_REQ_UPDATE, corpo)
+    if isinstance(res, dict) and res.get("success") is False:
+        raise FracttalError(str(res.get("message") or "O Fracttal recusou a edição da observação."))
+    return {"ok": True, "raw": res}
 
 
 def cancelar_solicitacao(id_request, note: str = "") -> dict:
@@ -5423,7 +5784,6 @@ def tempo_trabalhado_em_massa(ids_work_order, max_workers=8) -> dict:
 
     Duas chamadas por OS (achar a tarefa + ler o histórico), então nunca use isto no quadro
     inteiro — só na tela de UMA pessoa, onde são poucas OS."""
-    from concurrent.futures import ThreadPoolExecutor
     ids = [i for i in (ids_work_order or []) if i]
     if not ids:
         return {}
@@ -5435,7 +5795,7 @@ def tempo_trabalhado_em_massa(ids_work_order, max_workers=8) -> dict:
             return wid, None
 
     out = {}
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(ids))) as ex:
+    with _ExecutorComContexto(max_workers=min(max_workers, len(ids))) as ex:
         for wid, seg in ex.map(_um, ids):
             out[wid] = seg
     return out
@@ -5471,6 +5831,7 @@ def create_performance_os_agrupada(itens: list, id_responsible=None, responsible
 
     # ── Fase 1: uma tarefa PENDENTE por ativo, cada uma com o SEU título e a SUA observação ──
     cache, id_tasks, erros, por_task = {}, [], [], {}
+    plano_de = {}                    # id(item) → descrição do plano, p/ a Fase 5 saber a aba
     for i, it in enumerate(itens):
         a = it["asset"]
         try:
@@ -5479,6 +5840,7 @@ def create_performance_os_agrupada(itens: list, id_responsible=None, responsible
                 # as subtarefas extras entram UMA vez, junto do cache — ver com_subtarefas_extra
                 cache[k] = com_subtarefas_extra(get_plan_details(k, it.get("plano_id_item")))
             plan = cache[k]
+            plano_de[id(it)] = plan.get("description")
             nome = (it.get("titulo") or "").strip() or \
                 perf_os_nome(a, it.get("base") or plano_base_nome(plan.get("description")))
             r = create_planned_os(a, plan, event_date=event_date, prog_date=prog_date,
@@ -5573,9 +5935,21 @@ def create_performance_os_agrupada(itens: list, id_responsible=None, responsible
                     n_img_ok += 1
                 except Exception as e:
                     img_erro.append("%s: %s" % (it["asset"].get("code"), str(e)[:80]))
+    # ── Fase 5: as ocorrências de tickets, uma POR ATIVO (Levi, 10/09) ──
+    # "cada ativo será uma tarefa, isso não impede de reconhecer cada ativo como ticket". Até
+    # aqui este caminho não criava ocorrência nenhuma, e o silêncio era igual ao do caminho de
+    # N OS — ninguém percebia que agrupar significava perder o registro. As N linhas apontam
+    # todas para o MESMO número de OS, que é o que amarra o lote no diário.
+    tickets = []
+    for it in itens:
+        tk = nascer_ticket(it, it["asset"], plano_de.get(id(it)), folio, event_date)
+        if tk.get("aba"):
+            tickets.append(tk)
+        if tk.get("aviso_os"):
+            avisos.append("%s: %s" % (it["asset"].get("code") or "?", tk["aviso_os"]))
     if erros:
         avisos.append("%d ativo(s) falharam: %s" % (len(erros), "; ".join(erros[:2])))
     return {"ok": True, "folio": folio, "id_work_order": idwo,
             "n_tarefas": len(itens), "n_criadas": len(recs), "erros": erros,
-            "n_img_ok": n_img_ok, "img_erro": img_erro,
+            "n_img_ok": n_img_ok, "img_erro": img_erro, "tickets": tickets,
             "aviso": " · ".join(avisos) or None}

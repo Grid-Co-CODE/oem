@@ -7,6 +7,7 @@ from PyQt6.QtGui import QColor, QBrush, QIcon
 from PyQt6.QtCore import Qt, QDateTime, QDate, QTime, QSize
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QComboBox,
                              QLineEdit, QTextEdit, QPushButton, QMessageBox, QDateTimeEdit, QDateEdit,
+                             QTimeEdit,
                              QScrollArea, QDialog, QTableWidget, QTableWidgetItem, QHeaderView,
                              QAbstractItemView, QCheckBox)
 import api
@@ -21,6 +22,29 @@ _TRACKER_TIPO = "Estrutura Trackers"   # nesse tipo só mostramos o ativo "gener
 _RED = QColor("#e06c6c")
 _DIM = QColor("#8a90a2")
 _FG = QColor("#e7e9ef")
+
+
+class _TempoTarefa(QTimeEdit):
+    """O tempo da tarefa, com a seta andando de 30 em 30 minutos (Levi, 15/09).
+
+    É assim que a duração de plano é escrita na prática — 00:30, 01:00, 02:00 —, e de minuto em
+    minuto eram 60 cliques para somar uma hora. Digitar continua livre: o arredondamento só vale
+    para a seta, e vai para o múltiplo seguinte NA DIREÇÃO do passo (01:10 sobe para 01:30 e desce
+    para 01:00), que é o que a pessoa espera de um campo que anda em blocos."""
+    PASSO = 30
+    TETO = 23 * 60 + 30            # o QTimeEdit não passa de 23:59; parar no múltiplo de baixo
+
+    def stepBy(self, passos):
+        m = self.time().hour() * 60 + self.time().minute()
+        if passos > 0:
+            novo = ((m // self.PASSO) + 1) * self.PASSO
+        else:
+            novo = ((m + self.PASSO - 1) // self.PASSO - 1) * self.PASSO
+        piso = min(15, m) or 15    # nunca zerar (OS sem tempo previsto); plano curto mantém o dele
+        novo = max(piso, min(self.TETO, novo))
+        if (passos > 0 and novo < m) or (passos < 0 and novo > m):
+            novo = m               # encostou no limite: a seta não anda, mas nunca anda ao contrário
+        self.setTime(QTime(novo // 60, novo % 60))
 
 
 def abrir_pcm(parent, performance=False):
@@ -47,6 +71,8 @@ class PcmTab(QWidget):
         self._subt = {}                      # id_task -> nº de subtarefas (cache)
         self._editors = {}                   # row -> QDateTimeEdit (só linhas com plano)
         self._dt_by_asset = {}               # asset_id -> QDateTime (preserva a data ao trocar de família)
+        self._tempos = {}                    # row -> QTimeEdit do tempo da tarefa
+        self._dur_by_asset = {}              # asset_id -> segundos (preserva o tempo editado)
         self._wr = self._wp = self._wc = self._ws = None
         self._loaded = False
         self._filling = False                # guard contra reentrância no itemChanged
@@ -92,8 +118,13 @@ class PcmTab(QWidget):
         b_all.clicked.connect(lambda: self._marcar_todos(True))
         b_none = QPushButton("Limpar"); b_none.setObjectName("secondary")
         b_none.clicked.connect(lambda: self._marcar_todos(False))
-        self.tbl = QTableWidget(0, 4)
-        self.tbl.setHorizontalHeaderLabels(["Ativo", "Plano de tarefa", "Subt.", "Data/hora programada"])
+        # TEMPO logo depois da data (Levi, 14/09: "mostrar o tempo da tarefa e permitir editar o
+        # tempo de cada, próximo da opção de data para a OS"). Ele já existia e era invisível: o
+        # plano traz a duração, o app a mandava para o Fracttal e ninguém via nem podia mudar.
+        # É esse número que fecha a janela da OS na agenda do técnico.
+        self.tbl = QTableWidget(0, 5)
+        self.tbl.setHorizontalHeaderLabels(["Ativo", "Plano de tarefa", "Subt.",
+                                            "Data/hora programada", "Tempo"])
         self.tbl.verticalHeader().setVisible(False)
         self.tbl.verticalHeader().setDefaultSectionSize(46)   # cabe o combo/data de 40px sem estourar a linha
         self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -104,7 +135,12 @@ class PcmTab(QWidget):
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)      # data em célula não mede em ResizeToContents
+        hh.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         self.tbl.setColumnWidth(3, 185)
+        # 92 px cortavam o campo no meio: ele pede 130 (medido), e o que sobrava era "02:0" com
+        # as setas espremidas em cima do texto (Levi, 15/09). A largura sai do próprio widget,
+        # com folga, em vez de um número chutado que a próxima fonte desmente.
+        self.tbl.setColumnWidth(4, 140)
         self.tbl.setMinimumHeight(230)
         self.tbl.itemChanged.connect(self._on_item)
         self.sel_lbl = QLabel("0 marcado(s)"); self.sel_lbl.setObjectName("uiAjuda")
@@ -129,6 +165,8 @@ class PcmTab(QWidget):
         # ── programação em massa: DENTRO do card Plano, logo abaixo do "X marcado(s)" ──
         self.bulk_date = QDateEdit(); self.bulk_date.setCalendarPopup(True)
         self.bulk_date.setDisplayFormat("dd/MM/yyyy"); self.bulk_date.setDate(QDate.currentDate())
+        # o "2026" ficava comido pela seta: o sizeHint nao conta o espaco do drop-down (Levi, 15/09)
+        self.bulk_date.setMinimumWidth(self.bulk_date.sizeHint().width() + 26)
         b_data = QPushButton("Aplicar data"); b_data.setObjectName("secondary")
         b_data.setToolTip("Define a DATA (dia/mês/ano) de todas as linhas; mantém o horário de cada uma")
         b_data.clicked.connect(lambda: self._set_todas_data(self.bulk_date.date()))
@@ -163,7 +201,11 @@ class PcmTab(QWidget):
         c_resp = Card(3, "Detalhes e responsável")
         c_resp.add(Linha(campo("Observação", self.obs, extra="(opcional)"),
                          campo("Requerido por", rrow, obrig=True, extra="(digite p/ pesquisar)")))
-        c_resp.add(campo("Ela depende de outra OS?", self.os_pai, extra="(opcional — OS pai)"))
+        # "OS pai" COMO RÓTULO, e a pergunta como dica. O campo sempre esteve aqui, mas rotulado
+        # com a pergunta — quem procurava "OS pai" passava o olho e não achava (Levi, 15/09).
+        # O nome da coisa vem primeiro; a explicação, depois.
+        c_resp.add(campo("OS pai", self.os_pai,
+                         extra="(opcional — se esta OS depende de outra)"))
         lay.addWidget(c_resp)
 
         # botão no FIM do conteúdo (rolando) — sem footer fixo ocupando a tela
@@ -325,9 +367,29 @@ class PcmTab(QWidget):
         self.tbl.setCellWidget(r, 3, de)
         self._editors[r] = de
 
+    def _add_tempo_editor(self, r, aid, id_task):
+        """O tempo da tarefa (col 4), em HH:mm, começando no que o PLANO diz.
+
+        Guardado por ATIVO, como a data: a tabela é reconstruída a cada troca de família e a
+        escolha da pessoa não pode evaporar no redesenho. A duração do plano chega em SEGUNDOS
+        (medido: 7200 = 2 h); o editor trabalha em hora e minuto porque é assim que se fala de
+        tempo de tarefa, e a conversão fica num lugar só."""
+        seg = self._dur_by_asset.get(aid) or api.duracao_do_plano(id_task)
+        te = _TempoTarefa()
+        te.setDisplayFormat("HH:mm")
+        te.setMinimumWidth(te.sizeHint().width())   # nunca menor do que o texto + as setas pedem
+        te.setTime(QTime(int(seg) // 3600, (int(seg) % 3600) // 60))
+        te.setToolTip("Quanto a tarefa deve durar. Vem do plano; edite se esta for diferente."
+                      " A seta anda de 30 em 30 minutos.")
+        te.timeChanged.connect(
+            lambda t, k=aid: self._dur_by_asset.__setitem__(k, t.hour() * 3600 + t.minute() * 60))
+        self.tbl.setCellWidget(r, 4, te)
+        self._tempos[r] = te
+
     def _fill_planos(self, *_):
-        """Preenche Plano/Subt./Data de todas as linhas e dispara a busca de contagens."""
+        """Preenche Plano/Subt./Data/Tempo de todas as linhas e dispara a busca de contagens."""
         self._editors = {}
+        self._tempos = {}
         for r in range(self.tbl.rowCount()):
             self._fill_row(r)
         self._fetch_counts_visiveis()
@@ -406,6 +468,7 @@ class PcmTab(QWidget):
             self.tbl.setItem(r, 2, c2)
             self._set_count_cell(r, combo.currentData())
             self._add_date_editor(r, aid)
+            self._add_tempo_editor(r, aid, combo.currentData())
         finally:
             self._filling = False
 
@@ -574,7 +637,9 @@ class PcmTab(QWidget):
             if isinstance(cb, QComboBox) and cb.currentData():
                 de = self._editors.get(r)
                 evt = de.dateTime().toPyDateTime().replace(tzinfo=brt) if de is not None else None
-                sel.append({"asset": a, "id_task": cb.currentData(), "event_date": evt})
+                sel.append({"asset": a, "id_task": cb.currentData(), "event_date": evt,
+                            # o tempo da linha; None deixa valer a duração do plano
+                            "duracao": self._dur_by_asset.get(a.get("id"))})
             elif a.get("id") in self._loaded_for:
                 sem.append(a.get("label") or a.get("code") or "?")
         if not sel:

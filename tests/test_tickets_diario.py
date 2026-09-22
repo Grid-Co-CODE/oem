@@ -124,6 +124,28 @@ def test_aplica_varios_campos_de_uma_vez():
     assert sorted(oc["_restaurado"]) == ["Causa raiz", "Comentários gerais", "Fim da ocorrência"]
 
 
+def test_vazio_no_registro_NAO_apaga_o_que_o_banco_tem():
+    """O registro do ticket que nasce com a OS (`tickets_nasce`) traz só OS, Status do ticket e
+    Início do chamado — "" no resto. Até 22/09 esse "" era aplicado como valor: medido naquele dia,
+    21 ocorrências perdiam na tela o Início, o comentário e até o Fim (10 de Strings, encerradas,
+    voltavam a parecer abertas). O banco estava intacto; o Salvar seguinte é que gravaria o vazio."""
+    oc = _oc(3179, "CLN100", "01", "12", **{
+        "Início da ocorrência": "2026-09-15 08:00:00", "Fim da ocorrência": "2026-09-20 10:00:00",
+        "Comentários gerais": "PV3 e PV4 com corrente nula em 15/09", "Causa raiz": "fusível"})
+    imp = di.impressao("Trackers", oc)
+    placar = di.aplicar("Trackers", [oc], [_reg(3179, imp, **{
+        "OS": "13637", "Status do ticket": "OS Programada",
+        "Início do chamado pela Grid Co.": "2026-09-15 12:46:01"})])
+    assert oc["Início da ocorrência"] == "2026-09-15 08:00:00"
+    assert oc["Fim da ocorrência"] == "2026-09-20 10:00:00"
+    assert oc["Comentários gerais"] == "PV3 e PV4 com corrente nula em 15/09"
+    assert oc["Causa raiz"] == "fusível"
+    assert oc["OS"] == "13637" and oc["Status do ticket"] == "OS Programada"
+    # só o Início do chamado é "restaurado" (é coluna da planilha); OS e Status moram só no diário
+    assert oc["_restaurado"] == ["Início do chamado pela Grid Co."]
+    assert placar == {"aplicados": 1, "campos": 1, "orfaos": 0}
+
+
 def test_sem_registro_nenhum_nao_toca_em_nada():
     oc = _oc(9, "TIM100", "02", "129", **{"Causa raiz": "do banco"})
     assert di.aplicar("Trackers", [oc], []) == {"aplicados": 0, "campos": 0, "orfaos": 0}
@@ -180,8 +202,9 @@ def test_registrar_manda_quando_quem_e_impressao():
 
 
 def test_registrar_grava_vazio_para_campo_apagado():
-    # apagar a causa raiz é uma edição como outra qualquer; se o vazio não fosse ao diário, o
-    # valor antigo voltaria na próxima leitura e pareceria que o app ignorou o apagamento.
+    # apagar a causa raiz é uma edição como outra qualquer, e o registro guarda o que foi salvo,
+    # vazio inclusive — é o histórico de quem mudou o quê. Na LEITURA, desde 22/09, o vazio não é
+    # reimposto (ver test_vazio_no_registro_NAO_apaga_o_que_o_banco_tem): o PUT já apagou a coluna.
     enviados = []
     _limpa_estado()
     di.garantir_aba(listar=lambda: [{"id": 401, "workbook_key": di.WORKBOOK,

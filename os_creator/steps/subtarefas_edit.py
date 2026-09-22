@@ -97,6 +97,11 @@ class _Linha(QFrame):
         self.ed.setPlaceholderText("descreva o que o técnico deve fazer")
         self.ed.setToolTip("clique para editar")
         self.ed.textChanged.connect(lambda *_: on_mudar())
+        # O QLineEdit rola para o FIM do texto quando ele nao cabe, e a lista aparecia comecando
+        # no meio da palavra ("queio e etiquetagem (LOTO)..."). Com o cursor no zero, o que se le
+        # e o comeco da subtarefa, que e o que identifica a linha (Levi, 16/09).
+        self.ed.setCursorPosition(0)
+        self.ed.setMinimumWidth(1)      # encolhe com a coluna em vez de empurra-la
         h.addWidget(self.ed, 1)
 
         self.cb = QComboBox()

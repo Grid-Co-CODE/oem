@@ -144,11 +144,17 @@ def _liberar(sheet_id: int) -> int:
     return sheet_id
 
 
-def registrar(aba: str, oc: dict, valores: dict, agora=None, enviar=None, sheet_id=None) -> dict:
-    """Acrescenta uma linha ao diário. Nunca atualiza: é log, e o mais novo é que vale."""
+def registrar(aba: str, oc: dict, valores: dict, agora=None, enviar=None, sheet_id=None,
+              autor: str = None) -> dict:
+    """Acrescenta uma linha ao diário. Nunca atualiza: é log, e o mais novo é que vale.
+
+    `autor` existe por causa da WEB (22/09): lá o processo é UM SÓ para todo mundo, então o usuário
+    do Windows (`quem()`) diria "Levi Maia" para a edição de qualquer pessoa — e, no servidor, o
+    nome do usuário do serviço. Quem chama da web passa o nome de quem está logado; o app de mesa
+    continua sem passar nada e segue igual."""
     sid = sheet_id if sheet_id is not None else garantir_aba()
     quando = (agora or _dt.datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
-    dados = {"quando": quando, "quem": quem(), "aba": aba,
+    dados = {"quando": quando, "quem": (autor or "").strip() or quem(), "aba": aba,
              "linha": oc.get("_row"), "impressao": impressao(aba, oc)}
     for c in CAMPOS:
         dados[c] = valores.get(c, "")
@@ -176,7 +182,17 @@ def aplicar(aba: str, ocorrencias: list, registros: list) -> dict:
     """Põe o diário por cima do que veio do banco.
 
     Marca em `_restaurado` os campos que o diário teve de repor — a tela mostra isso, porque
-    "o app desfez o que o sync desfez" precisa ser visível, não mágica. Devolve o placar."""
+    "o app desfez o que o sync desfez" precisa ser visível, não mágica. Devolve o placar.
+
+    CAMPO VAZIO NO REGISTRO NÃO APAGA O QUE O BANCO TEM (22/09/2026). Nem todo registro é um
+    retrato completo: o Salvar do app de mesa grava todos os campos, mas o ticket que nasce com a
+    OS (`tickets_nasce`) e o vínculo em lote de 31/08 gravam só OS, Status do ticket e Início do
+    chamado — e "" no resto. Aplicar esse "" como valor apagava na tela o que a linha tinha: medido
+    em 22/09, 21 ocorrências, entre elas as 11 que nasceram de OS desde 15/09 (sem Início e sem o
+    comentário "PVX com corrente nula…") e 10 de Strings já encerradas que voltavam a parecer
+    abertas. O banco estava intacto; o risco era o Salvar seguinte gravar os vazios de verdade.
+    O custo: um campo apagado DE PROPÓSITO pelo app não é reapagado se um sync o trouxer de volta.
+    Isso é raro, e quem apagou vê o valor voltar. O vazio que apagava sem ninguém ver era pior."""
     por_linha = _mais_recentes(registros, aba)
     if not por_linha:
         return {"aplicados": 0, "campos": 0, "orfaos": 0}
@@ -197,6 +213,8 @@ def aplicar(aba: str, ocorrencias: list, registros: list) -> dict:
         repostos = []
         for c in CAMPOS:
             novo = reg.get(c)
+            if not _norm(novo):
+                continue                                # vazio = não registrado (ver a docstring)
             if _norm(novo) != _norm(oc.get(c)):
                 oc[c] = "" if novo is None else novo
                 if c not in CAMPOS_SEM_COLUNA:

@@ -48,6 +48,35 @@ def cabecalho_de(sheet_id):
     return list(_CABECALHOS.get(sheet_id) or [])
 
 
+def cabecalho_vivo(sheet_id, buscar=None, tentativas=2):
+    """As colunas da aba buscando UMA linha — e não a aba inteira.
+
+    Toda linha que a API devolve carrega o array `headers` completo, então uma basta. Antes, quem
+    precisava do cabeçalho e não o tinha em cache chamava `listar_linhas`, que pagina a aba toda:
+    2.781 linhas na Trackers, três requisições, para descobrir nome de coluna. Foi esse download
+    que estourou os 20 s de timeout em 17/09 e deixou a OS 13785 criada com a ocorrência por
+    escrever — o pior dos dois mundos, porque a OS não volta atrás.
+
+    Duas tentativas: a falha que se viu foi um engasgo de rede, não uma recusa do servidor, e
+    desistir na primeira custa uma ocorrência que ninguém vai lembrar de lançar depois."""
+    buscar = buscar or _buscar
+    erro = None
+    for _ in range(max(1, tentativas)):
+        try:
+            pagina = buscar(sheet_id, 1, 0) or []
+        except Exception as e:                      # noqa: BLE001
+            erro = e
+            continue
+        headers = list((pagina[0].get("headers") if pagina else None) or [])
+        if headers:
+            _CABECALHOS[sheet_id] = headers
+            return list(headers)
+        return []
+    if erro is not None:
+        raise erro
+    return []
+
+
 def listar_linhas(sheet_id, buscar=None):
     """Todas as linhas da aba, já como dicionários {coluna: valor}.
 

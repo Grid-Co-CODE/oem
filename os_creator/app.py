@@ -15,7 +15,7 @@ from workers import ApiWorker, auth_bus
 from steps.step1 import Step1
 from steps.step2 import Step2
 from steps.step3 import Step3
-from steps.ui import QSS_FORM
+from steps.ui import QSS_FORM, QSS_SETAS
 from steps.finalizar import FinalizarPanel
 from steps.ospai import OsPaiPicker
 from steps.historico import HistoricoOS
@@ -72,7 +72,7 @@ QRadioButton::indicator { border-radius:8px; }
 QCheckBox::indicator, QListView::indicator { border-radius:4px; }
 QCheckBox::indicator:checked, QRadioButton::indicator:checked, QListView::indicator:checked {
   border:2px solid #ffffff; background:#98c838; }
-"""
+""" + QSS_SETAS   # setas limpas também nas telas que não aplicam o QSS_FORM (Levi, 15/09)
 
 
 class LoadingOverlay(QWidget):

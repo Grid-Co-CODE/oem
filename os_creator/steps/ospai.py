@@ -30,6 +30,15 @@ class OsPaiPicker(QComboBox):
         """id da OS pai escolhida, ou None se o campo estiver vazio/sem seleção."""
         return self._sel if self.currentText().strip() else None
 
+    def limpar(self):
+        """Volta ao campo vazio. A Fila do PCM troca de solicitacao a cada aprovacao, e a OS pai
+        da anterior nao pode continuar no campo — seria vinculo em OS errada, sem ninguem ver."""
+        self.blockSignals(True)
+        self.clear()
+        self.setCurrentText("")
+        self._sel = None
+        self.blockSignals(False)
+
     def set_by_folio(self, folio):
         """Pré-seleciona a OS pai pelo NÚMERO (folio) — usado pelo deep link (OS atribuída vira OS pai).
         Busca no Fracttal e escolhe o match EXATO do folio (o id certo p/ id_parent)."""

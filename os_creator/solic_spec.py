@@ -468,6 +468,35 @@ def de_api(subs: list) -> list:
             for x in (subs or [])]
 
 
+def relato(observacao: str) -> str:
+    """Só o que a PESSOA escreveu. O bloco `[PCM]` fica de fora.
+
+    O bloco é TRANSPORTE, não conteúdo: a solicitação do Fracttal não tem campo para tema,
+    técnico sugerido, data sugerida nem para a lista de subtarefas editada, então isso viaja
+    dentro da observação em formato parseável e a Fila lê de volta com o `parse`. Mostrar a
+    observação crua na tela faz o PCM ler a mesma lista duas vezes — uma no texto e outra na
+    grade logo abaixo, que é montada a partir dele (Levi, 15/09)."""
+    corpo = []
+    for linha in str(observacao or "").splitlines():
+        if linha.strip().lower().startswith(MARCADOR.lower()):
+            break                       # daqui para baixo é bloco: não é texto de gente
+        corpo.append(linha)
+    return "\n".join(corpo).strip()
+
+
+def so_bloco(observacao: str) -> str:
+    """O inverso do `relato`: só o bloco `[PCM]`, ou '' quando não há.
+
+    Quem edita a observação na Fila tem de devolver o bloco intacto junto do texto novo. Gravar
+    só o relato APAGARIA o transporte, e o tema, o técnico e as subtarefas que o supervisor
+    escolheu sumiriam da fila sem deixar rastro."""
+    linhas = str(observacao or "").splitlines()
+    for i, l in enumerate(linhas):
+        if l.strip().lower().startswith(MARCADOR.lower()):
+            return "\n".join(linhas[i:]).strip()
+    return ""
+
+
 def observacao_com_bloco(observacao: str, dados: dict) -> str:
     """Junta o texto que o supervisor escreveu com o bloco da sugestão.
 
@@ -475,12 +504,7 @@ def observacao_com_bloco(observacao: str, dados: dict) -> str:
     metadado. E um bloco anterior é substituído, não duplicado — reenviar a mesma solicitação
     empilhava dois `[PCM]` e o `parse` ficava com o primeiro, que era o velho."""
     b = bloco(dados)
-    corpo = []
-    for linha in str(observacao or "").splitlines():
-        if linha.strip().lower().startswith(MARCADOR.lower()):
-            break                       # daqui para baixo é bloco antigo: descarta
-        corpo.append(linha)
-    texto = "\n".join(corpo).strip()
+    texto = relato(observacao)
     if not b:
         return texto
     return (texto + "\n\n" + b).strip() if texto else b

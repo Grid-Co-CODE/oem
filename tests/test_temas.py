@@ -111,7 +111,7 @@ def test_etiqueta_do_tema_aparece_como_tema_e_nao_como_regra(qapp):
         sp.TEMAS["t1"] = {"nome": "T1", "etiquetas": ["PERFORMANCE"]}
         c = _card(qapp)
         c.aplicar_regra("t1", "INV-03")
-        assert _chips(c) == ["PERFORMANCE  (tema)"]
+        assert _chips(c) == ["PERFORMANCE  ×  (tema)"]
         assert "(regra)" not in " ".join(_chips(c))
     finally:
         sp.TEMAS.clear(); sp.TEMAS.update(guarda)
@@ -127,7 +127,7 @@ def test_tema_sem_lista_ainda_cai_na_regra_antiga(qapp):
         sp.TEMAS["tracker_x"] = {"nome": "TX"}          # sem a chave `etiquetas`
         c = _card(qapp)
         c.aplicar_regra("tracker_x", "Estrutura Trackers")
-        assert _chips(c) == ["PERFORMANCE  (tema)"]
+        assert _chips(c) == ["PERFORMANCE  ×  (tema)"]
     finally:
         sp.TEMAS.clear(); sp.TEMAS.update(guarda)
 
@@ -146,7 +146,7 @@ def test_trocar_de_tema_nao_apaga_a_etiqueta_posta_a_mao(qapp):
         c._pintar()
         c.aplicar_regra("t2", "x")
         chips = _chips(c)
-        assert "GARANTIA  (tema)" in chips
+        assert "GARANTIA  ×  (tema)" in chips
         assert not any(x.startswith("PERFORMANCE") for x in chips), "sobrou o tema anterior"
         assert any(x.startswith("URGENTE") for x in chips), "apagou a escolha do PCM"
         assert sorted(c.ids()) == [2, 3]

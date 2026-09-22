@@ -76,9 +76,35 @@ def test_salto_pirapora_passa_a_listar_os_trackers(monkeypatch):
     res = api.get_performance_alvos([pai] + indiv, "verificacao de tracker parado")
     assert res.get("erro") is None, res.get("erro")
     assert res["is_tracker"] is True
-    assert len(res["ativos"]) == 14, "o pai devia ficar fora da lista de alvos"
+    # O PAI ENTRA NA LISTA desde 11/09 (pedido do Levi). Ele continua sendo a fonte do plano e
+    # agora também é alvo: é nele que se abre a OS que cobre um CONJUNTO de trackers, o único
+    # caso em que a quantidade de trackers parados deixa de ser 1. Antes ficava de fora e não
+    # havia como registrar isso.
+    assert len(res["ativos"]) == 15, "os 14 individuais mais o pai"
+    assert res["ativos"][0]["asset"]["code"] == "SPP300-ETKR1", "o pai vem primeiro"
     assert all(al["plano_id_item"] == 999 for al in res["ativos"]), "o plano vem do pai"
-    assert all(al["linkar"] is False for al in res["ativos"]), "tracker individual é OS avulsa"
+    # inclusive para o próprio pai: ligar a OS ao plano dele a faria contar como execução do
+    # plano de manutenção do ativo, mexendo no cronograma do PCM sem ninguém ter pedido
+    assert all(al["linkar"] is False for al in res["ativos"]), "OS avulsa, subtarefas copiadas"
+
+
+def test_a_NCU_entra_na_lista_e_a_peca_de_almoxarifado_nao(monkeypatch):
+    """As controladoras agrupam trackers e viram alvo (Levi, 11/09). O filtro é por TIPO, e isso
+    importa: no catálogo existem itens de almoxarifado com TCU e SKC no nome (bateria, antena)
+    cujo tipo é 'Usina'. Casar por nome traria peça de estoque para a tela de OS."""
+    pai = _ativo("Estrutura de Trackers { APG100-ETKR1 }", code="APG100-ETKR1")
+    pai["id"] = 999
+    ncu = _ativo("NCU 1 { APG100-NCU1 }", tipo="NCU", code="APG100-NCU1")
+    trk = _ativo("Tracker 1.100 { APG100-ETKR1.100 }", code="APG100-ETKR1.100")
+    peca = _ativo("Bateria TCU { 12 }", tipo="Usina", code="12")
+    monkeypatch.setattr(api, "get_plans_for_assets",
+                        lambda alvos: [{"id_task": 7, "asset": alvos[0],
+                                        "description": "[Grid Co.] - Verificação de Tracker Parado"}])
+    res = api.get_performance_alvos([pai, ncu, trk, peca], "verificacao de tracker parado")
+    codes = [al["asset"]["code"] for al in res["ativos"]]
+    assert codes == ["APG100-ETKR1", "APG100-NCU1", "APG100-ETKR1.100"], \
+        "o pai, depois as controladoras, depois os individuais"
+    assert "12" not in codes, "peça de almoxarifado não é ativo de planta"
 
 
 def test_usina_de_estrutura_fixa_continua_dizendo_que_nao_achou(monkeypatch):

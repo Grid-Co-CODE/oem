@@ -7,6 +7,7 @@ O card 'Geração e ETM' abre em dois modos (segmentado no topo) — ver as cons
 Diferente do PCM: aqui cria-se N OS (UMA por ativo). Trackers: seleciona-se os trackers INDIVIDUAIS,
 mas o conteúdo vem do plano do ativo generalizado 'Estrutura Trackers' (OS avulsas com subtarefas
 copiadas). Anexo de imagem por ativo: arquivo OU colar captura (Ctrl+V)."""
+import collections
 import datetime as _dt
 import html
 from PyQt6.QtCore import Qt, QSize, QDateTime, QDate, QTime, QByteArray, QBuffer, QIODevice
@@ -16,6 +17,9 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSt
                              QTableWidgetItem, QHeaderView, QAbstractItemView, QScrollArea, QFrame,
                              QDialog, QDateTimeEdit, QFileDialog, QCheckBox)
 import api
+import tickets_escrita
+import tickets_nasce
+import tickets_spec
 from workers import ApiWorker, slot_seguro
 from steps.searchcombo import tornar_pesquisavel, tornar_todos_pesquisaveis
 from steps.ui import (QSS_FORM, Card, campo, rotulo, Linha, Segmentado, icone_pix,
@@ -65,6 +69,158 @@ def _cell_campo(w):
     h = QHBoxLayout(holder); h.setContentsMargins(6, 0, 6, 0); h.setSpacing(0)
     h.addWidget(w)                       # HBox centra na vertical um widget de altura fixa
     return holder
+
+
+# Âmbar de "mexido à mão" — o mesmo tom que a aba Tickets usa para estado de atenção. Fora da
+# paleta da marca de propósito: verde e âmbar aqui são SEMÁFORO, não identidade visual.
+_AMBAR = "#eb8b57"
+
+# Ativos que representam um CONJUNTO de trackers, e só neles o card de quantidade faz sentido
+# (Levi, 11/09: "esse + e - deve ser apenas para ativos como estrutura trackers, NCU, SKC ou TCU").
+# Num tracker INDIVIDUAL a resposta é sempre 1 — o botão só convida ao erro, e era ele que deixava
+# a linha âmbar à toa. Tipos conferidos no catálogo de 11/09: NCU existe como tipo de equipamento
+# (103 ativos, código `<USINA>-NCU1`); SKC e TCU ainda não existem como equipamento de planta, só
+# como peça de almoxarifado, e ficam aqui para o dia em que forem cadastrados.
+_TIPOS_CONJUNTO = frozenset(api.PERF_TIPOS_TRACKER_CONJUNTO)
+
+# O grupo "TRACKER" é o padrão da tela: é o ativo com que se trabalha no dia a dia. Os outros
+# entram no seletor só quando a usina tem algum.
+GRUPO_TRACKER = "TRACKER"
+_ROTULO_GRUPO = {GRUPO_TRACKER: "Trackers", "ESTRUTURA": "Estrutura", "NCU": "NCU",
+                 "SKC": "SKC", "TCU": "TCU"}
+_ORDEM_GRUPO = [GRUPO_TRACKER, "ESTRUTURA", "NCU", "SKC", "TCU"]
+
+
+def _grupo_trk(asset) -> str:
+    """Em que grupo do seletor este ativo cai."""
+    tipo = str(asset.get("tipo") or "").strip().upper()
+    if tipo in _TIPOS_CONJUNTO:
+        return tipo
+    if api._eh_tracker_generalizado(asset):
+        return "ESTRUTURA"
+    return GRUPO_TRACKER
+
+
+def _tem_card_qtd(asset, is_tracker) -> bool:
+    """Esta linha ganha o card de quantidade?
+
+    Em strings, todo inversor ganha: a quantidade de strings afetadas varia de um para outro e é
+    o número que a planilha pede. Em trackers, só o que agrupa vários — num tracker sozinho a
+    resposta é sempre 1."""
+    if not is_tracker:
+        return True
+    return _grupo_trk(asset) != GRUPO_TRACKER
+
+
+class _ChipQtd(QFrame):
+    """O card de quantidade que fica ao lado do ativo (Levi, 10/09/2026).
+
+    Strings afetadas no inversor, ou trackers parados. NASCE CONTADO E CONTINUA EDITÁVEL: em
+    strings o número sai da observação (`tickets_nasce.contar_strings`); em trackers nasce 1,
+    porque não há o que contar no texto.
+
+    A BORDA DIZ DE ONDE VEIO O NÚMERO — verde: contado da observação · âmbar: a pessoa corrigiu ·
+    cinza: presumido, nada reconhecido no texto. Sem esse sinal, um 1 presumido e um 1 conferido
+    ficam idênticos na tela, e é justamente o presumido que vai errado para a planilha.
+
+    MÍNIMO 1: zero não pode ir para a planilha. Se a OS está sendo aberta, a ocorrência existe.
+    """
+
+    def __init__(self, unidade, on_change=None):
+        super().__init__()
+        self._un = unidade
+        self._on_change = on_change
+        self._estado = "auto"                     # auto · presumido · manual
+        # O número que a CONTAGEM daria. Guardado porque "manual" não é um caminho sem volta:
+        # quem sobe para 3 e desce de novo para 1 não está mais corrigindo nada, e o card tem de
+        # voltar ao verde. Sem esta referência o âmbar ficava grudado para sempre (Levi, 11/09:
+        # "se eu volto para 1 não fica verde novamente").
+        self._auto = 1
+        self._auto_presumido = False
+        h = QHBoxLayout(self); h.setContentsMargins(2, 0, 7, 0); h.setSpacing(0)
+        self.b_menos = QPushButton("−")
+        self.b_mais = QPushButton("+")
+        for b in (self.b_menos, self.b_mais):
+            b.setFixedSize(19, 22)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.ed = QLineEdit("1")
+        self.ed.setFixedWidth(26)
+        self.ed.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lb = QLabel(unidade)
+        h.addWidget(self.b_menos); h.addWidget(self.ed); h.addWidget(self.b_mais); h.addWidget(self.lb)
+        self.b_menos.clicked.connect(lambda *_: self._passo(-1))
+        self.b_mais.clicked.connect(lambda *_: self._passo(1))
+        # `textEdited`, e não `textChanged`: o primeiro só dispara em digitação HUMANA. É o que
+        # separa "a pessoa corrigiu" de "o código recontou porque a observação mudou" — com
+        # textChanged o próprio recálculo marcaria a linha como manual e ela nunca mais recontaria.
+        self.ed.textEdited.connect(self._digitou)
+        self._pintar()
+
+    def valor(self) -> int:
+        try:
+            return max(1, int(self.ed.text().strip() or 1))
+        except ValueError:
+            return 1
+
+    def manual(self) -> bool:
+        return self._estado == "manual"
+
+    def set_auto(self, n, presumido=False):
+        """Número vindo da contagem. Nunca sobrescreve a linha que a pessoa já corrigiu à mão."""
+        n = max(1, int(n or 1))
+        self._auto = n
+        self._auto_presumido = presumido
+        if self._estado == "manual":
+            # a correção dela continua valendo, mas se a contagem nova coincidir com o número
+            # que ela escolheu, não há mais divergência nenhuma para sinalizar
+            if self.valor() == n:
+                self._estado = "presumido" if presumido else "auto"
+                self._pintar()
+            return
+        self._estado = "presumido" if presumido else "auto"
+        self.ed.setText(str(n))
+        self._pintar()
+
+    def _passo(self, d):
+        self.ed.setText(str(max(1, self.valor() + d)))
+        self._virar_manual()
+
+    def _digitou(self, txt):
+        so_num = "".join(c for c in txt if c.isdigit())
+        if so_num != txt:
+            self.ed.setText(so_num)
+        self._virar_manual()
+
+    def _virar_manual(self):
+        """Chamado a cada mexida humana. Só é 'manual' enquanto o número DIVERGIR da contagem —
+        voltar ao valor que o app tinha proposto desfaz a correção e devolve o verde."""
+        if self.valor() == self._auto:
+            self._estado = "presumido" if self._auto_presumido else "auto"
+        else:
+            self._estado = "manual"
+        self._pintar()
+        if self._on_change:
+            self._on_change()
+
+    def _pintar(self):
+        cor = {"auto": GREEN, "manual": _AMBAR}.get(self._estado, MUTED)
+        self.lb.setText(self._un + ("" if self._estado == "auto" else
+                                    " · manual" if self._estado == "manual" else " · presumido"))
+        self.setFixedHeight(24)
+        # min/max-height inline vencem o min-height do QSS_FORM, que infla os campos e estoura a
+        # linha de 46px da tabela — a mesma armadilha do botão de imagens, na coluna ao lado.
+        self.setStyleSheet(
+            "QFrame{background:%s;border:1px solid %s;border-radius:8px;}"
+            "QPushButton{background:transparent;border:none;color:%s;font-size:14px;"
+            "min-height:20px;max-height:22px;padding:0;}"
+            "QPushButton:hover{background:rgba(166,226,46,0.16);border-radius:6px;}"
+            "QLineEdit{background:transparent;border:none;color:%s;font-size:12px;font-weight:600;"
+            "min-height:20px;max-height:22px;padding:0;}"
+            "QLabel{background:transparent;border:none;color:%s;font-size:10.5px;padding-left:3px;}"
+            % (INPUT, cor, cor, cor, cor))
+
+
 _CRIT = {i: n for (n, i) in getattr(api, "CRITICIDADES", [])}
 # Tipos de EQUIPAMENTO de planta — p/ decidir quais clientes/usinas são "reais" (o catálogo do Fracttal
 # tem itens de inventário/material com cliente e usina próprios que não são plantas).
@@ -377,6 +533,12 @@ class PerfCriar(QWidget):
         self._obs = {}                   # asset id -> observação
         self._ospai = {}                 # asset id -> nº da OS pai (por ativo, na linha da tabela)
         self._imgs = {}                  # asset id -> [{'bytes','nome','thumb'}]
+        self._montando_grupo = False     # guarda o seletor de grupo contra o próprio preenchimento
+        self._chips = {}                 # asset id -> _ChipQtd vivo na tabela (só o da linha marcada)
+        self._qtd = {}                   # asset id -> quantidade escolhida, sobrevive ao re-render
+        # Aba de tickets deste plano ('' = plano que não gera ocorrência). É a MESMA função que a
+        # criação usa, então tela e gravação nunca discordam sobre o que gera ticket.
+        self._aba_ticket = tickets_nasce.aba_do_plano(frase)
         self._is_tracker = "tracker" in frase
         self._tem_modos = api._norm_txt(frase) == FRASE_COLETA     # só o card "Geração e ETM"
         self._modo = MODO_GERACAO
@@ -428,8 +590,12 @@ class PerfCriar(QWidget):
         b_all.clicked.connect(lambda: self._marcar_todos(True))
         b_none = self.b_none = QPushButton("Limpar"); b_none.setObjectName("secondary")
         b_none.clicked.connect(lambda: self._marcar_todos(False))
-        self.tbl = QTableWidget(0, 4)
-        self.tbl.setHorizontalHeaderLabels(["Ativo", "OS Pai", "Observação", "Imagens"])
+        # 5 colunas SEMPRE, com a do card escondida nos planos que não geram ocorrência. Criar a
+        # coluna condicionalmente deslocaria o índice de todas as outras e espalharia um `+1`
+        # por cada `setCellWidget` do arquivo — a coluna fixa e oculta custa nada e não engana.
+        self.tbl = QTableWidget(0, 5)
+        self.tbl.setHorizontalHeaderLabels(
+            ["Ativo", "Trackers" if self._is_tracker else "Strings", "OS Pai", "Observação", "Imagens"])
         self.tbl.setWordWrap(False)                             # nome do ativo em 1 linha (sem quebrar)
         # padding-left:0 no item → o check cola na borda e some a faixa escura à esquerda dele (a margem
         # do indicador de um item de tabela não recebe o fundo do item; qualquer padding>0 reintroduz).
@@ -441,19 +607,36 @@ class PerfCriar(QWidget):
         self.tbl.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         hh = self.tbl.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)     # Ativo
-        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)       # OS Pai
-        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)     # Observação
-        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)       # Imagens
-        self.tbl.setColumnWidth(1, 130); self.tbl.setColumnWidth(3, 104)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)       # card de quantidade
+        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)       # OS Pai
+        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)     # Observação
+        hh.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)       # Imagens
+        self.tbl.setColumnWidth(1, 146); self.tbl.setColumnWidth(2, 130)
+        self.tbl.setColumnWidth(4, 104)
+        self.tbl.setColumnHidden(1, not self._aba_ticket)   # só nos planos que geram ocorrência
         self.tbl.setMinimumHeight(240)
         self.tbl.itemChanged.connect(self._on_item)
         self.sel_lbl = QLabel("0 marcado(s)"); self.sel_lbl.setObjectName("uiAjuda")
+        # SELETOR DE GRUPO (Levi, 11/09): "fica como standard tracker e aí tem como mudar para
+        # TCU, SKC, NCU, ESTRUTURA". A lista mostra um grupo por vez, com os trackers individuais
+        # como padrão, que é o ativo do dia a dia. Só aparece quando a usina tem mais de um grupo:
+        # numa planta que só tem trackers, seria um seletor de uma opção só.
+        self.cb_grupo = QComboBox()
+        self.cb_grupo.setFixedWidth(168)
+        self.cb_grupo.setToolTip("Que tipo de ativo a lista mostra. A OS nasce no ativo escolhido.")
+        self.cb_grupo.currentIndexChanged.connect(self._on_grupo)
+        self._campo_grupo = QWidget(); self._campo_grupo.setObjectName("uiGroup")
+        _gl = QHBoxLayout(self._campo_grupo); _gl.setContentsMargins(0, 0, 0, 0); _gl.setSpacing(6)
+        _lbg = QLabel("Mostrar")
+        _lbg.setStyleSheet("font-size:12px;color:%s;background:transparent;border:none;" % MUTED)
+        _gl.addWidget(_lbg); _gl.addWidget(self.cb_grupo)
+        self._campo_grupo.setVisible(False)
         c_at = Card(2, "Ativos")
         albl = QHBoxLayout(); albl.setSpacing(6)
         self.lb_ativos = rotulo("Ativos", obrig=True,
                                 extra="(marque um ou vários — cada um vira uma OS)")
         albl.addWidget(self.lb_ativos, 1)
-        albl.addWidget(b_all); albl.addWidget(b_none)
+        albl.addWidget(self._campo_grupo); albl.addWidget(b_all); albl.addWidget(b_none)
         c_at.add(albl)
         c_at.add(self.tbl, stretch=1)
         c_at.add(self.sel_lbl)
@@ -516,15 +699,47 @@ class PerfCriar(QWidget):
         # É o que separa "a pessoa decidiu" de "o app sugeriu" — sem isso, o auto-ligar
         # remarcaria a caixa que ela acabou de desmarcar, e ela não conseguiria sair do modo.
         self.ck_agrupar.clicked.connect(lambda *_: setattr(self, "_agrup_tocado", True))
-        c_resp.add(campo("Volume de OS", self.ck_agrupar,
-                         extra="(a OS só fecha quando todas as tarefas forem concluídas)"))
+        self._campo_volume = campo("Volume de OS", self.ck_agrupar,
+                                   extra="(a OS só fecha quando todas as tarefas forem concluídas)")
+        # ── A OCORRÊNCIA (Levi, 10/09/2026) ──────────────────────────────────────────────────
+        # A linha de ticket já nascia junto da OS desde 31/08, mas em SILÊNCIO: não havia caixa
+        # nenhuma na tela e a confirmação do fim só falava de ticket quando ele falhava. Dando
+        # certo, o app não dizia nada — e quem usa concluía, com razão, que a tela não fazia isso.
+        # Marcada por padrão porque é o comportamento que já estava no ar; o que muda é ele ficar
+        # visível e poder ser desligado.
+        self.ck_ticket = None
+        if self._aba_ticket:
+            self.ck_ticket = QCheckBox("Gerar ticket automaticamente")
+            self.ck_ticket.setChecked(True)
+            self.ck_ticket.setCursor(Qt.CursorShape.PointingHandCursor)
+            # `clicked` e não `toggled`: só o clique humano pergunta. Com toggled, marcar de volta
+            # pelo código dispararia a pergunta de novo, em laço.
+            self.ck_ticket.clicked.connect(self._on_ticket_clicado)
+            self.lb_ticket = QLabel("")
+            self.lb_ticket.setWordWrap(True)
+            self.lb_ticket.setStyleSheet(
+                "font-size:11.5px;color:%s;background:transparent;border:none;" % MUTED)
+            cx = QWidget(); cx.setObjectName("uiGroup")     # sem isto o QSS global pinta uma faixa
+            cl = QVBoxLayout(cx); cl.setContentsMargins(0, 0, 0, 0); cl.setSpacing(3)
+            cl.addWidget(self.ck_ticket); cl.addWidget(self.lb_ticket)
+            self._campo_ocorrencia = campo("Ocorrência", cx,
+                                           extra="(a linha nasce já vinculada a esta OS)")
         # OS PAI ÚNICA no modo agrupado (Levi, 26/08): a OS é uma só, então pedir o pai por ativo
         # na tabela não faz sentido — 14 campos para um valor que só pode ser um.
         self.ed_pai_os = QLineEdit(); self.ed_pai_os.setPlaceholderText("nº da OS que originou")
-        self.ed_pai_os.setFixedWidth(220)
         self._campo_pai_os = campo("OS pai", self.ed_pai_os, extra="(uma só, para a OS inteira)")
         self._campo_pai_os.setVisible(False)
-        c_resp.add(self._campo_pai_os)
+        # AS DUAS CAIXAS À ESQUERDA, A OS PAI À DIREITA (Levi, 10/09). Empilhadas, cada caixa
+        # ocupava uma faixa inteira da largura para uma linha de texto, e a OS pai — um campo de
+        # 220px — ganhava outra faixa só para ela. Aqui as três dividem a mesma altura.
+        # O `_campo_pai_os` continua sendo escondido no modo por ativo: a coluna some e a esquerda
+        # fica com o espaço, sem buraco, porque o Linha reparte a largura pelo stretch.
+        esq = QWidget(); esq.setObjectName("uiGroup")
+        el = QVBoxLayout(esq); el.setContentsMargins(0, 0, 0, 0); el.setSpacing(10)
+        el.addWidget(self._campo_volume)
+        if self.ck_ticket is not None:
+            el.addWidget(self._campo_ocorrencia)
+        c_resp.add(Linha(esq, self._campo_pai_os, quebra=760, pesos=(3, 2)))
         # OBSERVAÇÃO DA OS (Levi, 26/08): o recado que vale para o lote inteiro. Não substitui a
         # observação POR ATIVO da tabela — as duas convivem, e foi conferido que o Fracttal guarda
         # a da OS separada das tarefas (OS 12273). Sem este campo, quem quisesse dizer algo geral
@@ -720,6 +935,8 @@ class PerfCriar(QWidget):
                 self._fill_usinas()    # re-filtra a usina p/ a carteira (mantém a seleção)
         self._alvos = []; self._alvo_by_id = {}
         self._checked = set(); self._obs = {}; self._ospai = {}; self._imgs = {}
+        # o card de quantidade e o número que a pessoa escolheu pertencem ao ATIVO, e a usina mudou
+        self._qtd = {}; self._chips = {}
         self.tbl.setRowCount(0); self._upd_count()
         self.resumo.setText("Selecione a usina para carregar o plano.")
         self.preview.setText("")
@@ -751,6 +968,7 @@ class PerfCriar(QWidget):
             self.ed_nome.setText(self._base)
         self._alvos = res.get("ativos") or []
         self._alvo_by_id = {al["asset"].get("id"): al for al in self._alvos}
+        self._montar_grupos()
         self._repop()
         self._marcar_etm()                    # ETM: a estação já entra marcada
         if self._alvos:
@@ -856,14 +1074,53 @@ class PerfCriar(QWidget):
             except Exception:
                 pass
 
+    # ── o seletor de grupo (Trackers · Estrutura · NCU · SKC · TCU) ──────────────────────────
+    def _grupo_atual(self):
+        """O grupo que a lista mostra. Fora do plano de tracker não existe grupo nenhum."""
+        if not self._is_tracker:
+            return None
+        return self.cb_grupo.currentData() or GRUPO_TRACKER
+
+    def _montar_grupos(self):
+        """As opções do seletor são os grupos que ESTA usina tem de verdade, com a contagem.
+
+        Preencher o combo dispara `currentIndexChanged`, e o `_on_grupo` limparia a seleção da
+        pessoa a cada troca de usina. O guard separa o preenchimento da escolha humana."""
+        if not self._is_tracker:
+            self._campo_grupo.setVisible(False)
+            return
+        quantos = collections.Counter(_grupo_trk(al["asset"]) for al in self._alvos)
+        ordem = [g for g in _ORDEM_GRUPO if quantos.get(g)]
+        anterior = self.cb_grupo.currentData()
+        self._montando_grupo = True
+        self.cb_grupo.clear()
+        for g in ordem:
+            self.cb_grupo.addItem("%s (%d)" % (_ROTULO_GRUPO.get(g, g), quantos[g]), g)
+        if anterior in ordem:
+            self.cb_grupo.setCurrentIndex(ordem.index(anterior))
+        self._montando_grupo = False
+        # com um grupo só, o seletor não decide nada e vira ruído na barra
+        self._campo_grupo.setVisible(len(ordem) > 1)
+
+    def _on_grupo(self, *_):
+        """Trocar de tipo LIMPA a marcação. Criar OS num ativo que a pessoa não está mais vendo
+        é o tipo de surpresa que não se desfaz depois."""
+        if self._montando_grupo:
+            return
+        self._checked.clear()
+        self._repop()
+
     def _repop(self, *_):
         txt = (self.busca.text() or "").strip().lower()
+        grupo = self._grupo_atual()
         self.tbl.blockSignals(True)
         self._limpar_celulas()
         self.tbl.setRowCount(0)
         etm, usi = self._etm(), self._usina_inteira()
         for al in self._alvos:
             a = al["asset"]; aid = a.get("id")
+            if grupo and _grupo_trk(a) != grupo:
+                continue                        # a lista mostra um grupo de cada vez
             # o plano é o mesmo para inversor, estação e planta; o MODO é que decide quem aparece
             if self._tem_modos:
                 tp = a.get("tipo")
@@ -896,12 +1153,20 @@ class PerfCriar(QWidget):
                                   % ("Estação Meteorológica" if etm else "o item de usina"))
         else:
             self.tbl.setMinimumHeight(240); self.tbl.setMaximumHeight(16777215)
+        # A coluna do card some quando NENHUM ativo desta lista pode tê-lo. É o caso da tela de
+        # tracker parado, que lista trackers individuais: ali a quantidade é sempre 1, e uma
+        # coluna vazia só rouba largura do nome do ativo.
+        tem_card = bool(self._aba_ticket) and any(
+            _tem_card_qtd(al.get("asset") or {}, self._is_tracker) for al in self._alvos
+            if not grupo or _grupo_trk(al.get("asset") or {}) == grupo)
+        self.tbl.setColumnHidden(1, not tem_card)
         self._upd_count()
 
     def _limpar_celulas(self):
         """Mata os widgets de célula ANTES de zerar as linhas — `setRowCount(0)` só desfaz o vínculo.
         A varredura do viewport pega também os órfãos de um `setRowCount(0)` que já rodou sem
         limpeza (é o que o `_on_usi` faz ao trocar de usina)."""
+        self._chips = {}          # os cards de quantidade morrem com as células; o nº fica em _qtd
         for r in range(self.tbl.rowCount()):
             for c in range(self.tbl.columnCount()):
                 _matar_celula(self.tbl, r, c)
@@ -917,25 +1182,74 @@ class PerfCriar(QWidget):
         if it is not None:
             it.setForeground(QBrush(QColor(TEXT if checked else MUTED)))
             it.setBackground(QBrush(QColor(166, 226, 46, 22)) if checked else QBrush(Qt.GlobalColor.transparent))
-        # a coluna 3 (Imagens) entra na limpeza: sobrescrever com setCellWidget não destrói o antigo
-        for c in (1, 2, 3):
+        # a coluna 4 (Imagens) entra na limpeza: sobrescrever com setCellWidget não destrói o antigo
+        self._chips.pop(aid, None)                 # o chip da linha morre junto com a célula
+        for c in (1, 2, 3, 4):
             _matar_celula(self.tbl, r, c)
         if checked:
-            self.tbl.takeItem(r, 1); self.tbl.takeItem(r, 2)
+            self.tbl.takeItem(r, 1); self.tbl.takeItem(r, 2); self.tbl.takeItem(r, 3)
+            alvo = self._alvo_by_id.get(aid) or {}
+            if self._aba_ticket and _tem_card_qtd(alvo.get("asset") or {}, self._is_tracker):
+                chip = _ChipQtd("trackers" if self._is_tracker else "strings",
+                                on_change=self._qtd_mudou)
+                if aid in self._qtd:                # já escolhido antes: preserva o número E o âmbar
+                    chip.ed.setText(str(self._qtd[aid]))
+                    chip._virar_manual()
+                self._chips[aid] = chip
+                self.tbl.setCellWidget(r, 1, _cell_campo(chip))
+                self._recontar(aid)
             pai = QLineEdit(self._ospai.get(aid, ""))
             pai.setPlaceholderText("nº")               # cabeçalho já diz "OS Pai" — placeholder curto
             pai.textChanged.connect(lambda tx, k=aid: self._ospai.__setitem__(k, tx))
-            self.tbl.setCellWidget(r, 1, _cell_campo(pai))
+            self.tbl.setCellWidget(r, 2, _cell_campo(pai))
             obs = QLineEdit(self._obs.get(aid, ""))
             obs.setPlaceholderText("motivo / observação (opcional)")
-            obs.textChanged.connect(lambda tx, k=aid: self._obs.__setitem__(k, tx))
-            self.tbl.setCellWidget(r, 2, _cell_campo(obs))
+            obs.textChanged.connect(lambda tx, k=aid: self._obs_mudou(k, tx))
+            self.tbl.setCellWidget(r, 3, _cell_campo(obs))
         else:
-            for col in (1, 2):
+            for col in (1, 2, 3):
                 dash = QTableWidgetItem("—"); dash.setForeground(QBrush(QColor(MUTED)))
                 dash.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 self.tbl.setItem(r, col, dash)
-        self.tbl.setCellWidget(r, 3, _centrar(self._attach_btn_for(aid, checked)))
+        self.tbl.setCellWidget(r, 4, _centrar(self._attach_btn_for(aid, checked)))
+
+    # ── o card de quantidade: contagem, memória e o resumo do rodapé ──────────────────────────
+    def _obs_mudou(self, aid, texto):
+        """A observação manda no número enquanto ninguém tiver corrigido o card à mão."""
+        self._obs[aid] = texto
+        self._recontar(aid)
+        self._upd_ticket_resumo()
+
+    def _recontar(self, aid):
+        chip = self._chips.get(aid)
+        if chip is None or self._is_tracker:
+            return          # tracker não conta texto nenhum: é 1 por ativo até alguém mudar
+        n, via, _nomes = tickets_nasce.contar_strings(self._obs.get(aid, ""))
+        chip.set_auto(n, presumido=(via == "presumido"))
+        if not chip.manual():
+            self._qtd.pop(aid, None)          # volta a ser automático: não guarda escolha antiga
+
+    def _qtd_mudou(self):
+        """Guarda o número que a pessoa escolheu — o re-render da tabela é frequente (filtro,
+        marcar/desmarcar) e sem isto a correção dela se perderia no próximo desenho."""
+        for aid, chip in self._chips.items():
+            if chip.manual():
+                self._qtd[aid] = chip.valor()
+            else:
+                self._qtd.pop(aid, None)     # voltou ao número do app: não há escolha a lembrar
+        self._upd_ticket_resumo()
+
+    def _qtd_de(self, aid) -> int:
+        """O número que vai para a planilha: o do card se ele estiver vivo, senão o guardado,
+        senão a contagem da observação (a linha pode estar fora do filtro na hora de criar)."""
+        chip = self._chips.get(aid)
+        if chip is not None:
+            return chip.valor()
+        if aid in self._qtd:
+            return self._qtd[aid]
+        if self._is_tracker:
+            return 1
+        return tickets_nasce.contar_strings(self._obs.get(aid, ""))[0]
 
     def _attach_btn_for(self, aid, checked=True):
         n = len(self._imgs.get(aid, []))
@@ -985,7 +1299,7 @@ class PerfCriar(QWidget):
         ag = bool(self.ck_agrupar.isChecked())
         self._campo_pai_os.setVisible(ag)
         self._campo_obs_os.setVisible(ag)
-        self.tbl.setColumnHidden(1, ag)          # coluna "OS Pai" por ativo
+        self.tbl.setColumnHidden(2, ag)          # coluna "OS Pai" por ativo
         self.chip_prefixo.setVisible(not ag)
         self.lb_nome.setText(
             rotulo("Nome da tarefa", obrig=True,
@@ -1021,6 +1335,59 @@ class PerfCriar(QWidget):
         else:
             self.sel_lbl.setText("%d marcado(s)  ·  %d OS a criar" % (n, n))
         self._upd_preview()
+        self._upd_ticket_resumo()
+
+    # ── o resumo do marcador de ocorrência ───────────────────────────────────────────────────
+    def _gerar_ticket(self) -> bool:
+        return bool(self.ck_ticket is not None and self.ck_ticket.isChecked())
+
+    def _total_qtd(self) -> int:
+        return sum(self._qtd_de(aid) for aid in self._checked)
+
+    def _upd_ticket_resumo(self, *_):
+        if self.ck_ticket is None:
+            return
+        n = len(self._checked)
+        if not self._gerar_ticket():
+            self.lb_ticket.setText("A OS sai sem ocorrência na planilha. A confirmação vai dizer isso.")
+            return
+        if not n:
+            self.lb_ticket.setText("Marque os ativos para ver quantas ocorrências entram.")
+            return
+        aba = tickets_spec.ABAS.get(self._aba_ticket, {}).get("rotulo", self._aba_ticket)
+        # "por ativo" e não "por tracker": desde 11/09 a lista também tem estrutura e controladora
+        por = "ativo" if self._is_tracker else "inversor"
+        total = self._total_qtd()
+        unid = ("tracker parado" if total == 1 else "trackers parados") if self._is_tracker \
+            else ("string" if total == 1 else "strings")
+        self.lb_ticket.setText(
+            "Acrescenta %d ocorrência%s na aba %s — uma por %s, com %d %s no total."
+            % (n, "" if n == 1 else "s", aba, por, total, unid))
+
+    def _on_ticket_clicado(self, marcado):
+        """Desmarcar é permitido, mas pergunta (Levi, 10/09: "deve ter uma mensagem de 'você tem
+        certeza'"). O padrão da caixa é MANTER — quem clicou por engano volta com um Enter."""
+        if marcado:
+            self._upd_ticket_resumo()
+            return
+        n = len(self._checked) or 1
+        box = QMessageBox(self)
+        box.setWindowTitle("Gerar ticket")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("Sem o ticket, %s gerar ocorrência na planilha de Tickets — e nada vai "
+                    "lembrar disso depois.\n\nCriar as OS sem registrar a ocorrência?"
+                    % ("esta OS não vai" if n == 1 else "estas %d OS não vão" % n))
+        b_sem = box.addButton("Sim, sem ticket", QMessageBox.ButtonRole.DestructiveRole)
+        b_manter = box.addButton("Manter o ticket", QMessageBox.ButtonRole.RejectRole)
+        # o DARK_QSS pinta TODO botão de verde, e os dois sairiam idênticos — numa caixa de
+        # confirmação isso é o pior lugar para não se distinguir a saída segura da destrutiva.
+        b_sem.setStyleSheet("background:transparent;border:1px solid %s;color:#cdd2e0;"
+                            "font-weight:500;" % BORDER)
+        box.setDefaultButton(b_manter)
+        box.exec()
+        if box.clickedButton() is not b_sem:
+            self.ck_ticket.setChecked(True)          # `clicked` não dispara de novo: sem laço
+        self._upd_ticket_resumo()
 
     def _upd_preview(self, *_):
         base = self.ed_nome.text().strip() or self._base
@@ -1118,6 +1485,7 @@ class PerfCriar(QWidget):
         usina_toda = self._usina_inteira()
         ag_tit = ""      # título literal do modo agrupado (sem o prefixo [Ativo])
         ag_pai = ag_obs = ""
+        ger_tk = self._gerar_ticket()
         if self._agrupar():
             # TÍTULO ÚNICO. O Fracttal NÃO aceita título próprio na OS — testei na 12188, ele
             # ignora o `description` do work_order_insert e copia o da PRIMEIRA tarefa. Então a
@@ -1135,6 +1503,8 @@ class PerfCriar(QWidget):
             itens.append({"asset": al["asset"], "plano_id_task": al["plano_id_task"],
                           "plano_id_item": al["plano_id_item"], "linkar": al.get("linkar", True),
                           "base": base, "note": self._obs.get(aid, ""),
+                          # a ocorrência de tickets: se gera, e com que quantidade (o card)
+                          "gerar_ticket": ger_tk, "qtd_ticket": self._qtd_de(aid),
                           # ETM e Usina usam título LITERAL, sem o prefixo [Ativo]
                           "titulo": ETM_TITULO if etm else (USINA_TITULO if usina_toda
                                                            else (ag_tit or "")),
@@ -1151,6 +1521,15 @@ class PerfCriar(QWidget):
             aviso += (f"\nUMA OS na planta inteira, no lugar de uma por inversor."
                       f"\nTítulo: {USINA_TITULO}")
         aviso += "\nProgramada para %s." % self.dt_exec.dateTime().toString("dd/MM/yyyy HH:mm")
+        if self._aba_ticket:
+            # dito ANTES de criar: a linha de ticket é gravação em planilha de produção, e quem
+            # confirma tem de saber se ela vai acontecer — nos dois sentidos.
+            if ger_tk:
+                aba_nome = tickets_spec.ABAS.get(self._aba_ticket, {}).get("rotulo", self._aba_ticket)
+                aviso += ("\n%d ocorrência(s) na aba %s, com %d no total."
+                          % (len(itens), aba_nome, self._total_qtd()))
+            else:
+                aviso += "\nSEM ocorrência na planilha de Tickets."
         agrupar = self._agrupar()
         if agrupar:
             # o que MUDA no modo agrupado, dito ANTES de criar — as duas perdas medidas em 21/08.
@@ -1186,6 +1565,40 @@ class PerfCriar(QWidget):
         self._wc.erro.connect(self._err)
         self._wc.start()
 
+    def _frase_tickets(self, tickets):
+        """(frase para a caixa do fim, erros para o "Mostrar detalhes").
+
+        É a resposta ao que o Levi apontou: a OS criada aparecia e a ocorrência não, então a tela
+        parecia não fazer o que já fazia. Agora ela conta as duas coisas — e diz igualmente alto
+        quando NÃO registrou, seja porque a caixa estava desmarcada, seja porque a gravação falhou.
+        """
+        if not self._aba_ticket:
+            return "", []
+        if not self._gerar_ticket():
+            return "\nSem ticket: nenhuma ocorrência foi registrada na planilha.", []
+        tks = [t for t in (tickets or []) if isinstance(t, dict)]
+        ok = [t for t in tks if t.get("ok")]
+        falhas = [t for t in tks if not t.get("ok")]
+        spec = tickets_spec.ABAS.get(self._aba_ticket, {})
+        aba_nome = spec.get("rotulo", self._aba_ticket)
+        total = sum(int(t.get("quantidade") or 0) for t in ok)
+        unid = ("tracker parado" if total == 1 else "trackers parados") if self._is_tracker \
+            else ("string" if total == 1 else "strings")
+        frase = ""
+        if ok:
+            frase += ("\n%d ticket%s criado%s na aba %s — %d %s no total."
+                      % (len(ok), "" if len(ok) == 1 else "s", "" if len(ok) == 1 else "s",
+                         aba_nome, total, unid))
+        if falhas:
+            frase += ("\n%s — a OS existe, a linha não."
+                      % ("1 ocorrência NÃO foi registrada" if len(falhas) == 1
+                         else "%d ocorrências NÃO foram registradas" % len(falhas)))
+        # O aviso do sync sai da MESMA lista que a tela de Tickets usa ao salvar. No dia em que o
+        # corte do pipeline voltar a ser ligado, a frase some sozinha das duas telas.
+        if ok and spec.get("sheet_id") in tickets_escrita.SHEETS_QUE_O_SYNC_SOBRESCREVE:
+            frase += "\nA planilha de Tickets ainda sobrescreve esta aba no próximo sync."
+        return frase, [str(t.get("erro") or t.get("aviso_os") or "") for t in falhas]
+
     def _criou(self, res):
         self._wc = None
         self.btn.setEnabled(True); self.hint.setText("")
@@ -1199,21 +1612,25 @@ class PerfCriar(QWidget):
             return
         folios = ", ".join(str(r.get("folio") or "?") for r in ok[:12])
         msg = f"{len(ok)} OS criada(s) — Nº {folios}" + (" …" if len(ok) > 12 else "") + "."
+        frase_tk, erros_tk = self._frase_tickets([r.get("ticket") for r in ok])
+        msg += frase_tk
         if fail:
             msg += (f"\n\n{len(fail)} falharam:\n" +
                     "\n".join(f"• {r.get('asset')}: {r.get('erro')}" for r in fail[:6]))
         box = QMessageBox(self)
         box.setWindowTitle("OS de Performance")
-        box.setIcon(QMessageBox.Icon.Warning if erros_img else QMessageBox.Icon.Information)
+        box.setIcon(QMessageBox.Icon.Warning if (erros_img or erros_tk)
+                    else QMessageBox.Icon.Information)
         if erros_img:
             msg += (f"\n\n⚠ {len(erros_img)} imagem(ns) não anexaram. Clique em “Mostrar detalhes”, "
                     "copie o texto e me mande (é a resposta do upload que eu preciso pra ajustar).")
-            box.setDetailedText("\n\n".join(erros_img))
+        if erros_img or erros_tk:
+            box.setDetailedText("\n\n".join(list(erros_img) + list(erros_tk)))
         box.setText(msg)
         box.exec()
         for aid in list(self._checked):        # limpa marcações após criar
             self._checked.discard(aid)
-        self._imgs = {}
+        self._imgs = {}; self._qtd = {}
         self._repop()
 
     @slot_seguro
@@ -1235,9 +1652,11 @@ class PerfCriar(QWidget):
             msg = "%d tarefa(s) criadas, mas SEM número de OS." % (r.get("n_criadas") or 0)
         if r.get("n_img_ok"):
             msg += "  %d imagem(ns) anexada(s)." % r["n_img_ok"]
+        frase_tk, erros_tk = self._frase_tickets(r.get("tickets"))
+        msg += frase_tk
         if r.get("aviso"):
             msg += "\n\n" + r["aviso"]
-        det = list(r.get("erros") or []) + list(r.get("img_erro") or [])
+        det = list(r.get("erros") or []) + list(r.get("img_erro") or []) + list(erros_tk)
         box = QMessageBox(self)
         box.setWindowTitle("OS de Performance")
         box.setIcon(QMessageBox.Icon.Warning if det or not folio else QMessageBox.Icon.Information)
@@ -1247,7 +1666,7 @@ class PerfCriar(QWidget):
         box.exec()
         for aid in list(self._checked):
             self._checked.discard(aid)
-        self._imgs = {}
+        self._imgs = {}; self._qtd = {}
         self._repop()
 
     def _err(self, m):

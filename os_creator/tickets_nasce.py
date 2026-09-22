@@ -10,6 +10,14 @@ O QUE ENTRA NA LINHA: usina, o ativo (inversor ou skid/tracker), o início da oc
 do incidente que a pessoa escolheu na tela) e o "Início do chamado pela Grid Co." (agora, que é
 quando a Grid abriu a OS). Causa raiz fica VAZIA de propósito — quem diz é o técnico, no fim.
 
+QUANTIDADE E OBSERVAÇÃO (Levi, 10/09/2026). Até aqui a quantidade era `1` FIXO nas duas abas, e
+em Strings isso é falso: o inversor cai com seis strings e a planilha registrava uma. Agora a
+tela manda o número — contado da observação por `contar_strings` e conferido no card ao lado do
+ativo. E a observação da OS (ou da tarefa, quando é uma OS com vários ativos) desce para
+"Comentários gerais" como frase pronta: "Ipv10, Ipv11 e Ipv12 com corrente nula em 10/09/2026
+07:30". Vai nessa coluna, e não em "Comentários para os clientes", porque aquela é a que o
+cliente lê no relatório e é escrita por gente.
+
 O QUE NÃO ENTRA: a OS. Ela não tem coluna na planilha e vive no diário, junto do status inicial
 "OS Programada" — mesma regra do vínculo feito à mão na tela.
 
@@ -32,6 +40,86 @@ PLANOS = {
 }
 
 _NUM_INV = re.compile(r"(\d+(?:\.\d+)*)")
+
+# ── A RÉGUA DAS STRINGS (Levi, 10/09/2026) ───────────────────────────────────────────────────────
+# "a palavra isolada tem que vir com um número colado ou um número logo após o space".
+#
+# POR QUE NÃO É "contar toda ocorrência de PV/STR/String": a plataforma manda
+# "Strings Ipv10, Ipv11 e Ipv12 com corrente nula" — contar a palavra do texto corrido junto com os
+# nomes daria 4 para três strings, e "String Ipv4 com corrente nula" daria 2 para uma. Medido nos
+# dois formatos que o deep link gera hoje (`_osObs` do index.html da plataforma).
+#
+# "string" ANTES de "str" na alternância: a regex casa a primeira alternativa que serve, e com
+# "str" na frente "String 4" tentaria "str" + "ing 4" e falharia no \d+.
+# SEM fronteira à esquerda: o nome real vem grudado num prefixo — em "Ipv10" o marcador é o "pv"
+# no meio da palavra, e um \b ali faria a régua não achar nada.
+_RE_TOK = re.compile(r"(?:string|str|pv)\s*[-_.]?\s*(\d+)", re.I)
+# Saída de emergência: o número vem ANTES da palavra ("3 strings sem corrente"), que é como se
+# escreve quando não se lista nome nenhum.
+_RE_ANTES = re.compile(r"(\d+)\s*(?:strings?|str|pv)\b", re.I)
+
+
+def contar_strings(texto):
+    """(quantidade, via, nomes) das strings citadas numa observação.
+
+    `via` diz DE ONDE veio o número, e a tela usa isso para marcar o card: 'tokens' são nomes
+    achados, 'antes' é o número que veio antes da palavra, 'presumido' é o mínimo de 1 — porque
+    zero não pode ir para a planilha: se a OS está sendo aberta, pelo menos uma string caiu.
+
+    Os NOMES voltam como a pessoa escreveu ('Ipv10', não 'pv10'): a regex casa a partir do 'pv',
+    então é preciso voltar enquanto for letra para não citar o ativo pela metade na observação
+    do ticket."""
+    t = str(texto or "")
+    vistos, nomes = [], []
+    for m in _RE_TOK.finditer(t):
+        tok = re.sub(r"[\s\-_.]", "", m.group(0).lower())
+        if tok in vistos:                 # "Ipv10 e Ipv10" é a mesma string citada duas vezes
+            continue
+        vistos.append(tok)
+        i = m.start()
+        while i > 0 and t[i - 1].isalpha():
+            i -= 1
+        nomes.append(t[i:m.end()])
+    if vistos:
+        return len(vistos), "tokens", nomes
+    achou = _RE_ANTES.search(t)
+    if achou:
+        n = int(achou.group(1))
+        if n > 0:
+            return n, "antes", []
+    return 1, "presumido", []
+
+
+def _lista(nomes) -> str:
+    """['A','B','C'] → 'A, B e C' — o 'e' antes do último, como se escreve em português."""
+    nomes = [n for n in (nomes or []) if str(n).strip()]
+    if not nomes:
+        return ""
+    if len(nomes) == 1:
+        return nomes[0]
+    return "%s e %s" % (", ".join(nomes[:-1]), nomes[-1])
+
+
+def observacao_ticket(aba: str, nota, quantidade=None, quando=None) -> str:
+    """A frase que vai para "Comentários gerais" da linha.
+
+    Três formatos, nesta ordem (Levi, 10/09): os nomes achados na observação; a observação livre
+    inteira, quando não há nomes; e um texto mínimo quando não há observação nenhuma. A data é
+    sempre a do incidente — é o que a planilha chama de início da ocorrência, e sem ela a frase
+    não se sustenta sozinha na coluna."""
+    txt = str(nota or "").strip()
+    data = (quando or _dt.datetime.now()).strftime("%d/%m/%Y %H:%M")
+    if aba == "Strings":
+        n, via, nomes = contar_strings(txt)
+        if via == "tokens" and nomes:
+            return "%s com corrente nula em %s" % (_lista(nomes), data)
+        if txt:
+            return "%s — em %s" % (txt, data)
+        q = int(quantidade or n)
+        return "%d string%s sem corrente em %s" % (q, "" if q == 1 else "s", data)
+    if txt:
+        return "%s — em %s" % (txt, data)
+    return "Tracker parado em %s" % data
 
 
 def aba_do_plano(descricao) -> str:
@@ -75,9 +163,15 @@ def usina_do_ativo(asset: dict) -> str:
     return str(asset.get("usina") or "").strip()
 
 
-def montar_linha(aba: str, asset: dict, usina: str, quando, agora=None) -> dict:
+def montar_linha(aba: str, asset: dict, usina: str, quando, agora=None,
+                 quantidade=None, nota="") -> dict:
     """{coluna: valor} da ocorrência nova. Só as colunas que a aba tem — o resto o
-    `para_valores` completa vazio."""
+    `para_valores` completa vazio.
+
+    `quantidade` é o número do card da tela (strings afetadas ou trackers parados). Vindo None,
+    Strings conta da própria `nota` e Trackers fica em 1 — assim quem chamar sem tela continua
+    tendo o comportamento antigo, só que com a contagem certa em vez do 1 fixo.
+    `nota` é a observação daquele ativo, que vira a frase de "Comentários gerais"."""
     ag = agora or _dt.datetime.now()
     ini = quando or ag
     linha = {
@@ -85,6 +179,7 @@ def montar_linha(aba: str, asset: dict, usina: str, quando, agora=None) -> dict:
         "Início da ocorrência": ini.strftime("%Y-%m-%d %H:%M:%S"),
         "Início do chamado pela Grid Co.": ag.strftime("%Y-%m-%d %H:%M:%S"),
         "Causa raiz": "",                       # é o técnico quem diz, no fim da atividade
+        "Comentários gerais": observacao_ticket(aba, nota, quantidade, ini),
     }
     if aba == "Trackers":
         skid, num = _identificacao(asset)
@@ -93,35 +188,48 @@ def montar_linha(aba: str, asset: dict, usina: str, quando, agora=None) -> dict:
         # 'Status' aqui é a coluna ANTIGA da aba, que separa ocorrência de check periódico.
         # Sem ela a linha nasceria como 'Em conformidade' — ou seja, invisível na tela.
         linha["Status"] = "Parado"
-        linha["Quantidade de trackers parados"] = "1"
+        linha["Quantidade de trackers parados"] = str(int(quantidade or 1))
     else:
         linha["Inversor"] = api._asset_short_name(asset) or ""
-        linha["Quantidade de strings no afetadas"] = "1"
+        # a coluna "no inversor" fica de fora de propósito: o app não sabe quantas strings o
+        # inversor tem, e chutar ali estraga uma coluna que hoje é preenchida à mão.
+        n = int(quantidade) if quantidade else contar_strings(nota)[0]
+        linha["Quantidade de strings no afetadas"] = str(n)
     return linha
 
 
 def criar(aba: str, asset: dict, usina: str, folio, quando=None, agora=None,
-          escrever=None, registrar=None) -> dict:
-    """Acrescenta a ocorrência e o registro do diário. → {'ok', 'linha'|'erro'}.
+          escrever=None, registrar=None, quantidade=None, nota="", cabecalho=None) -> dict:
+    """Acrescenta a ocorrência e o registro do diário. → {'ok', 'linha'|'erro', 'quantidade'}.
 
     `escrever`/`registrar` são injetáveis: teste de criação que bate na API acabaria escrevendo
     numa planilha real no dia em que alguém rodasse a suíte distraído."""
     if aba not in tickets_spec.ABAS:
         return {"ok": False, "erro": "aba desconhecida: %s" % aba}
     sheet_id = tickets_spec.ABAS[aba]["sheet_id"]
-    cabecalho = tickets_api.cabecalho_de(sheet_id)
+    # `cabecalho` injetável por causa do TESTE: sem ele, a linha abaixo vai à rede para descobrir
+    # a ordem das colunas, e a suíte inteira passava a depender de `app.gridco.com.br` estar no
+    # ar — o arquivo de teste dizia "nenhum teste toca a rede" e quatro deles tocavam. Descoberto
+    # em 11/09, quando o servidor caiu e os testes começaram a falhar sem ninguém ter mexido neles.
+    cabecalho = list(cabecalho or []) or tickets_api.cabecalho_de(sheet_id)
     if not cabecalho:
         # sem o cabeçalho não dá para saber a ORDEM das colunas, e mandar fora de ordem grava
         # cada valor na coluna do vizinho.
         try:
-            tickets_api.listar_linhas(sheet_id)
-            cabecalho = tickets_api.cabecalho_de(sheet_id)
+            # UMA linha, nao a aba inteira: o cabecalho vem em toda linha, e baixar as 2.781 da
+            # Trackers so para ler nome de coluna foi o que estourou o timeout em 17/09.
+            cabecalho = tickets_api.cabecalho_vivo(sheet_id)
         except Exception as e:                      # noqa: BLE001
             return {"ok": False, "erro": "não li o cabeçalho da aba (%s)" % str(e)[:80]}
     if not cabecalho:
         return {"ok": False, "erro": "não li o cabeçalho da aba de tickets"}
 
-    dados = montar_linha(aba, asset, usina, quando, agora=agora)
+    dados = montar_linha(aba, asset, usina, quando, agora=agora,
+                         quantidade=quantidade, nota=nota)
+    # o que foi REALMENTE gravado, para a tela somar "6 strings" sem recontar por conta própria
+    qtd_col = ("Quantidade de trackers parados" if aba == "Trackers"
+               else "Quantidade de strings no afetadas")
+    qtd = int(dados.get(qtd_col) or 1)
     try:
         criar_linha = escrever or tickets_escrita.criar_linha
         r = criar_linha(sheet_id, dados, cabecalho)
@@ -136,6 +244,6 @@ def criar(aba: str, asset: dict, usina: str, folio, quando=None, agora=None,
             aba, oc, {"OS": str(folio or "").strip(), "Status do ticket": "OS Programada",
                       "Início do chamado pela Grid Co.": dados["Início do chamado pela Grid Co."]})
     except Exception as e:                          # noqa: BLE001
-        return {"ok": True, "linha": linha,
+        return {"ok": True, "linha": linha, "quantidade": qtd,
                 "aviso": "linha criada, mas a OS não ficou vinculada (%s)" % str(e)[:80]}
-    return {"ok": True, "linha": linha}
+    return {"ok": True, "linha": linha, "quantidade": qtd}

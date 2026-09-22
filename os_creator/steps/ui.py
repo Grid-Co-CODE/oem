@@ -31,6 +31,42 @@ try:
 except Exception:
     _CHK_URL = ""
 
+
+def _svg_em_disco(arquivo: str, desenho: str, cor: str, grossura: str = "2.6") -> str:
+    """Grava um ícone SVG no TEMP e devolve o caminho pronto para `url()` do QSS (barra normal).
+
+    O QSS só aceita `url(arquivo)` — não dá para entregar um QPixmap. Fica aqui em cima, e não numa
+    função chamada depois, porque isto roda no import: criar QPixmap antes do QApplication quebra."""
+    try:
+        alvo = _os.path.join(_tf.gettempdir(), arquivo)
+        with open(alvo, "w", encoding="utf-8") as f:
+            f.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+                    'stroke="%s" stroke-width="%s" stroke-linecap="round" stroke-linejoin="round">'
+                    '%s</svg>' % (cor, grossura, desenho))
+        return alvo.replace("\\", "/")
+    except Exception:
+        return ""                                    # sem imagem o Qt volta a desenhar a seta nativa
+
+
+# setas do QTimeEdit/QSpinBox. O desenho nativo do Windows vem dentro de uma caixinha mais escura,
+# que o Levi reprovou em 15/09 ("não gosto dessa sombra mais escura nos botões") — aqui a caixa some
+# e fica só o mesmo chevron do resto do app, empilhado à direita, com o verde aparecendo no hover.
+# ATENÇÃO: assim que o ::up-button é estilizado o Qt PARA de desenhar o indicador nativo; por isso a
+# imagem é obrigatória, e por isso as regras só entram na folha se os dois arquivos existirem.
+_SETA_CIMA = _svg_em_disco("gridco_spin_cima.svg", '<path d="m18 15-6-6-6 6"/>', "#cdd2e0")
+_SETA_BAIXO = _svg_em_disco("gridco_spin_baixo.svg", '<path d="m6 9 6 6 6-6"/>', "#cdd2e0")
+QSS_SETAS = ("""
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {
+  background:transparent; border:none; width:20px; subcontrol-origin:border; }
+QAbstractSpinBox::up-button { subcontrol-position:top right; }
+QAbstractSpinBox::down-button { subcontrol-position:bottom right; }
+QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {
+  background:rgba(166,226,46,0.16); border-radius:4px; }
+QAbstractSpinBox::up-arrow { image:url("%s"); width:11px; height:11px; }
+QAbstractSpinBox::down-arrow { image:url("%s"); width:11px; height:11px; }
+QDateEdit::drop-down, QDateTimeEdit::drop-down { background:transparent; border:none; width:24px; }
+""" % (_SETA_CIMA, _SETA_BAIXO)) if (_SETA_CIMA and _SETA_BAIXO) else ""
+
 # ── folha de estilo (aplicar no root da tela: `w.setStyleSheet(QSS_FORM)`) ──
 # padding VERTICAL explícito 0 → anula o `padding:7px 9px` do DARK_QSS global (senão os campos incham).
 QSS_FORM = f"""
@@ -99,7 +135,7 @@ QPushButton#secondary {{ background:transparent; color:#cdd2e0; border:1px solid
   min-height:38px; padding:0 12px; font-size:13px; font-weight:500; }}
 QPushButton#secondary:hover {{ border-color:#4a597e; color:{TEXT}; }}
 QPushButton#secondary:disabled {{ color:#5a6072; border-color:#232a3d; }}
-"""
+""" + QSS_SETAS
 
 # ── ícones Lucide (SVG inline; Qt não tem a fonte de ícones da web) ──
 _LUCIDE = {

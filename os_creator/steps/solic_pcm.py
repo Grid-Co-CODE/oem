@@ -21,7 +21,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QStackedWidget, QScrollArea, QFrame, QMessageBox, QComboBox,
                              QGridLayout, QLineEdit, QSizePolicy, QInputDialog,
-                             QDateTimeEdit, QStackedLayout)
+                             QDateTimeEdit, QStackedLayout, QDialog, QTextEdit)
 
 from datetime import datetime
 
@@ -36,6 +36,7 @@ from steps.ui import (QSS_FORM, Card, campo, esvaziar as _esvaziar, icone_pix,
 from steps.performance import _PlanoCard
 import pcm_acesso
 from steps.searchcombo import tornar_pesquisavel
+from steps.ospai import OsPaiPicker
 from steps.subtarefas_edit import EditorSubtarefas
 from steps.solicitacao import SolicitacaoTab
 from steps.historico_solic import HistoricoSolic
@@ -49,6 +50,20 @@ from steps.temas import TemasTab
 SUPERFICIE = "#161d30"      # cabecalhos e celulas
 RISCO      = "#222c43"      # as linhas da tabela
 
+# mesmo rotulo do bloco de Tipo de tarefa, no wizard: dois nomes para o mesmo vazio
+# fariam a pessoa achar que sao coisas diferentes
+_SEM_CLASSIF = "— nenhuma —"
+# O tipo com que a OS da fila sempre nasceu. Continua sendo o padrao: o campo existe
+# para quem precisa de Religamento ou Preventiva, nao para obrigar uma escolha nova.
+_TIPO_PADRAO = "Corretiva"
+# CLASSIFICACAO 1 DA OS. Sao DUAS listas diferentes com o mesmo nome no Fracttal, e a confusao
+# custou uma rodada: `requests.types_1_list` classifica a SOLICITACAO (e onde vive "Nao Para o
+# Ativo", que o tema sugere) e `tasks.tasks_types_list` classifica a OS — "Programada" / "Nao
+# Programada". Estes campos sao os da OS, entao a sugestao do tema NAO serve aqui.
+# "Programada" e o padrao porque e isto que o PCM esta fazendo ao aprovar: programando. E o
+# mesmo par que o app ja usa nas OS de analise e de ETM ("Programada / Eletrica", conferido por
+# Levi nas OS 10445/10444/10383 e 10478).
+_CLASSIF1_PADRAO = "Programada"
 PENDENTE, ANDAMENTO, FINALIZADA, FORA = "pendente", "andamento", "finalizada", "fora"
 _CANCELADAS = {"cancelada", "rejeitada"}
 # "Reaberta (refazer)" (AGAIN_REQUEST_TODO) sai do quadro por decisao do Levi (03/09): sao 60
@@ -316,11 +331,17 @@ class _Painel(QWidget):
         self._w = None
         self._rows = rows or []
         self._pintar()
+        # quem depende desta lista (a Fila) precisa saber que ela mudou — senao o botao
+        # Atualizar da Fila recarregaria o Painel e a fila continuaria com a lista velha
+        if callable(getattr(self, "on_carregou", None)):
+            self.on_carregou()
 
     @slot_seguro
     def _err(self, m):
         self._w = None
         self.lbl.setText("Erro ao carregar: " + str(m)[:90])
+        if callable(getattr(self, "on_carregou", None)):
+            self.on_carregou()      # erro tambem e fim de carga: quem espera precisa destravar
 
     def pendentes(self):
         return [s for s in self._rows if coluna_de(s) == PENDENTE]
@@ -482,20 +503,31 @@ class _CardEtiquetas(QFrame):
     resto, e a regra da Performance e aplicada sozinha.
     """
 
-    def __init__(self, on_mudou=None):
+    def __init__(self, on_mudou=None, embutido=False):
         super().__init__()
-        self.setObjectName("boxSug")
+        # `embutido` = sem caixa e sem titulo: dentro da coluna "A decisao" ele e so mais uma
+        # linha, ao lado de Tecnico e Data. Card dentro de card viraria moldura sobre moldura.
+        self.setObjectName("" if embutido else "boxSug")
         self._on_mudou = on_mudou
         self._catalogo = []
         self._sel = []                  # [{'id','description'}]
         self._do_tema = set()           # as que o TEMA pos, em MAIUSCULA — nao as escolhidas a mao
+        self._tirados = set()           # as do tema que a PESSOA tirou nesta solicitacao
         v = QVBoxLayout(self)
         v.setContentsMargins(16, 13, 16, 14)
         v.setSpacing(9)
 
+        if embutido:
+            v.setContentsMargins(0, 0, 0, 0)
+            v.setSpacing(6)
+            # Sem objectName o QFrame cai na regra generica `QWidget{background:#090d18}` do
+            # DARK_QSS e pinta o fundo da PAGINA por cima do cartao: o campo ficava visivelmente
+            # mais escuro que Tecnico e Data, ao lado (Levi, 16/09). Transparente, ele some.
+            self.setStyleSheet("QFrame{background:transparent;border:none;}")
         cab = QLabel("ETIQUETAS DA OS")
         cab.setStyleSheet("color:%s;font-size:10.5px;font-weight:700;letter-spacing:0.8px;"
                           "background:transparent;" % GREEN)
+        cab.setVisible(not embutido)
         v.addWidget(cab)
 
         # EMPILHADAS, nao em linha. Com QHBoxLayout cada etiqueta nova empurrava a fila para a
@@ -507,7 +539,11 @@ class _CardEtiquetas(QFrame):
         v.addLayout(self.fila_chips)
 
         self.cb = QComboBox()
-        self.cb.setObjectName("campoInline")
+        # Embutido na coluna da decisao ele e vizinho de Tecnico e Data, que sao rotulos com
+        # risco TRACEJADO. O `campoInline` tras risco VERDE cheio, e so ele acendia na linha
+        # (Levi, 16/09: "arrume para ficar igual os demais"). Verde volta no hover, como nos
+        # outros — o convite existe, mas nao grita.
+        self.cb.setObjectName("etqInline" if embutido else "campoInline")
         self.cb.addItem("+ adicionar etiqueta", None)
         self.cb.activated.connect(self._escolheu)
         v.addWidget(self.cb)
@@ -543,6 +579,13 @@ class _CardEtiquetas(QFrame):
         self._pintar()
 
     def _remover(self, idl):
+        # QUEM TIROU, TIROU (Levi, 14/09: "hoje se adicionada alguma, nao e possivel retirar e
+        # ficar sem etiquetas"). A etiqueta do tema era um chip DESABILITADO, e a unica saida era
+        # editar o tema — mudar a regra de todo mundo para resolver um caso. O nome fica guardado
+        # em `_tirados` para o `aplicar_regra` nao repor na proxima repintura.
+        fora = next((x for x in self._sel if x["id"] == idl), None)
+        if fora:
+            self._tirados.add(fora["description"].strip().upper())
         self._sel = [x for x in self._sel if x["id"] != idl]
         self._pintar()
 
@@ -567,7 +610,7 @@ class _CardEtiquetas(QFrame):
         So mexe no que a propria lista do tema colocou (`self._do_tema`): etiqueta que o PCM
         acrescentou a mao fica, mesmo trocando o tema — desfazer escolha de gente sem avisar e
         o pior tipo de automacao."""
-        querem = self.etiquetas_do_tema(tema, ativo)
+        querem = self.etiquetas_do_tema(tema, ativo) - self._tirados   # o que a pessoa tirou, fica fora
         # sai o que veio do tema anterior e nao vale mais
         self._sel = [x for x in self._sel
                      if x["description"].strip().upper() not in (self._do_tema - querem)]
@@ -588,15 +631,14 @@ class _CardEtiquetas(QFrame):
             # "(tema)" e nao "(regra)": desde 04/09 a etiqueta e campo do tema, editavel na tela
             # de Temas — nao e mais uma regra do sistema que ninguem consegue mudar.
             do_tema = e["description"].strip().upper() in self._do_tema
-            c = QPushButton(("%s  (tema)" % e["description"]) if do_tema
-                            else ("%s  ×" % e["description"]))
+            # o "(tema)" continua dizendo DE ONDE ela veio, mas o × agora existe nas duas: a marca
+            # e' informacao, nao tranca (Levi, 14/09).
+            c = QPushButton("%s  ×" % e["description"] + ("  (tema)" if do_tema else ""))
             c.setObjectName("chipEtqPerf" if do_tema else "chipEtq")
             c.setCursor(Qt.CursorShape.PointingHandCursor)
-            if do_tema:
-                c.setEnabled(False)
-                c.setToolTip("Vem do tema. Para mudar, edite o tema na aba Temas.")
-            else:
-                c.clicked.connect(lambda _=False, i=e["id"]: self._remover(i))
+            c.setToolTip("Vem do tema desta solicitação. Clique para tirar só aqui — o tema "
+                         "continua igual para as próximas." if do_tema else "Clique para tirar")
+            c.clicked.connect(lambda _=False, i=e["id"]: self._remover(i))
             c.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
             self.fila_chips.insertWidget(self.fila_chips.count() - 1, c,
                                          0, Qt.AlignmentFlag.AlignLeft)
@@ -612,11 +654,78 @@ class _CardEtiquetas(QFrame):
             self._on_mudou()
 
     def limpar(self):
-        self._sel, self._do_tema = [], set()
+        # `_tirados` zera junto: ele vale para a solicitacao que estava aberta, nao para a proxima
+        self._sel, self._do_tema, self._tirados = [], set(), set()
         self._pintar()
 
     def ids(self):
         return [x["id"] for x in self._sel]
+
+
+class _Observacao(QTextEdit):
+    """O relato do supervisor: le-se sempre, edita-se ao clicar.
+
+    Era um `_CampoClicavel` — rotulo que virava editor —, e com 20 linhas de procedimento de
+    fabricante o rotulo CORTAVA o ultimo paragrafo sem avisar: na 3620 o texto pedia 404 px e o
+    campo dava 400. Sendo o MESMO QTextEdit nos dois estados, o texto rola dentro da caixa —
+    nunca corta, nunca empurra a ficha, e clicar nao muda nada de lugar (Levi, 16/09).
+
+    Nao usa setEnabled(False) para travar: o QTextEdit desabilitado pinta o texto de cinza, e no
+    modo somente-leitura da fila isso apagaria justamente o que se foi ler."""
+
+    def __init__(self, vazio="— sem observação —"):
+        super().__init__()
+        self.setObjectName("obsCampo")
+        self.setReadOnly(True)
+        self.setPlaceholderText(vazio)
+        self.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.setMinimumWidth(1)
+        self.setCursor(Qt.CursorShape.IBeamCursor)
+        self.setToolTip("clique para editar")
+        self.fechou = None
+        self.ao_redimensionar = None      # a Fila usa para reavaliar o link "ver inteira"
+        self._editavel = True
+
+    def set_editavel(self, on):
+        self._editavel = bool(on)
+        if not on:
+            self.setReadOnly(True)
+
+    def abrir(self):
+        if not self._editavel:
+            return
+        self.setReadOnly(False)
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def fechar(self):
+        if self.isReadOnly():
+            return
+        self.setReadOnly(True)
+        if callable(self.fechou):
+            self.fechou()
+
+    def atualizar(self):
+        pass          # compatibilidade com o _CampoClicavel: o texto ja vive no proprio widget
+
+    def travar_altura(self, px):
+        self.setFixedHeight(px)
+
+    def resizeEvent(self, e):
+        # Quem descobre que sobrou texto do lado de fora e a barra de rolagem, e ela so sabe
+        # DEPOIS que a caixa recebeu o tamanho. Avisar daqui e o unico jeito de perguntar na
+        # hora certa: a coluna cresce, a caixa cresce junto, e o link some sozinho.
+        super().resizeEvent(e)
+        if callable(self.ao_redimensionar):
+            self.ao_redimensionar()
+
+    def mousePressEvent(self, e):
+        if self.isReadOnly():
+            self.abrir()
+        super().mousePressEvent(e)
+
+    def focusOutEvent(self, e):
+        super().focusOutEvent(e)
+        self.fechar()
 
 
 class _CampoClicavel(QWidget):
@@ -627,7 +736,7 @@ class _CampoClicavel(QWidget):
     conferencia o peso visual de um formulario a preencher. Clicou, edita; saiu, volta a ser
     texto."""
 
-    def __init__(self, editor, vazio="—"):
+    def __init__(self, editor, vazio="—", altura=24):
         super().__init__()
         self._vazio = vazio
         self.editor = editor
@@ -642,15 +751,41 @@ class _CampoClicavel(QWidget):
         # e o campo tem 24 fixos pela QSS; a pilha se dimensiona pelo maior, e o texto do rotulo
         # ficava centrado em 24 enquanto o do campo assentava mais acima — ao clicar, a data
         # "subia". Com os dois em 24 e a mesma ancoragem, o valor nao sai da linha.
-        self.setFixedHeight(24)
-        self.lbl.setFixedHeight(24)
-        self.lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        #
+        # `altura=None` = TEXTO CORRIDO (a observação). Travar em 24 px ali mostrava uma fatia da
+        # primeira linha e comia o resto, e ao clicar o editor de 76 px era espremido no mesmo 24
+        # — "quando eu clico corta mais ainda" (Levi, 14/09). Campo de uma linha continua travado,
+        # que é o que impede a data de "subir" ao virar editor.
+        self.setMinimumWidth(1)          # sem isto o campo impõe a própria largura e estoura a ficha
+        if altura:
+            self.setFixedHeight(altura)
+            self.lbl.setFixedHeight(altura)
+            self.lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        else:
+            self.lbl.setWordWrap(True)
+            self.lbl.setMinimumWidth(1)
+            self.lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._pilha.addWidget(self.lbl)
         self._pilha.addWidget(editor)
         self._pilha.setCurrentIndex(0)
         editor.installEventFilter(self)
         if isinstance(editor, QComboBox):
             editor.activated.connect(lambda _=0: self.fechar())
+
+    def travar_altura(self, px):
+        """Trava a MESMA altura no rotulo e no editor.
+
+        A observacao e o unico campo cuja altura vem do TEXTO, e era ela que quebrava a tela: o
+        rotulo embrulhado e o QTextEdit tem hints muito diferentes, entao trocar um pelo outro
+        levava a pilha de 92 para 1638 px (medido). Tudo o que vem depois — sugestao, etiquetas,
+        tema, subtarefas e os botoes — descia 1,5 mil pixels e sumia da vista, enquanto o texto
+        era espremido no editor de 92 px fixos: "o grande texto fica resumido num campo pequeno
+        e todo o resto da tela fica escuro" (Levi, 15/09). Com os dois no mesmo numero, clicar
+        nao move mais nada."""
+        self.setFixedHeight(px)
+        self.lbl.setFixedHeight(px)
+        self.editor.setFixedHeight(px)
 
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton and self.isEnabled():
@@ -668,6 +803,10 @@ class _CampoClicavel(QWidget):
     def fechar(self):
         self._pilha.setCurrentIndex(0)
         self.atualizar()
+        # gancho opcional de quem quer GRAVAR o que foi digitado (a observação usa). Fica aqui,
+        # e não no eventFilter, para valer também quando o campo é fechado por código.
+        if callable(getattr(self, "fechou", None)):
+            self.fechou()
 
     def eventFilter(self, obj, ev):
         # sair do campo fecha — MENOS quando quem tirou o foco foi a lista DESTE campo.
@@ -689,6 +828,8 @@ class _CampoClicavel(QWidget):
     def atualizar(self):
         if isinstance(self.editor, QComboBox):
             txt = self.editor.currentText() if self.editor.currentData() else ""
+        elif isinstance(self.editor, QTextEdit):      # a observação: texto corrido, várias linhas
+            txt = self.editor.toPlainText().strip()
         else:
             txt = self.editor.dateTime().toString("dd/MM/yyyy HH:mm")
         self.lbl.setText(txt or self._vazio)
@@ -698,11 +839,93 @@ class _CampoClicavel(QWidget):
         self.lbl.setEnabled(on)
 
 
+class _StatusDialog(QDialog):
+    """Escolher o novo status da solicitação e escrever o motivo.
+
+    O catálogo vem da API (`api.status_solicitacao_catalogo`), cruzado com a lista curta do
+    `api.STATUS_SOLICITACAO` — os estados que são CONSEQUÊNCIA da OS ficam de fora, porque
+    marcá-los à mão faria a tela mentir sobre o que o Fracttal recalcula sozinho."""
+
+    def __init__(self, parent, numero=""):
+        super().__init__(parent)
+        self.id_status, self.codigo, self.rotulo, self.motivo = None, "", "", ""
+        self.setWindowTitle("Mudar status da solicitação")
+        self.setMinimumWidth(460)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(20, 18, 20, 16)
+        v.setSpacing(10)
+        t = QLabel("Solicitação %s" % (numero or ""))
+        t.setStyleSheet("font-size:15px;font-weight:600;color:%s;background:transparent;" % TEXT)
+        v.addWidget(t)
+
+        v.addWidget(self._rot("Novo status"))
+        self.cb = QComboBox()
+        self.cb.setObjectName("campoInline")
+        for ids, cod, rot in api.status_solicitacao_catalogo():
+            self.cb.addItem(rot, (ids, cod, rot))
+        v.addWidget(self.cb)
+
+        v.addWidget(self._rot("Motivo"))
+        self.ed = QTextEdit()
+        self.ed.setObjectName("campoInline")
+        self.ed.setFixedHeight(88)
+        self.ed.setPlaceholderText("por que está mudando — fica no histórico da solicitação")
+        self.ed.textChanged.connect(self._upd)
+        v.addWidget(self.ed)
+
+        self.aviso = QLabel("O motivo é obrigatório.")
+        self.aviso.setStyleSheet("color:%s;font-size:11.5px;background:transparent;" % MUTED)
+        v.addWidget(self.aviso)
+
+        linha = QHBoxLayout()
+        linha.addStretch(1)
+        b_nao = QPushButton("Cancelar")
+        b_nao.setObjectName("secondary")
+        b_nao.clicked.connect(self.reject)
+        self.b_sim = QPushButton("Mudar status")
+        self.b_sim.setObjectName("btnAprovar")
+        self.b_sim.setEnabled(False)
+        self.b_sim.clicked.connect(self._ok)
+        linha.addWidget(b_nao)
+        linha.addWidget(self.b_sim)
+        v.addLayout(linha)
+
+    def _rot(self, txt):
+        l = QLabel(txt)
+        l.setStyleSheet("color:%s;font-size:10.5px;font-weight:700;letter-spacing:0.8px;"
+                        "background:transparent;" % GREEN)
+        return l
+
+    def _upd(self):
+        self.b_sim.setEnabled(bool(self.ed.toPlainText().strip()))
+
+    def _ok(self):
+        dados = self.cb.currentData()
+        if not dados:
+            return
+        self.id_status, self.codigo, self.rotulo = dados
+        self.motivo = self.ed.toPlainText().strip()
+        self.accept()
+
+
 class _Fila(QWidget):
     """Fila do PCM: a lista à esquerda, o detalhe à direita, e a OS nascendo na aprovação."""
 
-    def __init__(self, on_voltar):
+    # Piso da caixa de observacao. Abaixo de 92 px o campo vazio parece uma linha qualquer e
+    # ninguem descobre que da para escrever nele. Teto nao existe: a caixa cresce com a coluna,
+    # e o que nao couber fica atras da rolagem (ou do "ver inteira").
+    OBS_MIN = 92
+    # A altura dos dois cartoes do topo = o que a decisao PEDE, mais esta margem. Era 30% a mais
+    # (16/09, quando os campos ainda eram combos emoldurados); com Tipo e as duas Classificacoes
+    # virando linhas, o conteudo encolheu e os mesmos 30% viraram um vazio no rodape do cartao —
+    # "achate mais sem comer as palavras, pode ser uma margem de 5 a 10 px" (Levi, 16/09).
+    # E MARGEM, nao proporcao, de proposito: assim ela nao cresce junto com o conteudo.
+    FOLGA_CARTAO_PX = 8
+
+    def __init__(self, on_voltar, on_atualizar=None):
         super().__init__()
+        self._obs_expandida = False
+        self._on_atualizar = on_atualizar
         self._itens = []
         self._sel = None
         self._assets = []
@@ -730,6 +953,14 @@ class _Fila(QWidget):
         tit.setStyleSheet(f"color:{TEXT};font-size:15px;font-weight:600;background:transparent;")
         topo.addWidget(tit)
         topo.addStretch(1)
+        # Atualizar AQUI, e nao so no Painel: para sincronizar a fila era preciso voltar ao
+        # Painel, atualizar e entrar de novo — tres cliques e a selecao perdida (Levi, 15/09).
+        self.b_atualizar = QPushButton("Atualizar")
+        self.b_atualizar.setObjectName("secondary")
+        self.b_atualizar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_atualizar.setToolTip("Busca as solicitacoes de novo no Fracttal")
+        self.b_atualizar.clicked.connect(self._atualizar)
+        topo.addWidget(self.b_atualizar)
         self.lbl_cont = QLabel("")
         self.lbl_cont.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_cont.setStyleSheet(f"color:{MUTED};font-size:12.5px;background:transparent;")
@@ -768,7 +999,12 @@ class _Fila(QWidget):
         col.addWidget(esq, 1)
         cw = QWidget()
         cw.setLayout(col)
-        cw.setFixedWidth(460)
+        # A LISTA ENCOLHE, EM VEZ DE COMER O DETALHE (Levi, 14/09: "cadê a responsividade?"). Ela
+        # era 460 FIXOS: numa janela estreita sobrava pouco para a direita, e o que não cabia era
+        # cortado na borda — título, solicitante e observação desapareciam pela direita em vez de
+        # se ajustarem. Agora ela cede até 300 px, que é onde o cartão ainda se lê.
+        cw.setMinimumWidth(300)
+        cw.setMaximumWidth(460)
         corpo.addWidget(cw)
         # a linha que separa a lista do detalhe, de cima a baixo — e o que faz os dois lados
         # lerem como duas colunas de uma tabela, e nao como dois blocos independentes
@@ -785,6 +1021,9 @@ class _Fila(QWidget):
         dir_sc.setStyleSheet("QScrollArea{background:transparent;border:none;}"
                              "QScrollArea > QWidget > QWidget{background:transparent;}")
         d = QWidget()
+        # o conteúdo PODE encolher: sem isto o mínimo dos combos e do campo de texto vira o
+        # mínimo do painel inteiro, e o scroll (com a barra horizontal desligada) corta a direita
+        d.setMinimumWidth(1)
         self.det = QVBoxLayout(d)
         # o respiro saiu da area e veio para dentro do detalhe: assim as linhas da tabela
         # encostam nas bordas e o conteudo continua com margem para respirar
@@ -806,6 +1045,10 @@ class _Fila(QWidget):
         l = QLabel(txt.upper())
         l.setStyleSheet("color:%s;font-size:10.5px;font-weight:700;letter-spacing:0.8px;"
                         "background:transparent;" % cor)
+        # em janela estreita o rótulo quebra em vez de ser comido pela direita — era o
+        # "SUGERIDO PELO SUPERV" do relato de 14/09
+        l.setWordWrap(True)
+        l.setMinimumWidth(1)
         return l
 
     def _fixo(self, txt):
@@ -849,130 +1092,223 @@ class _Fila(QWidget):
         self.lbl_orig.setTextFormat(Qt.TextFormat.RichText)
         self.det.addWidget(self.lbl_orig)
 
-        # ── a ficha do pedido ──
-        ficha = QGridLayout()
-        ficha.setContentsMargins(0, 12, 0, 2)
-        ficha.setHorizontalSpacing(26)
-        ficha.setVerticalSpacing(3)
+        # ── O PEDIDO e A DECISÃO, LADO A LADO (Levi, 16/09) ──
+        # A tela era uma coluna só, então o material de LEITURA — que numa solicitação de
+        # fabricante chega a 20 linhas de procedimento — ficava na frente do material de
+        # DECISÃO. Medido na 3620: o botão Aprovar nascia a 1413 px do topo, numa janela de
+        # 844, e metade da largura ficava vazia. Agora o que se lê fica à esquerda, o que se
+        # decide à direita, e nenhuma observação empurra o tema e as subtarefas para fora.
         self.v_solicitante = self._valor()
         self.v_ativo = self._valor()
         self.v_usina = self._valor()
-        # USINA primeiro: e por ela que o PCM situa a solicitacao — quem pediu e o que quebrou
-        # so importam depois de saber ONDE. "Aberta em" saiu daqui (pedido do Levi, 04/09): a
-        # data absoluta e subdado, e virou tooltip do cartao da fila, onde ja existe o tempo
-        # relativo ("ha 21 h") que e o que se le de relance.
-        for col, rot, val in ((0, "Usina", self.v_usina),
-                              (1, "Solicitante", self.v_solicitante),
-                              (2, "Ativo", self.v_ativo)):
-            ficha.addWidget(self._rotulo(rot), 0, col)
-            ficha.addWidget(val, 1, col)
-        # as tres colunas dividem a largura por igual. Antes so a ultima esticava, entao
-        # SOLICITANTE e ABERTA EM ficavam espremidos na esquerda e a data quebrava em duas linhas.
-        for c in (0, 1, 2):
-            ficha.setColumnStretch(c, 1)
-        self.det.addLayout(ficha)
 
-        # ── o que o supervisor sugeriu, e que o PCM confirma ou troca ──
-        # Linha PARCIAL: nao encosta nas laterais de proposito. Uma linha de ponta a ponta
-        # separaria SECOES da tela; esta separa dois blocos da MESMA ficha — o que o Fracttal
-        # informou e o que o supervisor sugeriu.
-        risco = QWidget()
-        rl = QHBoxLayout(risco)
-        rl.setContentsMargins(40, 14, 40, 8)
-        r1 = QFrame()
-        r1.setObjectName("riscoParcial")
-        r1.setFixedHeight(1)
-        rl.addWidget(r1, 1)
-        self.det.addWidget(risco)
+        pedido = QFrame()
+        pedido.setObjectName("boxLado")
+        pv = QVBoxLayout(pedido)
+        pv.setContentsMargins(16, 13, 17, 14)
+        pv.setSpacing(9)
+        pv.addWidget(self._rotulo("O pedido", GREEN))
 
-        cx = QFrame()
-        cx.setObjectName("boxSug")
-        cxv = QVBoxLayout(cx)
-        cxv.setContentsMargins(16, 13, 16, 14)
-        cxv.setSpacing(9)
-        cxv.addWidget(self._rotulo("Sugerido pelo supervisor", GREEN))
+        ficha = QGridLayout()
+        ficha.setHorizontalSpacing(20)
+        ficha.setVerticalSpacing(3)
+        # USINA primeiro: é por ela que o PCM situa a solicitação — quem pediu e o que quebrou
+        # só importam depois de saber ONDE. O ativo ocupa a linha inteira porque é o texto mais
+        # longo dos três (o modelo do inversor vem junto) e quebrava em duas na coluna estreita.
+        ficha.addWidget(self._rotulo("Usina"), 0, 0)
+        ficha.addWidget(self.v_usina, 1, 0)
+        ficha.addWidget(self._rotulo("Solicitante"), 0, 1)
+        ficha.addWidget(self.v_solicitante, 1, 1)
+        ficha.addWidget(self._rotulo("Ativo"), 2, 0, 1, 2)
+        ficha.addWidget(self.v_ativo, 3, 0, 1, 2)
+        ficha.setColumnStretch(0, 1)
+        ficha.setColumnStretch(1, 1)
+        pv.addLayout(ficha)
 
-        # Uma linha só, e cada valor vira campo ao ser clicado. O responsável da OS É o técnico
-        # sugerido — tê-los em dois campos distantes fazia parecer decisões diferentes, e o
-        # combo aberto o tempo todo dava peso de formulário a algo que quase sempre é só
-        # confirmar o que o supervisor já escreveu.
-        lin = QGridLayout()
-        # UMA LINHA POR CAMPO, com o rotulo numa coluna so. Lado a lado os dois sobravam espaco
-        # a direita e o card ficava largo a toa; empilhados, os dois cards do par cabem em 50/50
-        # (pedido do Levi, 04/09). A legenda "ambos editaveis" saiu: o sublinhado pontilhado do
-        # `valorEditavel` ja e o convite, e a frase repetia o que o campo mostra.
+        # OBSERVAÇÃO — o relato do supervisor. Até 14/09 não aparecia em lugar nenhum da Fila: o
+        # PCM decidia com o título, que tem mediana de 45 caracteres.
+        lin_obs = QHBoxLayout()
+        lin_obs.setSpacing(10)
+        lin_obs.addWidget(self._rotulo("Observação"))
+        lin_obs.addStretch(1)
+        self.b_ver_obs = QPushButton("ver inteira")
+        self.b_ver_obs.setObjectName("verInteira")
+        self.b_ver_obs.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_ver_obs.setVisible(False)          # só aparece quando há texto escondido
+        self.b_ver_obs.clicked.connect(self._alternar_obs)
+        lin_obs.addWidget(self.b_ver_obs)
+        pv.addLayout(lin_obs)
+
+        self.ed_obs = _Observacao("sem observação — clique para escrever")
+        self.ed_obs.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # QUEM MANDA NA ALTURA É A COLUNA, não o texto. Com a caixa dimensionada pelo relato,
+        # sobrava um vazio pintado embaixo do cartão do pedido sempre que a decisão era mais
+        # alta — "ficaram espaços abertos na página" (Levi, 16/09). Ocupando a folga, o mesmo
+        # espaço vira texto visível: o procedimento da Huawei cabe inteiro, sem rolagem.
+        self.ed_obs.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.ed_obs.setMinimumHeight(self.OBS_MIN)
+        self.ed_obs.ao_redimensionar = self._revisar_link_obs
+        self.v_obs = self.ed_obs                  # o mesmo widget, com os dois nomes de sempre
+        self.v_obs.fechou = self._gravar_obs      # ao sair do campo, grava no Fracttal
+        pv.addWidget(self.ed_obs, 1)     # é ela que absorve a folga do cartão
+        # O timer é FILHO da tela de propósito: ele morre junto com ela, e um disparo pendente
+        # nunca cai num widget já destruído. `QTimer.singleShot(0, self, slot)` — a forma com
+        # contexto, que resolveria o mesmo — não existe neste PyQt6: levanta TypeError dentro do
+        # resizeEvent, e exceção em método virtual do Qt aborta o processo (exit 127).
+        self._t_obs = QTimer(self)
+        self._t_obs.setSingleShot(True)
+        self._t_obs.setInterval(0)
+        self._t_obs.timeout.connect(self._ajustar_altura_obs)
+        d_obs = QLabel("Rola aqui dentro e não empurra o resto. Clique no texto para editar.")
+        d_obs.setStyleSheet("color:%s;font-size:11.5px;background:transparent;" % MUTED)
+        d_obs.setWordWrap(True)
+        d_obs.setMinimumWidth(1)
+        pv.addWidget(d_obs)
+
+        # ── a decisão ──
+        decisao = QFrame()
+        decisao.setObjectName("boxLado")
+        dv = QVBoxLayout(decisao)
+        dv.setContentsMargins(16, 13, 17, 14)
+        dv.setSpacing(11)
+        dv.addWidget(self._rotulo("A decisão", GREEN))
+
+        # O responsável da OS É o técnico sugerido — tê-los em dois campos distantes fazia
+        # parecer decisões diferentes. Cada valor vira campo ao ser clicado: nesta tela eles
+        # quase sempre só precisam ser CONFIRMADOS, e combo aberto dá peso de formulário.
         self.cb_resp = QComboBox(); tornar_pesquisavel(self.cb_resp)
         self.cb_resp.addItem("— selecione —", None)
         self.cb_resp.setMinimumWidth(180)
         self.ed_tecnico = _CampoClicavel(self.cb_resp, "—")
-        # data E hora: "amanha" nao diz se e antes ou depois da parada, e o PCM programa por hora
+        # data E hora: "amanhã" não diz se é antes ou depois da parada, e o PCM programa por hora
         self.de_data = QDateTimeEdit()
         self.de_data.setCalendarPopup(True)
         self.de_data.setDisplayFormat("dd/MM/yyyy HH:mm")
         self.de_data.setDateTime(QDateTime.currentDateTime())
         self.ed_data = _CampoClicavel(self.de_data, "—")
-        lin.setHorizontalSpacing(10)
-        lin.setVerticalSpacing(9)
-        lin.addWidget(self._fixo("Técnico:"), 0, 0)
-        lin.addWidget(self.ed_tecnico, 0, 1)
-        lin.addWidget(self._fixo("Data sugerida:"), 1, 0)
-        lin.addWidget(self.ed_data, 1, 1)
+        self.etiquetas = _CardEtiquetas(embutido=True)
+
+        # TIPO DE TAREFA e CLASSIFICAÇÃO 1 e 2 — campos da OS no Fracttal. Entram como LINHAS,
+        # no mesmo desenho de Técnico e Data (rótulo à esquerda, valor com risco tracejado), e
+        # não como combos emoldurados: seis campos com moldura ocupavam meio cartão, e nenhum
+        # deles é a decisão principal desta tela — o tema e as subtarefas são (Levi, 16/09).
+        self.cb_tipo = QComboBox(); tornar_pesquisavel(self.cb_tipo)
+        self.cb_tipo.addItem(_TIPO_PADRAO, _TIPO_PADRAO)
+        self.cb_c1 = QComboBox(); tornar_pesquisavel(self.cb_c1)
+        self.cb_c1.addItem(_SEM_CLASSIF, "")
+        self.cb_c2 = QComboBox(); tornar_pesquisavel(self.cb_c2)
+        self.cb_c2.addItem(_SEM_CLASSIF, "")
+        for cb in (self.cb_tipo, self.cb_c1, self.cb_c2):
+            cb.setObjectName("etqInline")     # o mesmo risco tracejado dos valores ao lado
+
+        lin = QGridLayout()
+        lin.setHorizontalSpacing(12)
+        lin.setVerticalSpacing(10)
+        linhas = (("Técnico:", self.ed_tecnico), ("Data:", self.ed_data),
+                  ("Etiquetas:", self.etiquetas), ("Tipo de tarefa:", self.cb_tipo),
+                  ("Classificação 1:", self.cb_c1), ("Classificação 2:", self.cb_c2))
+        for r, (rot, w) in enumerate(linhas):
+            lin.addWidget(self._fixo(rot), r, 0,
+                          Qt.AlignmentFlag.AlignTop if r == 2 else Qt.AlignmentFlag.AlignVCenter)
+            lin.addWidget(w, r, 1)
         lin.setColumnStretch(1, 1)
-        cxv.addLayout(lin)
+        dv.addLayout(lin)
+        # o "domínio X%" fica COLADO nas linhas de classificação, que é o que ele explica: lá
+        # embaixo, depois do tema, virava uma frase solta sem dono
+        self.lbl_classif = QLabel("")
+        self.lbl_classif.setStyleSheet("color:%s;font-size:11.5px;background:transparent;" % MUTED)
+        self.lbl_classif.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_classif.setWordWrap(True)
+        self.lbl_classif.setMinimumWidth(1)
+        dv.addWidget(self.lbl_classif)
+        dv.addStretch(1)      # a folga dos 30% se reparte entre os blocos
 
         # continua existindo para quem lia o resumo em texto (e para os testes)
         self.lbl_sug = QLabel("")
         self.lbl_sug.setVisible(False)
-        self.etiquetas = _CardEtiquetas()
-        par = QHBoxLayout()
-        par.setSpacing(12)
-        # 50/50: o bloco da sugestao tinha 70% e sobrava espaco, enquanto o de etiquetas ficava
-        # espremido em 30% justamente onde as etiquetas empilham para baixo (pedido do Levi)
-        par.addWidget(cx, 1)
-        par.addWidget(self.etiquetas, 1)
-        self.det.addLayout(par)
 
-        # ── tema ──
+        # ── tema e OS pai, na mesma linha ──
+        # A OS que nasce aqui nunca teve como ser vinculada a uma pai: o campo só existia em
+        # Criar OS, COS e PCM, e quem aprovava pela fila tinha de abrir a OS no Fracttal depois.
         topo_t = QHBoxLayout()
         topo_t.setSpacing(9)
         topo_t.addWidget(self._rotulo("Tema"))
         self.chip_tema = QLabel("")
-        self.chip_tema.setObjectName("chipTema")
+        # objectName PROPRIO: o `chipTema` e o selo verde dos cartoes da fila, e mexer nele
+        # aqui repintaria a lista inteira. Aqui e so uma legenda do campo ao lado (Levi, 16/09).
+        self.chip_tema.setObjectName("chipSugerido")
         self.chip_tema.setVisible(False)
         topo_t.addWidget(self.chip_tema)
         topo_t.addStretch(1)
-        self.det.addLayout(topo_t)
 
-        # mesma busca dos demais selects: a lista de temas e editavel e so cresce
+        # mesma busca dos demais selects: a lista de temas é editável e só cresce
         self.cb_tema = QComboBox(); tornar_pesquisavel(self.cb_tema)
         self.cb_tema.setObjectName("cbTema")
         self.cb_tema.addItem("— sem tema —", "")
         for chave, nome in sp.temas():
             self.cb_tema.addItem(nome, chave)
-        # `lambda *_`, e NAO `connect(self._pintar_subs)`: currentIndexChanged manda o INDICE,
-        # que caia no parametro `do_bloco` e virava `set_itens(2)` — "int object is not
-        # iterable". Excecao dentro de slot do PyQt6 ABORTA o processo (0xC0000409), entao
-        # escolher qualquer tema que nao fosse o primeiro FECHAVA o app. Ficou escondido
-        # enquanto o combo nao abria (defeito do PopupFocusReason, corrigido na 184).
+        # `lambda *_`, e NÃO `connect(self._pintar_subs)`: currentIndexChanged manda o ÍNDICE,
+        # que caía no parâmetro `do_bloco` e virava `set_itens(2)` — "int object is not
+        # iterable". Exceção dentro de slot do PyQt6 ABORTA o processo (0xC0000409), então
+        # escolher qualquer tema que não fosse o primeiro FECHAVA o app.
         self.cb_tema.currentIndexChanged.connect(lambda *_: self._pintar_subs())
-        self.det.addWidget(self.cb_tema)
+        self.os_pai = OsPaiPicker()
+        # O conteudo aqui e um NUMERO de OS — 7 digitos no maior caso. O picker nasce com 260 px
+        # de largura minima por causa do texto de ajuda; nesta tela a dica cabe no rotulo, e a
+        # largura que sobra vai para a coluna do pedido.
+        self.os_pai.setMinimumWidth(130)
+        self.os_pai.lineEdit().setPlaceholderText("nº da OS")   # o rótulo acima já diz "OS pai"
+        g_tp = QGridLayout()
+        g_tp.setHorizontalSpacing(14)
+        g_tp.setVerticalSpacing(3)
+        g_tp.addLayout(topo_t, 0, 0)
+        g_tp.addWidget(self._rotulo("OS pai (opcional)"), 0, 1)
+        g_tp.addWidget(self.cb_tema, 1, 0)
+        g_tp.addWidget(self.os_pai, 1, 1)
+        g_tp.setColumnStretch(0, 4)   # o tema é o campo que se lê; a OS pai quase sempre fica vazia
+        g_tp.setColumnStretch(1, 1)
+        dv.addLayout(g_tp)
+        dv.addStretch(1)
 
-        self.lbl_classif = QLabel("")
-        self.lbl_classif.setStyleSheet("color:%s;font-size:12px;background:transparent;" % MUTED)
-        self.lbl_classif.setTextFormat(Qt.TextFormat.RichText)
-        self.lbl_classif.setWordWrap(True)
-        self.lbl_classif.setMinimumWidth(1)
-        self.det.addWidget(self.lbl_classif)
+        dv.addStretch(1)
 
-        # ── as subtarefas, como lista numerada ──
-        # O PCM edita a lista tambem. Ele e quem conhece o ativo e a equipe: o tema acerta o
-        # roteiro geral, e o ajuste fino — "neste inversor tem de medir tambem X" — so quem
-        # aprova sabe. Sem isso ele voltaria a montar a OS na mao no Fracttal web, que e
+        # ── as subtarefas, em FAIXA DE LARGURA INTEIRA ──
+        # O PCM edita a lista também. Ele é quem conhece o ativo e a equipe: o tema acerta o
+        # roteiro geral, e o ajuste fino — "neste inversor tem de medir também X" — só quem
+        # aprova sabe. Sem isso ele voltaria a montar a OS na mão no Fracttal web, que é
         # exatamente o passo que esta tela existe para eliminar.
         self.editor_subs = EditorSubtarefas(
             "Sem tema: a OS nasce com as 3 subtarefas da base. Da para aprovar assim, e da para "
             "acrescentar o que faltar.")
-        self.det.addWidget(self.editor_subs)
+        # Elas saem da coluna da decisão por dois motivos medidos: com 13 subtarefas (a 3620) a
+        # coluna ficava com o dobro da altura da outra, e era o que abria o vazio que o Levi viu;
+        # e, espremidas em 58% da largura, as linhas mostravam meia frase. Em faixa inteira, a
+        # descrição cabe e as duas caixas de cima empatam.
+        caixa_subs = QFrame()
+        caixa_subs.setObjectName("boxLado")
+        sv = QVBoxLayout(caixa_subs)
+        sv.setContentsMargins(16, 13, 17, 14)
+        sv.setSpacing(9)
+        sv.addWidget(self._rotulo("As subtarefas da OS", GREEN))
+        sv.addWidget(self.editor_subs)
+
+        colunas = QHBoxLayout()
+        colunas.setContentsMargins(0, 14, 0, 2)
+        colunas.setSpacing(16)
+        # MESMA ALTURA nas duas: quem estica é a caixa da observação lá dentro, então o que
+        # antes era buraco agora é texto. Alinhar pelo topo (a primeira tentativa) só mudava o
+        # vazio de lugar — de dentro do cartão para debaixo dele.
+        # Cada cartao termina onde o conteudo dele termina: esticado, o mais curto ganharia um
+        # retangulo vazio por dentro, que e o que parece defeito. A faixa das subtarefas, logo
+        # abaixo e de ponta a ponta, e quem fecha a composicao.
+        # 42 -> 50 (+20%, pedido do Levi em 16/09): a coluna da decisao devolve essa largura
+        # sem aperto porque o campo que sobrava nela — a OS pai — cabe em 7 digitos.
+        colunas.addWidget(pedido, 50, Qt.AlignmentFlag.AlignTop)    # o pedido se le...
+        colunas.addWidget(decisao, 50, Qt.AlignmentFlag.AlignTop)   # ...a decisao se preenche
+        self._cx_pedido, self._cx_decisao = pedido, decisao
+        self.det.addLayout(colunas)
+        self.det.addSpacing(14)
+        self.det.addWidget(caixa_subs)
         self.lbl_subs = QLabel("")          # continua existindo p/ quem lia o resumo em texto
         self.lbl_subs.setVisible(False)
 
@@ -984,17 +1320,32 @@ class _Fila(QWidget):
         self.b_aprovar.setIconSize(QSize(16, 16))
         self.b_aprovar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.b_aprovar.clicked.connect(self._aprovar)
+        # MUDAR O STATUS SEM SAIR DAQUI (Levi, 14/09: "como no fracttal"). Antes o PCM tinha duas
+        # saídas — aprovar, que gera OS, e devolver — e qualquer outro desfecho (rejeitar, resolver
+        # sem OS, reabrir) só existia no Fracttal web. Fica ao lado das outras ações, mas em
+        # botão discreto: mudar status é o caminho MENOS comum, e o verde continua sendo aprovar.
+        self.b_status = QPushButton("Mudar status…")
+        self.b_status.setObjectName("secondary")
+        self.b_status.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.b_status.setToolTip("Rejeitar, reabrir, resolver sem OS… com o motivo registrado")
+        self.b_status.clicked.connect(self._mudar_status)
         self.b_devolver = QPushButton("Devolver ao supervisor")
         self.b_devolver.setObjectName("btnDevolver")
         self.b_devolver.setCursor(Qt.CursorShape.PointingHandCursor)
         self.b_devolver.clicked.connect(self._devolver)
         acoes.addWidget(self.b_aprovar)
         acoes.addWidget(self.b_devolver)
+        acoes.addWidget(self.b_status)
         acoes.addStretch(1)
+        self.det.addLayout(acoes)
+        # A DICA SAIU DA LINHA DOS BOTÕES. Ela ocupava ~200 px na mesma faixa e, em janela
+        # estreita, os três botões perdiam a disputa e apareciam cortados no meio da palavra
+        # ("provar e ge", "er ao sup"). Embaixo, ela não briga com ninguém por espaço.
         self.hint = QLabel("Aprovar avança para a próxima")
         self.hint.setStyleSheet("color:%s;font-size:12px;background:transparent;" % MUTED)
-        acoes.addWidget(self.hint)
-        self.det.addLayout(acoes)
+        self.hint.setWordWrap(True)
+        self.hint.setMinimumWidth(1)
+        self.det.addWidget(self.hint)
         self.det.addStretch(1)
         self._habilitar(False)
 
@@ -1033,6 +1384,148 @@ class _Fila(QWidget):
         self.hint.setText("Esta solicitação já saiu da fila — aqui é só consulta."
                           if on else "Aprovar avança para a próxima")
 
+    def _atualizar(self):
+        """Recarrega a fila sem sair dela. Quem busca continua sendo o Painel — a lista e uma so,
+        e duas buscas em paralelo dariam duas verdades na mesma tela."""
+        if not callable(self._on_atualizar):
+            return
+        self.b_atualizar.setEnabled(False)
+        self.b_atualizar.setText("atualizando…")
+        self._on_atualizar()
+
+    def fim_da_atualizacao(self):
+        """Chamado pela aba quando a lista voltou — no sucesso E no erro, senao o botao fica
+        preso em "atualizando…" e a pessoa acha que a tela travou."""
+        self.b_atualizar.setEnabled(True)
+        self.b_atualizar.setText("Atualizar")
+
+    def set_tipos_classif(self, d):
+        """Recebe as listas vivas do Fracttal (a aba busca uma vez e reparte).
+
+        Guardadas por NOME, que é como a criação da OS as consome: o `clonar_os` resolve o id no
+        catálogo na hora de montar o payload."""
+        d = d or {}
+        atual_tipo = self.cb_tipo.currentText()
+        self.cb_tipo.blockSignals(True)
+        self.cb_tipo.clear()
+        for it in (d.get("tipos") or []):
+            nome = it.get("description") or ""
+            if nome:
+                self.cb_tipo.addItem(nome, nome)
+        if not self.cb_tipo.count():
+            self.cb_tipo.addItem(_TIPO_PADRAO, _TIPO_PADRAO)
+        i = self.cb_tipo.findText(atual_tipo if atual_tipo != _TIPO_PADRAO else _TIPO_PADRAO)
+        self.cb_tipo.setCurrentIndex(max(0, i))
+        self.cb_tipo.blockSignals(False)
+        for cb, chave in ((self.cb_c1, "c1"), (self.cb_c2, "c2")):
+            atual = cb.currentText()
+            cb.blockSignals(True)
+            cb.clear()
+            cb.addItem(_SEM_CLASSIF, "")
+            for it in (d.get(chave) or []):
+                nome = it.get("description") or ""
+                if nome:
+                    cb.addItem(nome, nome)
+            i = cb.findText(atual)
+            cb.setCurrentIndex(i if i > 0 else 0)
+            cb.blockSignals(False)
+        self._sugerir_classif()
+
+    def _sugerir_classif(self):
+        """Preenche Classificacao 1 e 2 DA OS com o padrao, e explica de onde ele veio.
+
+        So preenche campo vazio: quem escolheu outra nao pode ve-la trocar sozinha ao mexer em
+        qualquer outra coisa da ficha.
+
+        A Classificacao 1 do TEMA nao entra aqui — ela classifica a solicitacao ("Nao Para o
+        Ativo"), nao a OS. Ja o `tipo` do tema ("Eletrica", "Limpeza e Conservacao") e disciplina,
+        que e exatamente a Classificacao 2 da OS."""
+        tema = self.cb_tema.currentData() or ""
+        disciplina = (sp.classificacao(tema) or {}).get("tipo") or "" if tema else ""
+        posto = []
+        for cb, nome in ((self.cb_c1, _CLASSIF1_PADRAO), (self.cb_c2, disciplina)):
+            if not nome or cb.currentIndex() > 0:
+                continue
+            i = cb.findText(nome)
+            if i > 0:
+                cb.setCurrentIndex(i)
+                posto.append(nome)
+        # a linha de baixo so existe enquanto os campos estiverem no padrao; trocou, ela some,
+        # porque ai ela nao descreve mais o que esta na tela
+        no_padrao = (self.cb_c1.currentText() == _CLASSIF1_PADRAO
+                     and (not disciplina or self.cb_c2.currentText() == disciplina))
+        self.lbl_classif.setText(
+            "padrão das OS do PCM — troque se este caso for diferente"
+            if posto or (no_padrao and self.cb_c1.currentIndex() > 0) else "")
+
+    def classificacoes(self):
+        """(classif 1, classif 2) pelo NOME — vazio = sem classificação."""
+        return (self.cb_c1.currentData() or "", self.cb_c2.currentData() or "")
+
+    def tipo_tarefa(self):
+        """O tipo com que a OS vai nascer. Sem escolha, o de sempre."""
+        return (self.cb_tipo.currentData() or self.cb_tipo.currentText() or _TIPO_PADRAO)
+
+    def _ajustar_altura_obs(self):
+        """Fixa a altura dos DOIS cartoes e deixa a caixa da observacao preencher o que sobra.
+
+        A conta anterior derivava a altura da caixa medindo o cartao ao vivo, e o valor mudava
+        conforme o layout se assentava — dois relatos diferentes davam cartoes de tamanhos
+        diferentes (140 e 171 px de caixa, medido). Impondo a altura e deixando o proprio layout
+        repartir, o cartao fica igual para relato de uma linha ou de trinta, que e a regra:
+        "caso o texto da observacao aumente o card nao aumenta, sera limitado por um scrol"
+        (Levi, 16/09).
+
+        `sizeHint` e nao `height` na decisao: as duas esticam juntas, entao medir a altura REAL
+        seria medir a si mesma e o valor subiria a cada passada."""
+        if getattr(self, "_obs_expandida", False):
+            # "ver inteira": o cartao solta a altura e mostra o relato inteiro
+            doc = self.ed_obs.document()
+            larg = self.ed_obs.viewport().width()
+            if larg > 40:
+                doc.setTextWidth(larg)
+            preciso = int(doc.size().height()) + 18
+            self._cx_pedido.setMinimumHeight(0)
+            self._cx_pedido.setMaximumHeight(16777215)
+            self.ed_obs.setMinimumHeight(preciso)
+            self.ed_obs.setMaximumHeight(preciso)
+        else:
+            base = self._cx_decisao.sizeHint().height() + self.FOLGA_CARTAO_PX
+            if self._cx_decisao.minimumHeight() != base:
+                self._cx_decisao.setMinimumHeight(base)
+            if self._cx_pedido.maximumHeight() != base:
+                self._cx_pedido.setFixedHeight(base)
+            self.ed_obs.setMinimumHeight(self.OBS_MIN)
+            self.ed_obs.setMaximumHeight(16777215)      # QWIDGETSIZE_MAX: quem limita e o cartao
+        self._revisar_link_obs()
+
+    def _revisar_link_obs(self):
+        """"ver inteira" so quando sobra texto atras da rolagem. `setVisible` so quando MUDA:
+        isto roda de dentro do resize da caixa, e mexer no layout a cada passada realimentaria
+        o proprio evento."""
+        expandida = getattr(self, "_obs_expandida", False)
+        quer = bool(expandida or self.ed_obs.verticalScrollBar().maximum() > 0)
+        if quer != self.b_ver_obs.isVisible():
+            self.b_ver_obs.setVisible(quer)
+        alvo = "ver menos" if expandida else "ver inteira"
+        if self.b_ver_obs.text() != alvo:
+            self.b_ver_obs.setText(alvo)
+
+    def _alternar_obs(self):
+        """"ver inteira" solta o teto da caixa; "ver menos" devolve. Quem so quer conferir um
+        detalhe rola dentro da caixa; quem vai LER o procedimento do fabricante abre tudo."""
+        self._obs_expandida = not getattr(self, "_obs_expandida", False)
+        self._ajustar_altura_obs()
+
+    def resizeEvent(self, e):
+        # A quebra de linha muda com a largura, e com ela a altura que o texto pede. ADIADO de
+        # proposito: mexer na altura DENTRO do resizeEvent realimenta o proprio evento, e a
+        # forma com contexto (`self`) faz o Qt cancelar o disparo se a tela morrer antes.
+        super().resizeEvent(e)
+        t = getattr(self, "_t_obs", None)
+        if t is not None:
+            t.start()
+
     def _habilitar(self, on):
         if getattr(self, "_so_leitura", False):
             on = False
@@ -1043,6 +1536,14 @@ class _Fila(QWidget):
         self.cb_resp.setEnabled(on)
         self.ed_tecnico.setEnabled(on)
         self.ed_data.setEnabled(on)
+        # `set_editavel`, e nao setEnabled: QTextEdit desabilitado pinta o texto de cinza, e no
+        # modo somente-leitura isso apagaria justamente o relato que a pessoa abriu para ler
+        self.v_obs.set_editavel(on)
+        self.os_pai.setEnabled(on)
+        self.cb_tipo.setEnabled(on)
+        self.cb_c1.setEnabled(on)
+        self.cb_c2.setEnabled(on)
+        self.b_status.setEnabled(on)
         self.editor_subs.set_editavel(on)
 
     # ── carga ──
@@ -1087,7 +1588,7 @@ class _Fila(QWidget):
         self.cb_tema.setCurrentIndex(i)
         self.cb_tema.blockSignals(False)
         # o chip tem fundo proprio: vazio ele pinta um retangulo verde sem texto dentro
-        self.chip_tema.setText("sugerido pela descrição" if tema else "")
+        self.chip_tema.setText("SUGERIDO PELA DESCRIÇÃO" if tema else "")
         self.chip_tema.setVisible(bool(tema))
 
         novo = sp.titulo(s.get("usina") or "", s.get("ativo") or "", tema) if tema else ""
@@ -1101,6 +1602,20 @@ class _Fila(QWidget):
         self.v_solicitante.setText(str(s.get("criado_por") or "—"))
         self.v_ativo.setText(str(s.get("ativo") or "—"))
         self.v_usina.setText(str(s.get("usina") or "—"))
+        # SÓ O RELATO no campo; o bloco [PCM] fica guardado para ser devolvido na gravação.
+        # Ele não é conteúdo, é o transporte do tema/técnico/subtarefas até aqui — e é dele que
+        # a grade de subtarefas logo abaixo é montada. Mostrar os dois fazia o PCM ler a mesma
+        # lista duas vezes (Levi, 15/09).
+        bruto = str(s.get("observacao") or "")
+        self._obs_original = sp.relato(bruto)
+        self._obs_bloco = sp.so_bloco(bruto)
+        self.ed_obs.setPlainText(self._obs_original)
+        self.v_obs.atualizar()
+        self._ajustar_altura_obs()
+        self._t_obs.start()           # segunda passada, ja com a ficha desenhada
+        self.os_pai.limpar()          # a pai da anterior nao vale para esta
+        self.cb_c1.setCurrentIndex(0)   # a classificação é a do tema DESTA solicitação
+        self.cb_c2.setCurrentIndex(0)
         tec, dt = bloco.get("tecnico"), bloco.get("data")
         self.lbl_sug.setText("Técnico: %s · Data pretendida: %s" % (tec or "—", dt or "—"))
         # aceita os DOIS formatos: as solicitacoes ja criadas trazem so a data
@@ -1172,12 +1687,7 @@ class _Fila(QWidget):
         # o tema regenera o titulo — a nao ser que o PCM tenha escrito o dele
         if self._sel and not getattr(self, "_titulo_manual", False):
             self.lbl_titulo.setText(self._titulo_do_tema())
-        cl = sp.classificacao(tema) if tema else {}
-        self.lbl_classif.setText(
-            ("Classificação 1: <b style='color:%s'>%s</b>&nbsp;&nbsp;"
-             "<span style='color:%s'>domínio %s%%</span>"
-             % (TEXT, cl.get("classif1") or "—", MUTED, cl.get("dominio")))
-            if tema and cl.get("classif1") else "")
+        self._sugerir_classif()
         if do_bloco:
             self.editor_subs.set_itens(do_bloco)
         # A LISTA NUNCA FICA VAZIA. Antes o `else` bastava, mas se o bloco do supervisor viesse
@@ -1211,6 +1721,82 @@ class _Fila(QWidget):
                 if (a.get("code") or "").strip() == code:
                     return a
         return None
+
+    @slot_seguro
+    def _mudar_status(self, *_):
+        """Troca o status da solicitação no Fracttal, com o motivo — a mesma rota do cancelamento.
+
+        O MOTIVO É OBRIGATÓRIO aqui, e no Fracttal não é. É escolha: status trocado sem motivo
+        vira exatamente o tipo de registro que ninguém consegue explicar três meses depois, e
+        quem abre a solicitação de novo não tem a quem perguntar."""
+        s = self._sel
+        if not s:
+            return
+        dlg = _StatusDialog(self, str(s.get("numero") or s.get("id_code") or ""))
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        idc = s.get("id_code") or s.get("numero") or s.get("id")
+        self.b_status.setEnabled(False)
+        self.hint.setText("mudando o status…")
+        self._w_st = ApiWorker(api.mudar_status_solicitacao, idc, dlg.id_status, dlg.codigo, dlg.motivo)
+        self._w_st.ok.connect(lambda _r, r=dlg.rotulo: self._status_ok(r))
+        self._w_st.erro.connect(self._status_erro)
+        self._w_st.start()
+
+    @slot_seguro
+    def _status_ok(self, rotulo):
+        self.b_status.setEnabled(True)
+        self.hint.setText("status alterado para %s" % rotulo)
+        QMessageBox.information(self, "Status", "A solicitação passou para “%s”." % rotulo)
+        self.carregar(force=True) if hasattr(self, "carregar") else None
+
+    @slot_seguro
+    def _status_erro(self, msg):
+        self.b_status.setEnabled(True)
+        self.hint.setText("")
+        QMessageBox.warning(self, "Status", "Não consegui mudar o status.\n\n%s" % str(msg)[:220])
+
+    @slot_seguro
+    def _gravar_obs(self):
+        """Grava a observação no Fracttal ao sair do campo — e só se ela mudou.
+
+        SEM BOTÃO SALVAR de propósito: o resto desta ficha já funciona assim (técnico, data,
+        tema), e um botão só para este campo faria a pessoa procurar o dos outros. Gravar sem
+        mudança seria escrever no sistema do cliente à toa, então a comparação com o texto
+        original é o que decide."""
+        s = self._sel
+        if not s or getattr(self, "_so_leitura", False):
+            return
+        novo = self.ed_obs.toPlainText().strip()
+        if novo == str(getattr(self, "_obs_original", "") or "").strip():
+            return
+        idc = s.get("id_code") or s.get("numero") or s.get("id")
+        # o bloco volta junto, intacto: sem isto, editar a observação apagaria o tema, o técnico
+        # e as subtarefas que o supervisor escolheu, e a fila abriria com a lista padrão do tema
+        bloco = getattr(self, "_obs_bloco", "")
+        inteiro = (novo + "\n\n" + bloco).strip() if bloco else novo
+        self._w_obs = ApiWorker(api.editar_observacao_solicitacao, idc, inteiro)
+        self._w_obs.ok.connect(lambda _r, t=novo: self._obs_gravou(t))
+        self._w_obs.erro.connect(self._obs_falhou)
+        self._w_obs.start()
+
+    @slot_seguro
+    def _obs_gravou(self, texto):
+        self._obs_original = texto
+        if isinstance(self._sel, dict):
+            # a lista em memória acompanha, sem recarregar — com o bloco de volta, que é o que
+            # está de fato gravado no Fracttal
+            bloco = getattr(self, "_obs_bloco", "")
+            self._sel["observacao"] = (texto + "\n\n" + bloco).strip() if bloco else texto
+
+    @slot_seguro
+    def _obs_falhou(self, msg):
+        # volta o texto ANTERIOR: deixar na tela algo que não está no Fracttal é pior do que
+        # perder a digitação, porque a pessoa vai embora achando que gravou.
+        self.ed_obs.setPlainText(str(getattr(self, "_obs_original", "") or ""))
+        self.v_obs.atualizar()
+        QMessageBox.warning(self, "Observação",
+                            "Não consegui gravar a observação no Fracttal.\n\n%s" % str(msg)[:200])
 
     def _aprovar(self):
         s = self._sel
@@ -1250,9 +1836,11 @@ class _Fila(QWidget):
         # E ela retoma: se uma tentativa anterior parou no meio, o Fracttal recusa a segunda
         # tarefa (unique_violation por solicitação) e a solicitação ficaria presa para sempre.
         self._w = ApiWorker(api.aprovar_solicitacao, asset, titulo, subs, s.get("id_code"),
-                            idr, self.cb_resp.currentText(),
+                            idr, self.cb_resp.currentText(), tipo=self.tipo_tarefa(),
                             note=str(s.get("observacao") or ""),
-                            etiqueta_ids=self.etiquetas.ids())
+                            etiqueta_ids=self.etiquetas.ids(),
+                            id_parent=self.os_pai.id_parent(),
+                            classif=self.classificacoes())
         self._w.ok.connect(self._os_ok)
         self._w.erro.connect(self._os_err)
         self._w.start()
@@ -1619,7 +2207,21 @@ QLabel#chipTema { background:rgba(143,206,63,0.14); color:#a9d96a; border-radius
   padding:2px 8px; font-weight:600; }
 QLabel#chipVazio { background:rgba(138,144,162,0.12); color:#8a90a2; border-radius:5px;
   padding:2px 8px; }
+/* a legenda ao lado de TEMA: branco, negrito, caixa alta — sem selo e sem verde. O verde da
+   ficha e reservado ao que o supervisor escreveu, e um selo ali competia com o proprio campo. */
+QLabel#chipSugerido { background:transparent; color:#ffffff; font-size:10.5px;
+  font-weight:700; letter-spacing:0.8px; padding:0 0 0 2px; }
 QFrame#boxSug { background:#141b2c; border:1px solid #232a3d; border-radius:10px; }
+/* as duas colunas da ficha: o pedido (o que se le) e a decisao (o que se preenche) */
+QFrame#boxLado { background:#121A2B; border:1px solid #232c45; border-radius:12px; }
+/* a observacao e a MESMA caixa lendo ou editando — o verde so marca qual dos dois estados */
+QTextEdit#obsCampo { background:#161d30; border:1px solid #232c45; border-radius:10px;
+  color:#dfe3ee; font-size:13px; padding:8px 11px; }
+QTextEdit#obsCampo:hover { border-color:#39456a; }
+QTextEdit#obsCampo:focus { border:1px solid #8fce3f; }
+QPushButton#verInteira { background:transparent; border:none; color:#a9d96a; font-size:12px;
+  padding:0 2px; min-height:0; font-weight:600; }
+QPushButton#verInteira:hover { color:#c2ec78; }
 QFrame#boxSubs { background:#141b2c; border:1px solid #232a3d; border-radius:10px; }
 QLabel#subsCab { color:#8a90a2; font-size:11.5px; padding:10px 14px;
   border-bottom:1px solid #212840; background:transparent; }
@@ -1642,6 +2244,15 @@ QLabel#valorEditavel { color:#e8ebf2; font-size:13px; background:transparent;
   border-bottom:1px dashed #39405a; padding:1px 2px; }
 QLabel#valorEditavel:hover { color:#ffffff; border-bottom:1px dashed #8fce3f; }
 QLabel#valorEditavel:disabled { color:#5a6072; border-bottom:1px dashed #262d42; }
+/* o campo de etiquetas na coluna da decisao: mesmo risco dos valores editaveis ao lado */
+QComboBox#etqInline { background:transparent; border:none; border-bottom:1px dashed #39405a;
+  border-radius:0; color:#e8ebf2; font-size:13px; min-height:24px; max-height:24px;
+  padding:0 2px; }
+QComboBox#etqInline:hover { color:#ffffff; border-bottom:1px dashed #8fce3f; }
+QComboBox#etqInline:focus { border-bottom:1px solid #8fce3f; }
+QComboBox#etqInline::drop-down { border:none; width:0px; }
+QComboBox#etqInline QAbstractItemView { background:#161d30; color:#e8ebf2;
+  border:1px solid #222c43; selection-background-color:rgba(143,206,63,0.18); outline:none; }
 /* tema escolhido = borda verde: e o campo que decide o checklist da OS */
 QComboBox#cbTema[temado="1"] { border:1px solid #8fce3f; }
 /* o titulo da OS aberto para edicao: mesmo tamanho e peso do rotulo, para a linha nao pular */
@@ -1717,7 +2328,9 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
         self.hub = _Hub(self._do_hub)
         self.nova = SolicitacaoTab()
         self.painel = _Painel(self._analisar)
-        self.fila = _Fila(lambda: self.ir(self.PAINEL))
+        self.fila = _Fila(lambda: self.ir(self.PAINEL), on_atualizar=self._atualizar_fila)
+        self.painel.on_carregou = self._painel_carregou
+        self._wcls = None
         self.hist = HistoricoSolic()
         self.temas = TemasTab(lambda: self.ir(self.HUB))
         for w in (self.hub, self.nova, self.painel, self.fila, self.hist, self.temas):
@@ -1772,6 +2385,12 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
                 self._wresp = ApiWorker(api.get_responsaveis)
                 self._wresp.ok.connect(self.fila.set_responsaveis)
                 self._wresp.start()
+            if self._wcls is None and self.fila.cb_c1.count() <= 1:
+                # as listas de Classificação 1 e 2 vêm do Fracttal; uma busca só, na 1ª entrada
+                self._wcls = ApiWorker(api.get_tipos_classif)
+                self._wcls.ok.connect(self._espalhar_classif)
+                self._wcls.erro.connect(lambda *_: setattr(self, "_wcls", None))
+                self._wcls.start()
             self.fila.set_itens(self.painel.pendentes(), self._assets)
         if i == self.HIST and hasattr(self.hist, "carregar_inicial"):
             self.hist.carregar_inicial()
@@ -1789,6 +2408,27 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
                 self._wetq.ok.connect(self._espalhar_etiquetas)
                 self._wetq.start()
             self.temas.carregar_inicial()
+
+    def _atualizar_fila(self):
+        """Botao Atualizar da Fila: manda o Painel buscar de novo. A re-alimentacao da fila
+        acontece no `_painel_carregou`, que roda quando a resposta chega."""
+        self.painel.carregar(force=True)
+
+    def _painel_carregou(self):
+        """A lista do Painel mudou. Se a Fila esta aberta, ela acompanha — mantendo a
+        solicitacao que estava selecionada, se ela continuar pendente."""
+        self.fila.fim_da_atualizacao()
+        if self.stack.currentIndex() != self.FILA:
+            return
+        pendentes = self.painel.pendentes()
+        atual = (self.fila._sel or {}).get("id_code")
+        manter = next((x for x in pendentes if x.get("id_code") == atual), None)
+        self.fila.set_itens(pendentes, self._assets, selecionar=manter)
+
+    @slot_seguro
+    def _espalhar_classif(self, d):
+        self._wcls = None
+        self.fila.set_tipos_classif(d)
 
     @slot_seguro
     def _espalhar_etiquetas(self, cat):

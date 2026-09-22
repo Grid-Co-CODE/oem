@@ -1014,49 +1014,61 @@ class OsDetalheDialog(QDialog):
         self._wsol = None
         QMessageBox.critical(self, "Solicitação", f"Erro ao abrir a solicitação: {m}")
 
+    @staticmethod
+    def _separar_anexos(itens):
+        """Para onde cada anexo vai: (galeria, documentos, notas).
+
+        A régua tem DOIS passos, e é a ordem deles que importa. Sem URL não há arquivo nenhum:
+        é nota de texto, e vai para a galeria como célula clicável. Com URL, quem decide é a
+        EXTENSÃO, nunca o fato de ter URL — a pré-assinada do S3 vem igual para uma foto e para
+        um ZIP, e foi exatamente isso que mandou o arquivo da OS 11458 para a grade de
+        miniaturas, onde a prévia falha e não há botão de baixar."""
+        itens = [a for a in (itens or []) if isinstance(a, dict)]
+        imgs = [a for a in itens if a.get("url") and a.get("is_image")]
+        docs = [a for a in itens if a.get("url") and not a.get("is_image")]
+        notas = [a for a in itens if not a.get("url")]
+        return imgs, docs, notas
+
     def _abrir_anexos_sub(self):
         # UMA janela só: foto e nota de texto saem da MESMA subtarefa, então ver as duas juntas
         # é o que reconstitui o que o técnico registrou. A nota vira uma célula clicável da grade.
-        imgs = [a for a in self._sub_imgs if a.get("url")]
+        # SÓ IMAGEM VAI PARA A GALERIA (Levi, 11/09 — o ZIP da OS 11458). O filtro era só "tem
+        # url", e a URL pré-assinada do S3 vem igual para foto e para arquivo: o ZIP entrava na
+        # grade de miniaturas, a prévia falhava e não havia como baixá-lo. Pior, o `outros` daqui
+        # nascia `[]` CRAVADO — a tela de documentos existia desde julho e nunca era chamada por
+        # este caminho, então nenhum anexo de subtarefa que não fosse foto tinha como sair do app.
+        imgs, outros, cru = self._separar_anexos(self._sub_imgs)
         notas = [{"nota": (a.get("descricao") or a.get("nome") or "").strip(),
-                  "descricao": a.get("descricao") or a.get("nome") or "nota"}
-                 for a in self._sub_imgs if not a.get("url")]
+                  "descricao": a.get("descricao") or a.get("nome") or "nota"} for a in cru]
         if imgs or notas:
             abrir_galeria(self, imgs + notas, "")   # legenda = a descrição da subtarefa
-        outros = []
         if outros:
-            # mesma tela dos anexos da OS: aqui costumam ser notas de texto, mas se um dia vier
-            # documento pela subtarefa ele já abre e baixa, sem precisar de outro caminho
-            abrir_documentos(self, [{"nome": (a.get("descricao") or a.get("nome") or "nota"),
-                                     "url": a.get("url"), "user": a.get("user") or "",
+            # mesma tela dos anexos da OS: PDF, Excel, ZIP e afins, com abrir e baixar
+            abrir_documentos(self, [{"nome": (a.get("nome") or a.get("descricao") or "arquivo"),
+                                     "url": a.get("url"), "user": a.get("subtarefa") or "",
                                      "desc": a.get("descricao") or ""} for a in outros],
                              "Anexos das subtarefas")
         if not imgs and not outros:
             QMessageBox.information(self, "Anexos das subtarefas", "Sem anexos nas subtarefas.")
 
     def _abrir_anexos_os(self):
+        # com URL e imagem = galeria; com URL e não imagem = tela de documentos, que abre e
+        # baixa; sem URL = nota de texto, que vai junto das fotos na galeria
+        fotos, outros, cru = self._separar_anexos(self._os_uniq)
         imgs = [{"url": a.get("url"), "thumb": None,
                  "descricao": f"{a.get('nome') or 'anexo'}  ·  {a.get('user') or '—'}"}
-                for a in self._os_uniq if a.get("is_image") and a.get("url")]
-        # com URL = arquivo p/ baixar (tela de documentos); sem URL = nota de texto, que vai
-        # junto das fotos na galeria
-        outros = [a for a in self._os_uniq if not (a.get("is_image") and a.get("url"))
-                  and a.get("url")]
+                for a in fotos]
         notas = [{"nota": (a.get("desc") or a.get("nome") or "").strip(),
-                  "descricao": a.get("nome") or "nota"}
-                 for a in self._os_uniq if not a.get("url")]
+                  "descricao": a.get("nome") or "nota"} for a in cru]
         if imgs or notas:
             abrir_galeria(self, imgs + notas, self._ativo)
         if outros:
-            linhas = []
-            for a in outros:
-                nome = a.get("nome") or "anexo"
-                cont = (a.get("desc") or "").strip()
-                if a.get("is_image"):                        # imagem cuja prévia não resolveu
-                    linhas.append(f"• {nome}   (prévia indisponível)")
-                else:                                        # nota de texto / documento
-                    linhas.append(f"• {nome}" + (f"\n   {cont}" if cont and cont != nome else ""))
-            QMessageBox.information(self, "Anexos da OS · texto e documentos", "\n".join(linhas))
+            # ERA UMA CAIXA DE MENSAGEM COM O NOME, E SÓ (Levi, 11/09 — o ZIP da OS 11458). Dava
+            # para saber que o arquivo existia e nada além disso: não abria, não baixava. A tela
+            # que faz as duas coisas existe desde julho, e este caminho nunca chegava nela.
+            abrir_documentos(self, [{"nome": a.get("nome") or "arquivo", "url": a.get("url"),
+                                     "user": a.get("user") or "", "desc": a.get("desc") or ""}
+                                    for a in outros], "Anexos da OS")
         if not imgs and not outros:
             QMessageBox.information(self, "Anexos da OS", "Sem anexos nesta OS.")
 
