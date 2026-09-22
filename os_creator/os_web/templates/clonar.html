@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block titulo %}Clonar OS{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/clonar.css">{% endblock %}
+{% block conteudo %}
+{# ClonarOSDialog (steps/clonar.py): Card 1 OS de referência (resumo + tabela + data em massa), Card 2 Tarefa selecionada
+   (ativo/descrição + subtarefas), Card 3 Detalhes | Card 4 Responsável, ações no fim; a barra "Clonar OS nº" do app.py #}
+<section class="os-pagina" id="clonar" data-folio="{{ folio }}">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/">&larr; Voltar</a>
+    <span class="os-head-ic">{{ icone('copy', '#A6E22E', 20) }}</span>
+    <span class="os-head-titulo">Clonar OS</span>
+    <span class="os-cresce"></span>
+    <label class="cl-busca"><span class="os-lbl">Clonar OS nº</span>
+      <input id="folio" type="text" inputmode="numeric" placeholder="nº da OS" value="{{ folio }}">
+      <button type="button" class="os-btn secondary" id="b_carregar">Clonar</button></label>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h">{{ icone('copy', '#A6E22E', 18) }}<span class="os-cardf-t" id="t_ref">OS de referência</span></div>
+    <div class="os-ajuda" id="resumo">Informe o número da OS de referência e clique em Clonar.</div>
+    <span class="os-lbl">Tarefas / ativos que serão clonados <small>(desmarque um ativo p/ não clonar; clique na linha p/ editar as subtarefas)</small></span>
+    <div class="os-tbl-wrap">
+      <table class="os-tbl cl-tbl" id="tbl">
+        <thead><tr><th class="c-ativo">Clonar ativo</th><th>Tarefa</th><th class="c-subt">Subt.</th><th class="c-data">Data/hora programada</th></tr></thead>
+        <tbody id="tbody"><tr class="vazio"><td colspan="4">Nenhuma OS carregada.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="cl-datas">
+      <input id="bulk_date" type="date">
+      <button type="button" class="os-btn secondary mini" id="b_data" title="Define a DATA (dia/mês/ano) de todas as tarefas; mantém o horário de cada uma">Aplicar data</button>
+      <button type="button" class="os-btn secondary mini" id="b_manha" title="Define o horário de TODAS as tarefas para 07:00">Manhã (07:00)</button>
+      <button type="button" class="os-btn secondary mini" id="b_tarde" title="Define o horário de TODAS as tarefas para 13:00">Tarde (13:00)</button>
+      <button type="button" class="os-btn secondary mini" id="b_mes" title="Adia a data de cada tarefa em 1 mês">Avançar 1 mês</button>
+    </div>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h">{{ icone('stack', '#A6E22E', 18) }}<span class="os-cardf-t">Tarefa selecionada</span></div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Ativo</span>
+        <select id="ed_ativo" disabled title="Trocar o ativo desta tarefa — mesmo cliente e usina"><option value="">—</option></select></label>
+      <label class="os-campo"><span class="os-lbl">Descrição</span>
+        <input id="ed_desc" type="text" disabled title="Editar a descrição desta tarefa"></label>
+    </div>
+    <div class="cl-sub-h">
+      <span class="os-lbl" id="sub_titulo"><b>Subtarefas</b></span>
+      <span class="os-cresce"></span>
+      <button type="button" class="os-btn secondary mini" id="b_upd" disabled title="Re-seleciona no Fracttal o modelo de tarefa do mesmo nome p/ este ativo e substitui as subtarefas pela versão atual do modelo">Atualizar do modelo</button>
+      <button type="button" class="os-btn secondary mini" id="b_upd_all" disabled title="Re-seleciona no Fracttal o modelo de cada ativo e substitui as subtarefas de TODAS as tarefas pela versão atual (sobrescreve edições)">Atualizar todas do modelo</button>
+    </div>
+    <div class="cl-subs" id="subs"><div class="os-ajuda">Selecione uma tarefa na tabela acima.</div></div>
+  </div>
+
+  <div class="os-linha2 cl-baixo">
+    <div class="os-cardf"><div class="os-cardf-h">{{ icone('file', '#A6E22E', 18) }}<span class="os-cardf-t">Detalhes</span></div>
+      <label class="os-campo"><span class="os-lbl">Observação <small>(opcional — vale para todas as tarefas)</small></span>
+        <textarea id="obs" rows="4"></textarea></label>
+      <label class="cl-chk"><input type="checkbox" id="chk_etiq" disabled> <span id="chk_etiq_txt">Clonar etiquetas</span></label>
+    </div>
+    <div class="os-cardf"><div class="os-cardf-h">{{ icone('user', '#A6E22E', 18) }}<span class="os-cardf-t">Responsável</span></div>
+      <label class="os-campo"><span class="os-lbl">Responsável <i>*</i> <small>(digite p/ pesquisar)</small></span>
+        <input id="resp_busca" type="search" placeholder="filtrar pelo nome" class="cl-filtro">
+        <select id="cb_resp"><option value="">— selecione —</option>{% for p in pessoas %}<option value="{{ p.id_personnel }}">{{ p.name or p.code }}</option>{% endfor %}</select></label>
+    </div>
+  </div>
+
+  <div class="os-rodape">
+    <span class="os-ajuda" id="hint"></span>
+    <span class="os-cresce"></span>
+    <a class="os-btn secondary" href="/os/">Cancelar</a>
+    <button type="button" class="os-btn primaria" id="btn_criar" disabled>{{ icone('copy', '#0B1020', 16) }} Criar clone</button>
+  </div>
+  <div class="os-resultado" id="resultado" hidden></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/os/static/clonar.js"></script>{% endblock %}

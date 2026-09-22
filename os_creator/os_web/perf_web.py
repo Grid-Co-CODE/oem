@@ -9,6 +9,7 @@ nome '[Ativo] - base' pelo `api.perf_os_nome`, título literal para ETM e Usina,
 Constantes copiadas do app de propósito (o módulo de lá é Qt); `tests/test_os_web_fidelidade.py` acusa divergência."""
 from __future__ import annotations
 import datetime as dt
+import re
 
 import api
 
@@ -51,6 +52,23 @@ def eh_tracker(frase: str) -> bool:
 
 def coluna_qtd(frase: str) -> str:
     return "Trackers" if eh_tracker(frase) else "Strings"
+
+
+def qtd_sugerida(frase: str, texto: str) -> dict:
+    """Quantas ocorrências a linha de ticket vai registrar → {'qtd', 'via'}.
+
+    SEM PORTAR A REGRA PARA O JAVASCRIPT: contar "PV/STR/String" no texto é regra medida, que já
+    mora em `tickets_nasce.contar_strings` e vale para o app e para a web. Uma cópia em JS seria
+    uma segunda verdade, e a primeira divergência apareceria numa planilha de produção.
+    Tracker é sempre 1 por ativo — é o próprio tracker que está parado."""
+    if eh_tracker(frase):
+        return {"qtd": 1, "via": "tracker"}
+    try:
+        import tickets_nasce
+        qtd, via, _nomes = tickets_nasce.contar_strings(texto or "")
+        return {"qtd": int(qtd), "via": via}
+    except Exception:                                   # noqa: BLE001
+        return {"qtd": 1, "via": "presumido"}
 
 
 def aba_ticket(frase: str) -> str:
@@ -143,9 +161,61 @@ def data_brt(texto: str) -> dt.datetime:
     return dt.datetime.fromisoformat(str(texto)).replace(tzinfo=BRT)
 
 
+# ── imagens anexadas na criação (Levi, 21/09) ────────────────────────────────────────────────
+# O navegador manda base64; o `create_performance_os` quer bytes, no MESMO formato do app
+# (`{'bytes','nome'}`), e é ele quem sobe para o S3 depois de a OS existir. Ou seja: a web não
+# ganhou caminho de upload próprio — ela só passou a preencher um campo que já era lido.
+MAX_IMG_ATIVO = 12                    # por ativo; acima disso é lote, e lote trava a criação
+MAX_BYTES_IMG = 8 * 1024 * 1024       # 8 MB por imagem: foto de celular cabe, vídeo não
+EXT_IMG = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")
+
+
+def imagens_do_item(it: dict) -> tuple[list, str]:
+    """[{nome, b64}] da tela → ([{'bytes','nome'}], erro).
+
+    Erro em vez de descarte silencioso: a pessoa anexou a foto porque ela importa, e uma OS que
+    nasce sem o anexo que alguém escolheu é pior do que uma criação que não acontece."""
+    import base64
+    brutas = [x for x in (it.get("imagens") or []) if isinstance(x, dict) and x.get("b64")]
+    if not brutas:
+        return [], ""
+    quem = str((it.get("asset") or {}).get("label") or (it.get("asset") or {}).get("code") or "ativo")
+    if len(brutas) > MAX_IMG_ATIVO:
+        return [], "%s: %d imagens — o limite é %d por ativo." % (quem, len(brutas), MAX_IMG_ATIVO)
+    out = []
+    for x in brutas:
+        # barra vira sublinhado: o nome entra na chave do S3 (".ot/<OS>/<nome>"), e uma "/" ali
+        # abriria uma subpasta — ou, com "..", sairia da pasta da OS. A tela já troca; o servidor
+        # não confia nela, porque o nome agora é digitado.
+        nome = re.sub(r"[\\/]+", "_", str(x.get("nome") or "imagem.png").strip()) or "imagem.png"
+        if not nome.lower().endswith(EXT_IMG):
+            return [], "%s: '%s' não é imagem." % (quem, nome)
+        try:
+            dados = base64.b64decode(str(x.get("b64") or ""), validate=True)
+        except Exception:                             # noqa: BLE001
+            return [], "%s: não consegui ler '%s'." % (quem, nome)
+        if not dados:
+            return [], "%s: '%s' veio vazia." % (quem, nome)
+        if len(dados) > MAX_BYTES_IMG:
+            return [], ("%s: '%s' tem %.1f MB — o limite é %d MB por imagem."
+                        % (quem, nome, len(dados) / 1048576.0, MAX_BYTES_IMG // 1048576))
+        out.append({"bytes": dados, "nome": nome})
+    return out, ""
+
+
+def _qtd_ou_none(v):
+    """O número que a pessoa escreveu no card, ou None para o `nascer_ticket` contar sozinho."""
+    try:
+        n = int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 def montar_itens(corpo: dict) -> tuple[list, dict, str]:
     """Do JSON da tela → (itens, kwargs do create_performance_os, erro). Mesma validação e mesmo payload do app;
-    o que a web ainda não faz (tickets, imagens, agrupar) entra desligado, explicitamente."""
+    o que a web ainda não faz (tickets, agrupar) entra desligado, explicitamente. As IMAGENS a web
+    já manda desde 21/09."""
     corpo = corpo or {}
     itens_in = [it for it in (corpo.get("itens") or []) if isinstance(it, dict) and isinstance(it.get("asset"), dict)]
     if not itens_in:
@@ -163,17 +233,57 @@ def montar_itens(corpo: dict) -> tuple[list, dict, str]:
     literal = ETM_TITULO if modo == "etm" else (USINA_TITULO if modo == "usina" else "")
     itens = []
     for it in itens_in:
+        imgs, err = imagens_do_item(it)
+        if err:
+            return [], {}, err
         itens.append({"asset": it["asset"], "plano_id_task": it.get("plano_id_task"), "plano_id_item": it.get("plano_id_item"),
                       "linkar": bool(it.get("linkar", True)), "base": base, "note": (it.get("note") or "").strip(),
-                      "gerar_ticket": False, "qtd_ticket": None,          # ocorrência em Tickets: só no app por ora
-                      "titulo": literal, "os_pai": (str(it.get("os_pai") or "")).strip(), "imagens": []})
+                      # a caixa "Gerar ticket" da tela e o número editável ao lado do ativo — o
+                      # `nascer_ticket` conta sozinho quando `qtd_ticket` vem vazio (Levi, 21/09)
+                      "gerar_ticket": bool(corpo.get("gerar_ticket", True)),
+                      "qtd_ticket": _qtd_ou_none(it.get("qtd_ticket")),
+                      "titulo": literal, "os_pai": (str(it.get("os_pai") or "")).strip(), "imagens": imgs})
     kwargs = {"id_responsible": resp.get("id_personnel"), "responsible_name": resp.get("name") or "",
               "event_date": evt, "prog_date": prog,
               "etiquetas_extra": list(ETM_ETIQUETAS) if modo == "etm" else None}
     return itens, kwargs, ""
 
 
-def mensagem_resultado(res: list) -> dict:
+def frase_tickets(res: list, frase: str, gerar: bool) -> tuple:
+    """(frase, erros) sobre as ocorrências — porte de `PerfCriar._frase_tickets`.
+
+    Existe pelo mesmo motivo do app: a OS criada aparecia e a ocorrência não, então a tela parecia
+    não fazer o que já fazia. Diz igualmente alto quando NÃO registrou — caixa desmarcada ou
+    gravação falhada."""
+    aba = aba_ticket(frase)
+    if not aba:
+        return "", []
+    if not gerar:
+        return "\nSem ticket: nenhuma ocorrência foi registrada na planilha.", []
+    tks = [r.get("ticket") for r in (res or []) if isinstance(r.get("ticket"), dict)]
+    ok = [t for t in tks if t.get("ok")]
+    falhas = [t for t in tks if not t.get("ok") and not t.get("desligado")]
+    total = sum(int(t.get("quantidade") or 0) for t in ok)
+    try:
+        import tickets_spec
+        aba_nome = tickets_spec.ABAS.get(aba, {}).get("rotulo", aba)
+    except Exception:                                   # noqa: BLE001
+        aba_nome = aba
+    unid = ("tracker parado" if total == 1 else "trackers parados") if eh_tracker(frase) \
+        else ("string" if total == 1 else "strings")
+    txt = ""
+    if ok:
+        txt += ("\n%d ticket%s criado%s na aba %s — %d %s no total."
+                % (len(ok), "" if len(ok) == 1 else "s", "" if len(ok) == 1 else "s",
+                   aba_nome, total, unid))
+    if falhas:
+        txt += ("\n%s — a OS existe, a linha não."
+                % ("1 ocorrência NÃO foi registrada" if len(falhas) == 1
+                   else "%d ocorrências NÃO foram registradas" % len(falhas)))
+    return txt, [str(t.get("erro") or t.get("aviso_os") or "") for t in falhas if t]
+
+
+def mensagem_resultado(res: list, frase: str = "", gerar_ticket: bool = True) -> dict:
     """[{ok, asset, folio|erro}] → {'ok','falhas','mensagem'} com a frase do app."""
     res = res or []
     ok = [r for r in res if r.get("ok")]
@@ -186,8 +296,9 @@ def mensagem_resultado(res: list) -> dict:
         if fail:
             msg += f"\n\n{len(fail)} falharam:\n" + "\n".join(f"• {r.get('asset')}: {r.get('erro')}" for r in fail[:6])
     erros_img = [e for r in ok for e in (r.get("img_erro") or [])]
-    return {"ok": len(ok), "falhas": len(fail), "mensagem": msg, "folios": [r.get("folio") for r in ok],
-            "detalhes": erros_img}
+    tk_txt, tk_erros = frase_tickets(res, frase, gerar_ticket)
+    return {"ok": len(ok), "falhas": len(fail), "mensagem": msg + tk_txt,
+            "folios": [r.get("folio") for r in ok], "detalhes": erros_img + tk_erros}
 
 
 def contar_subtarefas(assets: list) -> dict:

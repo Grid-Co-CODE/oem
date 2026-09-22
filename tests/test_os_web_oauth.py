@@ -109,9 +109,12 @@ def test_volta_boa_mas_token_sem_rpc_mostra_o_diagnostico(cli, monkeypatch):
         assert "jwt" not in s
 
 
-def test_tela_de_login_oferece_entrar_pela_tela_do_fracttal(cli):
+def test_a_tela_de_login_nao_oferece_mais_o_caminho_do_oauth(cli):
+    """Levi, 21/09: so e-mail e senha. As ROTAS do OAuth continuam de pe (os testes acima
+    seguem valendo) — o que sumiu foi a porta de entrada na tela."""
     html = cli.get("/os/login").get_data(as_text=True)
-    assert "/os/login/fracttal" in html and "Entrar pela tela do Fracttal" in html
+    assert "Entrar pela tela do Fracttal" not in html
+    assert 'href="/os/login/fracttal' not in html
 
 
 def test_email_da_sessao_vale_quando_o_token_nao_e_um_jwt_com_email():
@@ -150,12 +153,14 @@ def test_diagnostico_acha_o_nome_pelo_personnel_quando_o_token_nao_traz_email_no
     assert d["rpc_ok"] and d["email"] == "levi.maia@gridco.com.br" and d["nome"] == "Levi Maia" and d["perfil"] == "TECNICO"
 
 
-def test_login_abre_direto_no_fracttal_e_oferece_volta_para_a_plataforma(cli):
-    """Levi (13/09/2026): a pagina de login deve abrir DIRETO no Fracttal, e ter um botao para voltar a plataforma. O
-    redirecionamento vai no <head> (sem piscar o formulario) e so quando nao ha erro/aviso e nao se pediu ?manual=1."""
+def test_o_login_abre_no_formulario_e_nao_redireciona_mais(cli):
+    """O oposto do que valia de 13/09 a 21/09.
+
+    Ate aqui a pagina se redirecionava sozinha para a tela do Fracttal (`location.replace` no
+    <head>) e o formulario so aparecia com `?manual=1`. Agora o formulario E a tela, e o
+    `?manual=1` deixou de significar coisa alguma — o que ele mostrava virou o padrao."""
     html = cli.get("/os/login").get_data(as_text=True)
-    assert "location.replace" in html and "/os/login/fracttal" in html          # abre direto no Fracttal
-    assert 'class="os-topo-voltar"' in html and 'href="/"' in html                    # botao Voltar para a plataforma
-    manual = cli.get("/os/login?manual=1").get_data(as_text=True)
-    assert "location.replace" not in manual                                       # modo manual nao redireciona
-    assert 'name="email"' in manual and "Entrar pela tela do Fracttal" in manual  # mostra formulario + SSO
+    assert "location.replace" not in html
+    assert 'name="email"' in html and 'name="senha"' in html
+    assert 'class="os-topo-voltar"' in html and 'href="/"' in html       # o Voltar continua
+    assert cli.get("/os/login?manual=1").get_data(as_text=True) == html  # nao ha mais dois modos

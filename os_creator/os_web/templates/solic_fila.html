@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block titulo %}Fila do PCM{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{# O painel + a fila do `steps/solic_pcm.py`, sem o quadro vivo (Levi, 21/09: "com menos estilo de
+   dinamicidade"). Três contadores em cima, uma tabela embaixo e um painel que abre ao lado da
+   solicitação escolhida. Quem age recarrega a página — numa fila de aprovação isso é uma virtude:
+   o estado da tela é sempre o que o Fracttal diz, e não o que o navegador lembra. #}
+{% block conteudo %}
+<section class="os-pagina">
+  <nav class="os-seg os-subnav" aria-label="Solicitação / PCM">
+    <a href="/os/solicitacao">Nova solicitação</a>
+    <a class="on" href="/os/solicitacao/fila">Fila do PCM</a>
+    <a href="/os/solicitacao/historico">Histórico</a>
+  </nav>
+
+  <form class="os-hist-topo" method="get" action="/os/solicitacao/fila">
+    <input type="hidden" name="ver" value="{{ ver }}">
+    <div class="os-painel">
+      {% for chave, rotulo, ajuda in colunas %}
+      <a class="os-painel-card {% if ver == chave %}on{% endif %}" href="/os/solicitacao/fila?ver={{ chave }}{% if busca %}&busca={{ busca|urlencode }}{% endif %}" title="{{ ajuda }}">
+        <span class="os-painel-n">{{ por[chave]|length }}</span><span class="os-painel-r">{{ rotulo }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="os-hist-dir">
+      {% if por.fora %}<span class="os-hist-auto" title="Devolvidas ao supervisor para refazer: enquanto ele não refizer, não há o que aprovar. Aparecem no Histórico.">{{ por.fora }} devolvida(s) para refazer</span>{% endif %}
+      <label class="os-hist-buscar"><span class="os-lbl">Buscar</span>
+        <input type="search" name="busca" value="{{ busca }}" placeholder="nº, usina, ativo, quem pediu…"></label>
+      <button type="submit" class="os-btn secondary">Filtrar</button>
+      <a class="os-btn secondary os-btn-ico" href="/os/solicitacao/atualizar?ver={{ ver }}{% if busca %}&busca={{ busca|urlencode }}{% endif %}" title="Recarregar o catálogo de ativos e a fila">&#8635;</a>
+    </div>
+  </form>
+
+  <div class="os-fila">
+    <div class="os-tbl-wrap">
+      <table class="os-tbl os-hist">
+        <thead><tr><th class="k-folio">Nº</th><th class="k-cliente">Cliente</th><th class="k-usina">Usina</th>
+          <th>Ativo</th><th>Título</th><th class="k-etiqueta">Tema</th><th class="k-status">Status</th><th>Quem pediu</th></tr></thead>
+        <tbody>
+        {% for s in itens %}
+        <tr data-id="{{ s.id_code }}" class="sol-l">
+          <td class="k-folio"><a class="os-folio" href="#" data-id="{{ s.id_code }}">{{ s.id_code }}</a></td>
+          <td class="k-cliente">{{ s.cliente }}</td><td class="k-usina">{{ s.usina }}</td>
+          <td>{{ s._ativo }}</td><td class="c-desc">{{ s.descricao }}</td>
+          <td class="k-etiqueta">{{ s._tema_nome or '—' }}</td>
+          <td class="k-status"><span class="os-status" {% if s.cor_status %}style="color:{{ s.cor_status }};background:{{ s.cor_status }}29;border-color:{{ s.cor_status }}6b"{% endif %}>{{ s.status }}</span>
+            {% if s.os_folio %}<br><span class="os-ajuda">OS {{ s.os_folio }}</span>{% endif %}</td>
+          <td>{{ s.criado_por or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr class="vazio"><td colspan="8">Nada nesta coluna{% if busca %} com esse texto{% endif %}.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <aside class="os-analise" id="painel" hidden>
+      <div class="os-analise-topo"><b id="p_titulo">—</b><button type="button" class="os-modal-x" id="p_x" aria-label="Fechar">&times;</button></div>
+      <div class="os-analise-corpo" id="p_corpo"></div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var grade = document.querySelector(".os-fila");
+  function mostrarPainel(sim) { painel.hidden = !sim; grade.classList.toggle("com-painel", !!sim); }
+  var painel = document.getElementById("painel"), corpo = document.getElementById("p_corpo"),
+      tit = document.getElementById("p_titulo"), so_leitura = "{{ ver }}" !== "pendente";
+  var PESSOAS = [{% for p in pessoas %}{id: {{ p.id_account|tojson }}, nome: {{ p.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
+  var ETQ = [{% for e in etiquetas %}{id: {{ e.id|tojson }}, nome: {{ e.description|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
+  var TIPOS = {{ tipos|tojson }}, CL1 = {{ cl1|tojson }}, CL2 = {{ cl2|tojson }};
+  var STATUS = [{% for i, cod, rot in status_cat %}{cod: {{ cod|tojson }}, rot: {{ rot|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
+  var atual = null;
+
+  function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
+  function opcoes(lista, chave, rotulo, marcado) {
+    return lista.map(function (o) {
+      var v = chave ? o[chave] : o, r = rotulo ? o[rotulo] : o;
+      return '<option value="' + esc(v) + '"' + (String(v) === String(marcado) ? " selected" : "") + ">" + esc(r) + "</option>";
+    }).join("");
+  }
+
+  function desenhar(d) {
+    atual = d;
+    tit.textContent = "Solicitação nº " + d.id_code;
+    var h = '<div class="os-analise-lin"><span>' + esc(d.cliente) + " · " + esc(d.usina) + "</span></div>"
+      + '<div class="os-analise-lin"><b>' + esc(d.ativo) + "</b></div>"
+      + '<div class="os-analise-lin os-ajuda">' + esc(d.criado_por) + " · " + esc(d.status)
+      + (d.os_folio ? " · OS " + esc(d.os_folio) : "") + "</div>"
+      + '<label class="os-cell"><span class="os-lbl">Título da OS</span><input type="text" id="p_desc" value="' + esc(d.descricao) + '"></label>'
+      + '<label class="os-cell"><span class="os-lbl">Relato</span><textarea id="p_relato" rows="3">' + esc(d.relato) + "</textarea></label>";
+    if (!d.ativo_ok) h += '<p class="os-erro">' + esc(d.ativo_aviso) + "</p>";
+    if (d.tema_nome) h += '<div class="os-analise-lin os-ajuda">Tema sugerido: <b>' + esc(d.tema_nome) + "</b>"
+      + (d.tecnico ? " · técnico " + esc(d.tecnico) : "") + (d.data_sugerida ? " · para " + esc(d.data_sugerida) : "") + "</div>";
+    if (so_leitura) {
+      h += '<p class="os-ajuda">Esta solicitação não está pendente — o painel está só em leitura.</p>';
+      corpo.innerHTML = h; mostrarPainel(true); return;
+    }
+    h += '<div class="os-hist-grid" style="grid-template-columns:1fr 1fr">'
+      + '<label class="os-cell"><span class="os-lbl">Responsável <span class="os-req">obrigatório</span></span><select id="p_resp"><option value="">— selecione —</option>' + opcoes(PESSOAS, "id", "nome", "") + "</select></label>"
+      + '<label class="os-cell"><span class="os-lbl">Tipo de tarefa</span><select id="p_tipo">' + opcoes(TIPOS, "description", "description", {{ tipo_padrao|tojson }}) + "</select></label>"
+      + '<label class="os-cell"><span class="os-lbl">Classificação 1 da OS</span><select id="p_c1">' + opcoes(CL1, "description", "description", {{ classif1_padrao|tojson }}) + "</select></label>"
+      + '<label class="os-cell"><span class="os-lbl">Classificação 2 da OS</span><select id="p_c2"><option value="">{{ nenhuma }}</option>' + opcoes(CL2, "description", "description", "") + "</select></label>"
+      + '<label class="os-cell"><span class="os-lbl">Etiqueta</span><select id="p_etq"><option value="">— nenhuma —</option>' + opcoes(ETQ, "id", "nome", "") + "</select></label>"
+      + '<label class="os-cell"><span class="os-lbl">OS pai (nº, opcional)</span><input type="text" id="p_pai" inputmode="numeric" placeholder="nº da OS"></label>'
+      + "</div>"
+      + '<div class="os-lbl" style="margin-top:10px">Subtarefas da OS · <span id="p_nsub">' + (d.subtarefas || []).length + "</span></div>"
+      + '<ol class="os-subs-lista">' + (d.subtarefas || []).map(function (s) {
+          return "<li>" + esc(s.desc) + (s.anexo ? ' <span class="os-ajuda">(foto obrigatória)</span>' : "") + "</li>"; }).join("") + "</ol>"
+      + '<p class="os-ajuda">A API do Fracttal NÃO edita OS já criada — confira as subtarefas antes de aprovar.</p>'
+      + '<div class="os-acoes"><button type="button" class="os-btn" id="p_ok">Aprovar e criar a OS</button>'
+      + '<button type="button" class="os-btn secondary" id="p_obs">Salvar relato</button></div>'
+      + '<details class="os-recusar"><summary>Recusar / mudar o status</summary>'
+      + '<label class="os-cell"><span class="os-lbl">Novo status</span><select id="p_st">' + opcoes(STATUS, "cod", "rot", "") + "</select></label>"
+      + '<label class="os-cell"><span class="os-lbl">Motivo <span class="os-req">obrigatório</span></span><textarea id="p_motivo" rows="2" placeholder="fica no histórico da solicitação"></textarea></label>'
+      + '<button type="button" class="os-btn secondary" id="p_st_ok">Aplicar status</button></details>'
+      + '<div class="os-resultado" id="p_res" hidden></div>';
+    corpo.innerHTML = h;
+    mostrarPainel(true);
+    document.getElementById("p_ok").addEventListener("click", aprovar);
+    document.getElementById("p_obs").addEventListener("click", salvarObs);
+    document.getElementById("p_st_ok").addEventListener("click", mudarStatus);
+  }
+
+  function resultado(txt, bom) {
+    var r = document.getElementById("p_res");
+    if (!r) { alert(txt); return; }
+    r.hidden = false; r.className = "os-resultado" + (bom ? "" : " ruim"); r.textContent = txt;
+  }
+  function post(url, corpo_, ao_dar_certo) {
+    fetch(url, {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(corpo_)})
+      .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (x) {
+        resultado(x.j.erro || x.j.mensagem || "Sem resposta.", x.ok);
+        if (x.ok && ao_dar_certo) ao_dar_certo();
+      })
+      .catch(function (e) { resultado("Falhou: " + e, false); });
+  }
+  function aprovar() {
+    var resp = document.getElementById("p_resp");
+    if (!resp.value) { resultado("Escolha o responsável pela OS. Sem responsável a tarefa é criada mas NÃO vira OS numerada.", false); return; }
+    if (!confirm("Criar a OS a partir da solicitação nº " + atual.id_code + "?\n\nA API do Fracttal NÃO edita OS já criada.")) return;
+    document.getElementById("p_ok").disabled = true;
+    post("/os/api/solic/" + atual.id_code + "/aprovar", {
+      id_responsible: resp.value, responsavel: resp.options[resp.selectedIndex].text,
+      descricao: document.getElementById("p_desc").value,
+      tipo: document.getElementById("p_tipo").value,
+      classif1: document.getElementById("p_c1").value,
+      classif2: document.getElementById("p_c2").value,
+      etiquetas: document.getElementById("p_etq").value ? [document.getElementById("p_etq").value] : null,
+      id_parent: (document.getElementById("p_pai").value || "").replace(/\D/g, "") || null,
+      subtarefas: atual.subtarefas
+    }, function () { setTimeout(function () { location.reload(); }, 1400); });
+  }
+  function salvarObs() {
+    post("/os/api/solic/" + atual.id_code + "/observacao", {relato: document.getElementById("p_relato").value});
+  }
+  function mudarStatus() {
+    var m = document.getElementById("p_motivo").value.trim();
+    if (!m) { resultado("Escreva o motivo — ele fica no histórico da solicitação.", false); return; }
+    post("/os/api/solic/" + atual.id_code + "/status",
+         {codigo: document.getElementById("p_st").value, motivo: m},
+         function () { setTimeout(function () { location.reload(); }, 1400); });
+  }
+
+  document.querySelectorAll("a.os-folio").forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      document.querySelectorAll("tr.sol-l").forEach(function (t) { t.classList.remove("on"); });
+      a.closest("tr").classList.add("on");
+      corpo.innerHTML = '<p class="os-ajuda">Carregando a solicitação…</p>'; mostrarPainel(true);
+      fetch("/os/api/solic/" + a.dataset.id, {credentials: "same-origin"})
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j.erro) { corpo.innerHTML = '<p class="os-erro">' + j.erro + "</p>"; return; } desenhar(j); })
+        .catch(function (e) { corpo.innerHTML = '<p class="os-erro">Não consegui carregar: ' + e + "</p>"; });
+    });
+  });
+  document.getElementById("p_x").addEventListener("click", function () { mostrarPainel(false); });
+})();
+</script>
+{% endblock %}

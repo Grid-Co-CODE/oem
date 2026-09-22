@@ -1,0 +1,53 @@
+/* Ativos — os três painéis da AtivosTab (steps/ativos.py) com a paleta do QSS_FORM */
+.at-pagina{max-width:none}
+.at-cab{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+.at-titulo{display:flex;flex-direction:column;gap:2px}
+.at-h1{font-size:20px;font-weight:800;color:#fff}
+.at-sub{font-size:12.5px;color:var(--f-muted)}
+.at-busca{width:324px;height:38px}
+.at-corpo{display:grid;grid-template-columns:272px 1fr 324px;gap:16px;align-items:stretch;min-height:560px}
+.at-painel{background:var(--f-card);border:1px solid var(--f-border);border-radius:14px;padding:15px 16px;display:flex;flex-direction:column;gap:11px;min-width:0}
+.at-k{font-size:10.5px;font-weight:800;letter-spacing:1.1px;color:var(--f-muted)}
+.at-arv input{height:32px;font-size:12px}
+.at-arvore{overflow:auto;max-height:560px;scrollbar-width:thin;scrollbar-color:var(--f-border) transparent}
+.at-cli,.at-usi{display:flex;justify-content:space-between;gap:8px;padding:4px 0;cursor:pointer;font-size:13px;color:#fff;font-weight:700}
+.at-usi{padding-left:18px;font-size:12.5px;color:var(--f-muted);font-weight:400}
+.at-cli.sel,.at-usi.sel{color:var(--f-green)} .at-usi.sel{font-weight:700}
+.at-cli small{color:var(--f-muted);font-weight:400}
+.at-topo{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.at-esp{width:14px}
+.at-chip{color:var(--f-muted);background:transparent;border:1px solid var(--f-border);border-radius:999px;padding:5px 13px;font:700 11.5px 'Segoe UI',Arial,sans-serif;cursor:pointer}
+.at-chip.on{color:var(--f-ink);background:var(--f-green);border-color:var(--f-green)}
+.at-lista{overflow:auto;flex:1;max-height:560px;scrollbar-width:thin;scrollbar-color:var(--f-border) transparent}
+.at-tbl{width:100%;border-collapse:collapse;font-size:12.5px;color:#fff}
+.at-tbl th{text-align:left;color:var(--f-muted);font-size:10.5px;font-weight:800;padding:7px 4px;border-bottom:1px solid var(--f-border);position:sticky;top:0;background:var(--f-card)}
+.at-tbl td{padding:9px 4px;border-bottom:1px solid rgba(42,53,80,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.at-tbl tbody tr{cursor:pointer}
+.at-tbl tbody tr:hover td{background:rgba(166,226,46,.06)}
+.at-tbl tbody tr.sel td{background:rgba(166,226,46,.13)}
+.at-tbl tbody tr.recente td{background:rgba(166,226,46,.13)}
+.at-tbl tbody tr.recente.sel td{background:rgba(166,226,46,.22)}
+.at-tbl td.nivel1{padding-left:22px}.at-tbl td.nivel2{padding-left:40px}.at-tbl td.nivel3{padding-left:58px}.at-tbl td.nivel4{padding-left:76px}
+.at-rodape{font-size:11.5px;color:var(--f-muted)}
+.at-nome{font-size:16px;font-weight:800;color:#fff;text-align:center;user-select:text}
+.at-code{font-size:12.5px;font-weight:700;color:var(--f-green);text-align:center;user-select:text}
+.at-campos{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.at-campos div{display:flex;justify-content:space-between;gap:10px}
+.at-campos span{color:var(--f-muted)} .at-campos b{color:#fff;font-weight:600;text-align:right;user-select:text}
+.at-sep{height:1px;background:var(--f-border)}
+.at-os{display:flex;flex-direction:column;gap:7px}
+.at-os-item{background:var(--f-input);border:1px solid var(--f-border);border-radius:9px;padding:10px 11px;display:flex;flex-direction:column;gap:3px}
+.at-os-item .l1{display:flex;justify-content:space-between;align-items:baseline}
+.at-os-item .folio{font-size:14px;font-weight:800;color:#fff;text-decoration:none}
+.at-os-item .data{font-size:11px;color:var(--f-muted)}
+.at-os-item .l2{display:flex;justify-content:space-between;font-size:11px;color:var(--f-muted)}
+.at-os-item .st{font-weight:700}
+.at-hint{font-size:11.5px;color:var(--f-muted);font-style:italic}
+.at-menu-wrap{position:relative}
+.at-criar{width:100%;justify-content:center;height:38px;font-weight:800}
+.at-criar:disabled{background:var(--f-input);color:var(--f-muted);cursor:default}
+.at-menu{position:absolute;left:0;right:0;bottom:calc(100% + 6px);background:var(--f-card);border:1px solid var(--f-border);border-radius:10px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.45);z-index:20}
+.at-menu a{display:block;padding:8px 18px;border-radius:7px;font-size:13px;color:#fff;text-decoration:none}
+.at-menu a:hover{background:rgba(166,226,46,.14)}
+.at-menu .sep{height:1px;background:var(--f-border);margin:4px 8px}
+@media (max-width:1100px){.at-corpo{grid-template-columns:1fr}.at-busca{width:100%}}

@@ -22,6 +22,17 @@
       <span class="os-plano-cta">{{ icone('arrow', '#FFFFFF', 17) }}</span>
     </a>
     {% endfor %}
+    {# O 5º CARD, depois dos planos — o mesmo lugar que ele ocupa no app (steps/performance.py).
+       Tickets NÃO é plano do Fracttal: por isso não tem o rótulo "N subtarefas", que ficaria
+       eternamente em "…" esperando uma contagem que nunca vem. #}
+    <a class="os-plano" href="/os/tickets">
+      <span class="os-plano-tile">{{ icone('ticket', '#A6E22E', 22) }}</span>
+      <span class="os-plano-mid">
+        <span class="os-plano-l1"><span class="os-plano-titulo">Tickets</span><span class="os-plano-badge">Trackers · Strings</span></span>
+        <span class="os-plano-sub">Ocorrências abertas e encerradas • vincule a OS e registre a causa</span>
+      </span>
+      <span class="os-plano-cta">{{ icone('arrow', '#FFFFFF', 17) }}</span>
+    </a>
   </div>
   <div id="os-subs-lista" class="os-card-info" hidden></div>
 </section>

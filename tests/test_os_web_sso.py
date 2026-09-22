@@ -35,13 +35,18 @@ def cli(monkeypatch):
     return app.test_client()
 
 
-def test_tela_de_login_oferece_o_sso_com_o_favorito_e_o_campo_para_colar(cli):
+def test_a_tela_de_login_nao_tem_mais_nada_de_sso(cli):
+    """Levi, 21/09: so e-mail e senha. Saiu o botao, saiu o favorito, saiu o `gridos://sso`.
+
+    Eram tres formas de fazer a mesma coisa — a tela do proprio Fracttal, o app instalado e o
+    favorito que copiava a sessao de uma aba aberta — e a que todo mundo usava era o formulario.
+    A rota que ACEITA um token colado continua existindo (o teste abaixo ainda a exercita); o que
+    sumiu foi a porta de entrada na tela."""
     html = cli.get("/os/login").get_data(as_text=True)
-    assert "Entrar com Microsoft / SSO" in html
-    assert 'href="javascript:' in html and "https://app.fracttal.com" in html
-    assert 'name="token"' in html and "Abrir o Fracttal" in html
-    assert "disabled" not in html.split("Entrar com Microsoft / SSO")[1][:400]      # o botao deixou de ser enfeite
-    assert "gridos://sso?volta=" in html and "Aguardando o login no Fracttal" in html   # o app instalado faz o login Microsoft
+    for sumido in ("Entrar com Microsoft / SSO", 'href="javascript:', 'name="token"',
+                   "gridos://sso", "Aguardando o login no Fracttal", "Copiar sessão do Fracttal"):
+        assert sumido not in html, "sobrou na tela: %s" % sumido
+    assert 'name="email"' in html and 'name="senha"' in html
 
 
 def test_colar_uma_sessao_viva_entra_sem_senha(cli, monkeypatch):
@@ -67,8 +72,9 @@ def test_sessao_morta_ou_lixo_volta_com_a_explicacao(cli, monkeypatch):
     assert r.status_code == 401 and "Não achei um token" in r.get_data(as_text=True)
 
 
-def test_token_no_fragmento_da_url_e_enviado_pela_propria_pagina(cli):
-    """Futuro 1 clique: o favorito abre /os/login#sso=<jwt>; o fragmento nunca chega ao servidor (nem a logs) — e a
-    pagina que le e envia pelo formulario. Aqui so se garante que o script existe."""
+def test_a_tela_de_login_nao_roda_mais_script_nenhum(cli):
+    """O script que lia `location.hash` para pescar o token do favorito foi junto com o resto.
+    Tela de login sem JavaScript e uma tela a menos para dar errado."""
     html = cli.get("/os/login").get_data(as_text=True)
-    assert "location.hash" in html and "#sso=" in html
+    assert "location.hash" not in html and "#sso=" not in html
+    assert "<script" not in html.split("os-login")[1]

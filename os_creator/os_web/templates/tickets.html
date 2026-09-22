@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+{% block titulo %}Tickets{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{# TicketsTab (steps/tickets.py) na web. Mesmo conteúdo, menos dinamicidade: o servidor renderiza a
+   lista e quem age recarrega. Numa tela que escreve em planilha de produção isso é virtude — o que
+   está na tela é o que o banco diz, não o que o navegador lembra.
+   O painel de edição relê a linha ao abrir, de propósito: entre carregar a lista e clicar pode ter
+   passado um sync, e editar por cima de dado velho é como se perde o trabalho do outro. #}
+{% block conteudo %}
+<section class="os-pagina">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/performance">← Performance</a>
+    <a class="os-btn secondary" href="/os/tickets/painel?aba={{ aba }}" title="Acompanhamento: fluxo semanal, idade das abertas, por cliente e usina">Painel de acompanhamento</a>
+    <span class="os-cresce"></span>
+    <div class="os-seg os-subnav" role="group" aria-label="Aba">
+      {% for a in abas_tk %}<a class="{% if a == aba %}on{% endif %}" href="/os/tickets?aba={{ a }}">{{ a }}</a>{% endfor %}
+    </div>
+  </div>
+
+  {% if not pode_gravar %}
+  <p class="os-ajuda os-aviso-leitura">{{ icone('alert', '#eb8b57', 17) }}
+    Esta máquina não tem a credencial de escrita — a tela está <b>só em leitura</b>.</p>
+  {% endif %}
+  {% if erro %}<p class="os-erro">⚠ {{ erro }}</p>{% endif %}
+
+  <form class="os-hist-topo" method="get" action="/os/tickets">
+    <input type="hidden" name="aba" value="{{ aba }}">
+    {# os contadores SÃO o filtro: clicar num estado filtra por ele, e o mesmo link marcado volta
+       para "todos" — sem um botão "limpar" que ninguém acha #}
+    <div class="os-painel">
+      {% set ctx %}{% if busca %}&busca={{ busca|urlencode }}{% endif %}{% if cliente %}&cliente={{ cliente|urlencode }}{% endif %}{% if usina %}&usina={{ usina|urlencode }}{% endif %}{% if so_alarme %}&alarme=1{% endif %}{% endset %}
+      <a class="os-painel-card tk-filtro {% if not estado %}on{% endif %}" data-estado="" href="/os/tickets?aba={{ aba }}{{ ctx }}">
+        <span class="os-painel-n">{{ total }}</span><span class="os-painel-r">Todas</span></a>
+      {% for chave, rotulo, cor in estados %}
+      <a class="os-painel-card tk-filtro {% if estado == chave %}on{% endif %}" data-estado="{{ chave }}"
+         href="/os/tickets?aba={{ aba }}&estado={{ chave }}{{ ctx }}">
+        <span class="os-painel-n" style="color:{{ cor }}">{{ placar[chave] }}</span>
+        <span class="os-painel-r">{{ rotulo }}</span></a>
+      {% endfor %}
+    </div>
+    <div class="os-hist-dir">
+      {# CLIENTE e USINA vêm da PRÓPRIA planilha (coluna Cliente), não do catálogo de ativos: aqui
+         a coluna "Usina" é o código ("TIM100") ou o nome curto ("Barretos"), e cruzar com o
+         cadastro casaria 2 de 279 (medido em 22/09). Trocar o cliente zera a usina, porque a
+         lista de usinas depende dele. #}
+      <label class="os-cell"><span class="os-lbl">Cliente</span>
+        <select name="cliente" onchange="this.form.querySelector('[name=usina]').value=''; this.form.submit()">
+          <option value="">Todos os clientes</option>
+          {% for c in clientes %}<option value="{{ c }}" {% if cliente == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select></label>
+      <label class="os-cell"><span class="os-lbl">Usina</span>
+        <select name="usina" onchange="this.form.submit()">
+          <option value="">Todas as usinas</option>
+          {% for u in usinas %}<option value="{{ u }}" {% if usina == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+        </select></label>
+      <label class="os-check" title="Abertas há mais de 30 dias — o vermelho da coluna Período">
+        <input type="checkbox" name="alarme" value="1" {% if so_alarme %}checked{% endif %} onchange="this.form.submit()"> +30 dias</label>
+      <label class="os-hist-buscar"><span class="os-lbl">Buscar</span>
+        <input type="search" name="busca" value="{{ busca }}" placeholder="usina, inversor, nº da OS, causa…"></label>
+      <button type="submit" class="os-btn secondary">Filtrar</button>
+      <a class="os-btn secondary os-btn-ico" href="/os/tickets?aba={{ aba }}&estado={{ estado }}{{ ctx }}" title="Recarregar">&#8635;</a>
+    </div>
+  </form>
+
+  <div class="os-hist-hint">
+    <span id="tk_n_usinas">{{ grupos|length }}</span> usina(s) · <span id="tk_n_ocs">{{ n_itens }}</span> ocorrência(s) na aba {{ aba }}
+    · <b><span id="tk_n_qtd">{{ grupos|sum(attribute='qtd') }}</span> {{ rotulo_qtd }}</b>.
+    {% if ocultas %}<span class="os-ajuda">· {{ ocultas }} linha(s) "Em conformidade" fora da lista — são check periódico, não ocorrência.</span>{% endif %}
+    {% if restaurados %}<span class="os-ajuda">· {{ restaurados }} reposta(s) pelo diário (o sync tinha desfeito).</span>{% endif %}
+  </div>
+
+  <div class="os-fila">
+    <div class="os-tbl-wrap">
+      <table class="os-tbl os-hist" id="tab_tk">
+        <thead><tr>
+          <th class="k-estado">Status</th>
+          {% for c in colunas %}<th class="k-centro">{{ rotulo_coluna.get(c, c) }}</th>{% endfor %}
+        </tr></thead>
+        <tbody>
+        {# AGRUPADO POR USINA, fechado (Levi, 22/09). As linhas ja vem no HTML e o clique so as
+           mostra: a leitura da planilha inteira leva segundos, e um drill-down que voltasse ao
+           servidor a cada clique seria mais lento do que rolar a lista que ele veio substituir.
+           A ordem e da usina com MAIS equipamentos parados para a com menos. #}
+        {% for g in grupos %}
+        {% set gi = loop.index %}
+        <tr class="tk-g" data-g="{{ gi }}" tabindex="0" role="button" aria-expanded="false">
+          <td colspan="{{ colunas|length + 1 }}">
+            <div class="tk-g-in">
+              <span class="tk-seta" aria-hidden="true">&#9656;</span>
+              <b class="tk-g-usina">{{ g.usina }}</b>
+              <span class="os-ajuda tk-g-cli">{{ g.cliente }}</span>
+              <span class="os-cresce"></span>
+              <span class="tk-g-qtd"{% if not g.qtd %} hidden{% endif %}><span class="tk-g-qtd-n">{{ g.qtd }}</span> {{ rotulo_qtd }}</span>
+              <span class="os-ajuda"><span class="tk-g-ab">{{ g.n_abertas }}</span> aberta(s) de <span class="tk-g-n">{{ g.n }}</span></span>
+            </div>
+          </td>
+        </tr>
+        {% for o in g.itens %}
+        <tr data-row="{{ o._row }}" class="tk-l tk-f" data-g="{{ gi }}" data-estado="{{ o._estado }}" data-qtd="{{ qtd_de(o) }}" hidden>
+          <td class="k-estado"><span class="os-status" style="color:{{ cor_estado[o._estado] }};background:{{ cor_estado[o._estado] }}29;border-color:{{ cor_estado[o._estado] }}6b">{{ nome_estado[o._estado] }}</span></td>
+          {% for c in colunas %}
+          {% if c == 'Período' %}<td class="k-centro {% if alarme(o) %}tk-alarme{% endif %}">{{ celula(o, c) }}</td>
+          {% elif c == 'OS' %}{% set tem_os = (o.OS or '')|trim %}
+          {% set num_os = numero_da_os(tem_os) %}
+          <td class="k-centro">{% if num_os %}<a class="tk-os" href="/os/os/folio/{{ num_os }}" target="_blank" rel="noopener" title="Abrir a OS {{ num_os }} numa aba nova">{{ tem_os }}</a>{% elif tem_os %}<span class="tk-os">{{ tem_os }}</span>{% else %}<span class="tk-sem-os">Sem OS</span>{% endif %}</td>
+          {% else %}<td class="k-centro">{{ celula(o, c) }}</td>{% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% else %}
+        <tr class="vazio"><td colspan="{{ colunas|length + 1 }}">Nenhuma ocorrência com esse filtro.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <aside class="os-analise" id="painel" hidden>
+      <div class="os-analise-topo"><b id="p_titulo">—</b><button type="button" class="os-modal-x" id="p_x" aria-label="Fechar">&times;</button></div>
+      <div class="os-analise-corpo" id="p_corpo"></div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var ABA = {{ aba|tojson }}, PODE = {{ pode_gravar|tojson }};
+  var grade = document.querySelector(".os-fila"), painel = document.getElementById("painel"),
+      corpo = document.getElementById("p_corpo"), tit = document.getElementById("p_titulo");
+  var atual = null;
+  function mostrar(sim) { painel.hidden = !sim; grade.classList.toggle("com-painel", !!sim); }
+  function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
+
+  function campoHTML(c, opts) {
+    var id = "tk_" + c.campo.replace(/[^A-Za-z]/g, "");
+    var ctrl;
+    if (c.campo === "Status do ticket") {
+      ctrl = '<select data-campo="' + esc(c.campo) + '" data-original="' + esc(c.valor) + '" id="' + id + '">'
+        + opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === c.valor ? " selected" : "") + ">" + esc(o || "— sem status —") + "</option>"; }).join("") + "</select>";
+    } else if (c.data) {
+      // datetime-local com o valor JÁ convertido pelo servidor: a planilha guarda a data em
+      // formatos diferentes conforme quem digitou, e o parser tolerante mora no `tickets_calc`.
+      ctrl = '<input type="datetime-local" data-campo="' + esc(c.campo) + '" data-original="' + esc(c.input) + '" id="' + id + '" value="' + esc(c.input) + '">';
+    } else if (c.campo === "Comentários gerais" || c.campo === "Causa raiz") {
+      ctrl = '<textarea rows="3" data-campo="' + esc(c.campo) + '" data-original="' + esc(c.valor) + '" id="' + id + '">' + esc(c.valor) + "</textarea>";
+    } else {
+      ctrl = '<input type="text" data-campo="' + esc(c.campo) + '" data-original="' + esc(c.valor) + '" id="' + id + '" value="' + esc(c.valor) + '">';
+    }
+    return '<label class="os-campo"><span class="os-lbl">' + esc(c.campo) + "</span>" + ctrl + "</label>";
+  }
+
+  function desenhar(d) {
+    atual = d;
+    tit.textContent = "Ocorrência · linha " + d.row;
+    var h = '<div class="os-analise-lin tk-p-usina"><b>' + esc(d.usina) + "</b>"
+      + (PODE ? ' <button type="button" class="os-btn secondary mini" id="tk_trocar_usina" title="Escolher a usina no cadastro do Fracttal">trocar</button>' : "")
+      + (d.ativo ? ' <span class="os-ajuda">· ' + esc(d.ativo) + "</span>" : "") + "</div>"
+      + '<div id="tk_usina_box" hidden></div>'
+      + '<div class="os-analise-lin os-ajuda">' + esc(d.periodo) + " em aberto"
+      + (d.horas != null ? " · " + esc(d.horas) + " h de indisponibilidade" : "") + "</div>";
+    // A OS: com número, o caminho é abri-la; sem número e ainda aberta, vincular (steps/tickets.py)
+    if (d.os) h += '<div class="os-analise-lin">OS <a class="tk-os" href="/os/os/folio/' + esc(d.os) + '" target="_blank" rel="noopener">' + esc(d.os) + "</a> <span class=\"os-ajuda\">abre numa aba nova</span></div>";
+    else if (d.pode_vincular && PODE) h += '<div class="tk-vinc"><div class="os-lbl">Vincular OS</div>'
+      + '<div class="tk-vinc-l"><input type="text" id="tk_vinc_q" inputmode="numeric" placeholder="número da OS"><button type="button" class="os-btn secondary" id="tk_vinc_b">Procurar</button></div>'
+      + '<div id="tk_vinc_res" class="tk-vinc-res"></div></div>';
+    h += d.campos.map(function (c) { return campoHTML(c, d.status_opts || []); }).join("");
+    if (!PODE) h += '<p class="os-ajuda">Sem credencial de escrita nesta máquina — só leitura.</p>';
+    else h += '<div class="os-acoes"><button type="button" class="os-btn" id="tk_salvar">Salvar</button>'
+      + '<span class="os-cresce"></span><button type="button" class="os-btn tk-excluir" id="tk_excluir">Excluir ocorrência</button></div>'
+      + '<div id="tk_confirma" class="tk-confirma" hidden></div>';
+    h += '<p class="os-ajuda">O pipeline ainda sobe a planilha inteira: se um sync desfizer esta edição, o diário a repõe na próxima abertura.</p>'
+      + '<div class="os-resultado" id="tk_res" hidden></div>';
+    corpo.innerHTML = h;
+    mostrar(true);
+    var b = document.getElementById("tk_salvar");
+    if (b) b.addEventListener("click", salvar);
+    var bx = document.getElementById("tk_excluir");
+    if (bx) bx.addEventListener("click", excluir);
+    var bv = document.getElementById("tk_vinc_b");
+    if (bv) {
+      bv.addEventListener("click", procurarOS);
+      document.getElementById("tk_vinc_q").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); procurarOS(); } });
+    }
+    var bu = document.getElementById("tk_trocar_usina");
+    if (bu) bu.addEventListener("click", abrirUsinas);
+  }
+
+  function resultado(txt, bom) {
+    var r = document.getElementById("tk_res"); if (!r) return;
+    r.hidden = false; r.className = "os-resultado" + (bom ? "" : " ruim"); r.textContent = txt;
+  }
+  function campoEl(nome) { return corpo.querySelector('[data-campo="' + nome + '"]'); }
+
+  // ── EXCLUIR: duas perguntas DIFERENTES (Levi, 07/09) ──
+  // A primeira mostra qual ocorrencia vai sumir; a segunda, que isso alcanca todo mundo. Ficam no
+  // painel, e nao num confirm() do navegador, para lerem com o mesmo peso do resto da tela.
+  function excluir() {
+    var box = document.getElementById("tk_confirma");
+    function passo(texto, botao, depois) {
+      box.hidden = false;
+      box.innerHTML = '<p>' + esc(texto).replace(/\n/g, "<br>") + "</p>"
+        + '<div class="os-acoes"><button type="button" class="os-btn secondary" data-c="nao">Cancelar</button>'
+        + '<button type="button" class="os-btn tk-excluir" data-c="sim">' + esc(botao) + "</button></div>";
+      box.querySelector('[data-c="nao"]').onclick = function () { box.hidden = true; box.innerHTML = ""; };
+      box.querySelector('[data-c="sim"]').onclick = depois;
+    }
+    passo(atual.confirma_1, "Sim, é esta", function () {
+      passo(atual.confirma_2, "Apagar mesmo", function () {
+        box.innerHTML = '<p class="os-ajuda">apagando…</p>';
+        fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + atual.row + "/excluir",
+          {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
+           body: JSON.stringify({impressao: atual.impressao})})
+          .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+          .then(function (x) {
+            box.hidden = true;
+            resultado(x.j.erro || x.j.mensagem, x.ok);
+            // relê do banco em vez de tirar a linha da memoria: os contadores e os grupos saem
+            // todos da lista, e ficariam um a mais para sempre (a mesma decisao do app)
+            if (x.ok) setTimeout(function () { location.reload(); }, 1200);
+          })
+          .catch(function (e) { box.hidden = true; resultado("Falhou: " + e, false); });
+      });
+    });
+  }
+
+  // ── VINCULAR OS ──
+  function procurarOS() {
+    var q = (document.getElementById("tk_vinc_q").value || "").replace(/\D/g, ""), res = document.getElementById("tk_vinc_res");
+    if (q.length < 2) { res.innerHTML = '<p class="os-ajuda">digite ao menos 2 números</p>'; return; }
+    res.innerHTML = '<p class="os-ajuda">procurando…</p>';
+    fetch("/os/api/tickets/buscar-os?q=" + encodeURIComponent(q), {credentials: "same-origin"})
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var l = j.resultados || [];
+        if (!l.length) { res.innerHTML = '<p class="os-ajuda">nenhuma OS com esse número</p>'; return; }
+        res.innerHTML = l.map(function (o) {
+          return '<button type="button" class="tk-vinc-op" data-folio="' + esc(o.folio) + '"><b>' + esc(o.folio) + "</b>"
+            + (o.descricao ? " · " + esc(o.descricao) : "") + '<span class="os-ajuda">'
+            + esc([o.responsavel, o.data].filter(Boolean).join(" · ")) + "</span></button>";
+        }).join("");
+        res.querySelectorAll(".tk-vinc-op").forEach(function (b) { b.onclick = function () { escolherOS(b.dataset.folio); }; });
+      })
+      .catch(function (e) { res.innerHTML = '<p class="os-erro">não consegui procurar: ' + esc(e) + "</p>"; });
+  }
+  function escolherOS(folio) {
+    var res = document.getElementById("tk_vinc_res");
+    res.innerHTML = '<p class="os-ajuda">lendo a OS ' + esc(folio) + "…</p>";
+    fetch("/os/api/tickets/os/" + encodeURIComponent(folio), {credentials: "same-origin"})
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.erro) { res.innerHTML = '<p class="os-erro">' + esc(j.erro) + "</p>"; return; }
+        var os_ = campoEl("OS"); if (os_) os_.value = j.folio;
+        // o Inicio do chamado = a CRIACAO da OS, e o Status padrao — so se estiverem VAZIOS
+        var ic = campoEl("Início do chamado pela Grid Co.");
+        if (ic && !ic.value && j.criada_input) ic.value = j.criada_input;
+        var st = campoEl("Status do ticket");
+        if (st && !st.value && j.status_ticket_padrao) st.value = j.status_ticket_padrao;
+        res.innerHTML = '<p class="tk-vinc-ok">OS ' + esc(j.folio) + " escolhida" + (j.status ? " (" + esc(j.status) + ")" : "")
+          + " — confira e clique em <b>Salvar</b>.</p>";
+      })
+      .catch(function (e) { res.innerHTML = '<p class="os-erro">não consegui ler a OS: ' + esc(e) + "</p>"; });
+  }
+
+  // ── TROCAR A USINA pelo cadastro do Fracttal ──
+  var USINAS = null;
+  function abrirUsinas() {
+    var box = document.getElementById("tk_usina_box");
+    box.hidden = false;
+    box.innerHTML = '<p class="os-ajuda">carregando o cadastro do Fracttal…</p>';
+    var pronto = USINAS ? Promise.resolve(USINAS) : fetch("/os/api/tickets/usinas", {credentials: "same-origin"})
+      .then(function (r) { return r.json(); }).then(function (j) { USINAS = j.usinas || []; return USINAS; });
+    pronto.then(function (us) {
+      box.innerHTML = '<div class="tk-usi"><input type="search" id="tk_usi_q" placeholder="procurar usina, cliente ou código">'
+        + '<div id="tk_usi_l" class="tk-usi-l"></div></div>';
+      var q = document.getElementById("tk_usi_q"), l = document.getElementById("tk_usi_l");
+      function pintar() {
+        var t = (q.value || "").toLowerCase(), grupo = "", html = "";
+        us.filter(function (u) { return !t || (u.cliente + " " + u.nome + " " + u.curto + " " + u.codigo).toLowerCase().indexOf(t) >= 0; })
+          .slice(0, 200).forEach(function (u) {
+            if (u.cliente !== grupo) { grupo = u.cliente; html += '<div class="tk-usi-cli">' + esc(grupo) + "</div>"; }
+            html += '<button type="button" class="tk-usi-op" data-curto="' + esc(u.curto) + '">' + esc(u.curto)
+              + ' <span class="os-ajuda">' + esc(u.codigo) + " · " + u.n + " ativos</span></button>";
+          });
+        l.innerHTML = html || '<p class="os-ajuda">nada com esse texto</p>';
+        l.querySelectorAll(".tk-usi-op").forEach(function (b) { b.onclick = function () { confirmarUsina(b.dataset.curto); }; });
+      }
+      q.addEventListener("input", pintar); pintar(); q.focus();
+    }).catch(function (e) { box.innerHTML = '<p class="os-erro">não consegui ler o cadastro: ' + esc(e) + "</p>"; });
+  }
+  function confirmarUsina(novo) {
+    var box = document.getElementById("tk_usina_box"), antigo = atual.usina;
+    if (novo === antigo) { box.hidden = true; return; }
+    box.innerHTML = '<p class="os-ajuda">contando as linhas com “' + esc(antigo) + "”…</p>";
+    fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/usina-escopo?antigo=" + encodeURIComponent(antigo) + "&novo=" + encodeURIComponent(novo), {credentials: "same-origin"})
+      .then(function (r) { return r.json(); })
+      .then(function (esc_) {
+        var n = (esc_.linhas || []).length;
+        // DIZER QUANTAS ANTES DE MEXER (steps/tickets.py): uma escolha de dois cliques que
+        // reescreve 147 linhas do banco tem de avisar antes, nao depois
+        box.innerHTML = '<div class="tk-confirma"><p>' + esc(esc_.pergunta).replace(/\n/g, "<br>") + "</p>"
+          + '<div class="os-acoes"><button type="button" class="os-btn secondary" data-c="nao">Cancelar</button>'
+          + '<button type="button" class="os-btn" data-c="sim">Trocar as ' + n + "</button></div></div>";
+        box.querySelector('[data-c="nao"]').onclick = function () { box.hidden = true; box.innerHTML = ""; resultado("nada alterado — a usina continua “" + antigo + "”", true); };
+        box.querySelector('[data-c="sim"]').onclick = function () { renomear(antigo, novo, esc_.linhas || [], esc_.lote || 20); };
+      })
+      .catch(function (e) { box.innerHTML = '<p class="os-erro">' + esc(e) + "</p>"; });
+  }
+  function renomear(antigo, novo, linhas, lote) {
+    var box = document.getElementById("tk_usina_box"), feitas = 0, falhas = [], i = 0;
+    function proximo() {
+      if (i >= linhas.length) {
+        box.hidden = true;
+        resultado(falhas.length
+          ? "Corrigi " + feitas + " de " + linhas.length + " — " + falhas.length + " não gravaram: " + falhas.slice(0, 3).map(function (f) { return "linha " + f.linha + " (" + f.erro + ")"; }).join("; ")
+          : feitas + " linha(s) trocadas de “" + antigo + "” para “" + novo + "”.", !falhas.length);
+        if (feitas) setTimeout(function () { location.reload(); }, 1600);
+        return;
+      }
+      var fatia = linhas.slice(i, i + lote); i += lote;
+      box.innerHTML = '<p class="os-ajuda">corrigindo… ' + Math.min(i, linhas.length) + " de " + linhas.length + "</p>";
+      fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/renomear-usina",
+        {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
+         body: JSON.stringify({antigo: antigo, novo: novo, linhas: fatia})})
+        .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+        .then(function (x) {
+          if (!x.ok) { falhas.push({linha: fatia[0], erro: x.j.erro || "recusado"}); i = linhas.length; }
+          else { feitas += (x.j.corrigidas || []).length; falhas = falhas.concat(x.j.falhas || []); }
+          proximo();
+        })
+        .catch(function (e) { falhas.push({linha: fatia[0], erro: String(e)}); i = linhas.length; proximo(); });
+    }
+    proximo();
+  }
+
+  function salvar() {
+    // `originais` = o que o painel MOSTROU ao abrir. E contra isto que se decide o que a pessoa
+    // mudou: comparar com o banco de agora trataria a edicao de outra pessoa como se fosse dela.
+    var valores = {}, originais = {};
+    corpo.querySelectorAll("[data-campo]").forEach(function (el) {
+      valores[el.dataset.campo] = el.value;
+      originais[el.dataset.campo] = el.dataset.original || "";
+    });
+    var b = document.getElementById("tk_salvar"), res = document.getElementById("tk_res");
+    b.disabled = true; b.textContent = "gravando…";
+    fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + atual.row + "/salvar",
+      {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
+       body: JSON.stringify({valores: valores, originais: originais})})
+      .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (x) {
+        b.disabled = false; b.textContent = "Salvar";
+        res.hidden = false;
+        res.className = "os-resultado" + (x.ok ? "" : " ruim");
+        res.textContent = (x.j.erro || x.j.mensagem || "") + (x.j.aviso ? "\n" + x.j.aviso : "");
+        if (x.ok) setTimeout(function () { location.reload(); }, 1600);
+      })
+      .catch(function (e) { b.disabled = false; b.textContent = "Salvar"; res.hidden = false; res.className = "os-resultado ruim"; res.textContent = "Falhou: " + e; });
+  }
+
+  function abrir(row, tr) {
+    document.querySelectorAll("tr.tk-l").forEach(function (t) { t.classList.remove("on"); });
+    if (tr) tr.classList.add("on");
+    corpo.innerHTML = '<p class="os-ajuda">Relendo a ocorrência…</p>'; mostrar(true);
+    fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + row, {credentials: "same-origin"})
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j.erro) { corpo.innerHTML = '<p class="os-erro">' + esc(j.erro) + "</p>"; return; } desenhar(j); })
+      .catch(function (e) { corpo.innerHTML = '<p class="os-erro">Não consegui carregar: ' + esc(e) + "</p>"; });
+  }
+
+  document.querySelectorAll("tr.tk-l").forEach(function (tr) {
+    tr.addEventListener("click", function (ev) {
+      if (ev.target.closest("a.tk-os")) return;          // o link da OS abre a OS, nao o painel
+      ev.preventDefault(); abrir(tr.dataset.row, tr);
+    });
+  });
+
+  // drill-down: o cabecalho da usina abre e fecha as linhas dela
+  function alternar(tr) {
+    var g = tr.dataset.g, abrindo = tr.getAttribute("aria-expanded") !== "true";
+    tr.setAttribute("aria-expanded", abrindo ? "true" : "false");
+    tr.classList.toggle("on", abrindo);
+    document.querySelectorAll('tr.tk-f[data-g="' + g + '"]').forEach(function (l) { l.hidden = !abrindo || l.dataset.filtro === "0"; });
+  }
+  document.querySelectorAll("tr.tk-g").forEach(function (tr) {
+    tr.addEventListener("click", function () { alternar(tr); });
+    // teclado: a linha e um botao (role=button), entao Enter e Espaco tem de funcionar nela
+    tr.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); alternar(tr); }
+    });
+  });
+  // ── FILTRO DE STATUS NO NAVEGADOR (Levi, 22/09) ──
+  // O clique no contador filtra na hora, sem recarregar. As linhas de todos os status ja estao
+  // na pagina; o filtro esconde as outras e RECONTA cada grupo — senao o cabecalho da usina
+  // diria 40 equipamentos parados com 3 linhas visiveis embaixo dele.
+  var estadoAtual = {{ estado|tojson }};
+  function aplicarEstado(est) {
+    estadoAtual = est || "";
+    document.querySelectorAll(".tk-filtro").forEach(function (c) { c.classList.toggle("on", (c.dataset.estado || "") === estadoAtual); });
+    var nUsinas = 0, nOcs = 0, nQtd = 0;
+    document.querySelectorAll("tr.tk-g").forEach(function (g) {
+      var linhas = document.querySelectorAll('tr.tk-f[data-g="' + g.dataset.g + '"]');
+      var n = 0, ab = 0, qtd = 0, aberto = g.getAttribute("aria-expanded") === "true";
+      linhas.forEach(function (l) {
+        var bate = !estadoAtual || l.dataset.estado === estadoAtual;
+        l.dataset.filtro = bate ? "1" : "0";
+        l.hidden = !(bate && aberto);
+        if (!bate) return;
+        n++;
+        if (l.dataset.estado !== "encerrada") { ab++; qtd += Number(l.dataset.qtd) || 0; }
+      });
+      g.hidden = n === 0;
+      g.querySelector(".tk-g-n").textContent = n;
+      g.querySelector(".tk-g-ab").textContent = ab;
+      g.querySelector(".tk-g-qtd-n").textContent = qtd;
+      g.querySelector(".tk-g-qtd").hidden = qtd === 0;
+      if (n) { nUsinas++; nOcs += n; nQtd += qtd; }
+    });
+    document.getElementById("tk_n_usinas").textContent = nUsinas;
+    document.getElementById("tk_n_ocs").textContent = nOcs;
+    document.getElementById("tk_n_qtd").textContent = nQtd;
+    // a URL acompanha, para o F5 e o "copiar link" manterem o filtro — sem criar uma entrada
+    // nova no historico a cada clique
+    try {
+      var u = new URL(location.href);
+      if (estadoAtual) u.searchParams.set("estado", estadoAtual); else u.searchParams.delete("estado");
+      history.replaceState(null, "", u.toString());
+    } catch (e) { /* sem URL API: o filtro funciona igual, so nao vai para o endereco */ }
+  }
+  document.querySelectorAll(".tk-filtro").forEach(function (c) {
+    c.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      // clicar no filtro que ja esta ligado volta para "Todas"
+      aplicarEstado(c.classList.contains("on") && c.dataset.estado ? "" : c.dataset.estado);
+    });
+  });
+
+  // com UMA usina so na tela, deixar fechada seria um clique a toa
+  aplicarEstado(estadoAtual);
+  var gs = [].filter.call(document.querySelectorAll("tr.tk-g"), function (g) { return !g.hidden; });
+  if (gs.length === 1) alternar(gs[0]);
+  document.getElementById("p_x").addEventListener("click", function () { mostrar(false); });
+})();
+</script>
+{% endblock %}

@@ -6,6 +6,7 @@
    Card 3 Nome da OS + resumo do plano, Card 4 Responsável e datas, botão Criar #}
 <section class="os-pagina" id="perf" data-frase="{{ plano.frase }}" data-titulo="{{ plano.titulo }}"
          data-tem-modos="{{ 1 if tem_modos else 0 }}" data-tracker="{{ 1 if eh_tracker else 0 }}"
+         data-aba-ticket="{{ aba_ticket }}"
          data-sug-usina="{{ sugestao.usina }}" data-sug-ativo="{{ sugestao.ativo }}" data-sug-obs="{{ sugestao.obs }}"
          data-sug-ospai="{{ sugestao.os_pai }}" data-sug-resp="{{ sugestao.resp }}" data-sug-modo="{{ sugestao.modo }}">
   <div class="os-topo-linha">
@@ -23,9 +24,13 @@
   <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">1</span><span class="os-cardf-t">Ativo</span></div>
     <div class="os-linha2">
       <label class="os-campo"><span class="os-lbl">Cliente <i>*</i></span>
-        <select id="cb_cli"><option value="">— Selecione o cliente —</option>{% for c in clientes %}<option>{{ c }}</option>{% endfor %}</select></label>
+        {# `value` EXPLICITO nos dois: sem ele o navegador devolve o texto com o espaco
+           COLAPSADO, e "Athon -  Timon 1 - MA" (dois espacos, o nome real no Fracttal)
+           chegava ao servidor com um so. A usina nao casava e a tela dizia "sem ativos"
+           numa usina de 70 inversores (Levi, 22/09). Sao 4 das 142 usinas. #}
+        <select id="cb_cli"><option value="">— Selecione o cliente —</option>{% for c in clientes %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></label>
       <label class="os-campo"><span class="os-lbl">Usina <i>*</i></span>
-        <select id="cb_usi"><option value="">— Selecione a usina —</option>{% for u in usinas %}<option>{{ u }}</option>{% endfor %}</select></label>
+        <select id="cb_usi"><option value="">— Selecione a usina —</option>{% for u in usinas %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select></label>
     </div>
     <label class="os-campo" id="w_filtro"><span class="os-lbl">Filtrar <small>(opcional)</small></span>
       <input id="busca" type="search" placeholder="Filtrar ativo por código ou nome…"></label>
@@ -63,6 +68,12 @@
       <label class="os-campo"><span class="os-lbl">Programada para</span><input id="dt_exec" type="datetime-local" value="{{ programada }}"></label>
     </div>
     <div class="os-rodape">
+      {# MARCADA por padrão, como no app: a ocorrência é a razão de a tela existir para trackers e
+         strings. Desmarcar é a exceção, e ela é dita em voz alta na confirmação. #}
+      {% if aba_ticket %}
+      <label class="os-tk"><input type="checkbox" id="ck_ticket" checked>
+        <span>Gerar ticket automaticamente <small>— uma ocorrência por OS na aba {{ aba_ticket }}</small></span></label>
+      {% endif %}
       <span class="os-ajuda" id="hint_criar"></span>
       <span class="os-cresce"></span>
       <button type="button" class="os-btn primaria" id="btn_criar">Criar OS</button>
@@ -70,5 +81,25 @@
     <div class="os-resultado" id="resultado" hidden></div>
   </div>
 </section>
+{# A janela de imagens de UM ativo — a mesma do Tradicional e do app (PerfAnexoDialog): adicionar
+   arquivo, colar captura com Ctrl+V, miniaturas com o nome editável e remover. #}
+<div class="os-modal" id="modal_img" hidden>
+  <div class="os-modal-fundo" data-fechar-img></div>
+  <div class="os-modal-card os-form trad-modal trad-modal-img" role="dialog" aria-modal="true" aria-label="Imagens">
+    <div class="trad-modal-corpo">
+      <p class="trad-txt" id="img_titulo">Anexar imagens à OS de <b>ativo</b></p>
+      <p class="os-ajuda trad-txt">Adicione arquivos ou cole uma captura de tela com <b>Ctrl+V</b>. O nome é o do anexo no Fracttal — dá para trocar clicando nele.</p>
+      <div class="trad-img-btns">
+        <button type="button" class="os-btn secondary" id="b_img_add">Adicionar arquivo…</button>
+        <button type="button" class="os-btn secondary" id="b_img_paste">Colar (Ctrl+V)</button>
+        <input type="file" id="img_file" accept="image/*" multiple hidden>
+      </div>
+      <div class="trad-img-grid" id="img_grid"></div>
+      <div class="os-ajuda" id="img_vazio">Nenhuma imagem ainda.</div>
+      <p class="os-erro" id="img_erro" hidden></p>
+      <div class="os-rodape"><span class="os-cresce"></span><button type="button" class="os-btn primaria" data-fechar-img>Concluir</button></div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}<script src="/os/static/perf.js"></script>{% endblock %}

@@ -1,0 +1,108 @@
+/* os_creator/os_web/static/os_acoes.css — as AÇÕES do card da OS: o que os QDialogs do app desenham (steps/os_detalhe.py
+   _EXTRA_QSS e _ConcluirDialog, cancelar_os.py, os_fluxo.py, galeria.py, documentos.py), em CSS. Só variáveis do os.css;
+   os hex fixos são os do QSS do app, anotados na linha (não há cor nova). Prefixo .acoes- para o que o os.css não tem. */
+.det [hidden]{display:none!important}          /* .det-b é inline-flex: sem isto o [hidden] do navegador perde para a classe */
+/* controles do card, agora vivos: o cursor 'not-allowed' do os.css era do tempo em que só o app instalado fazia isto */
+.det-mini:not(:disabled){cursor:pointer;color:var(--f-muted);border-color:rgba(255,255,255,.14);border-radius:7px;padding:2px 10px;font-size:11.5px;font-weight:400}
+.det-mini:not(:disabled):hover{border-color:var(--f-green);color:var(--f-green)}                   /* botão 'trocar' do app */
+.det-link:not(:disabled){cursor:pointer}.det-link:not(:disabled):hover{text-decoration:underline}
+.det-ghost:not(:disabled){cursor:pointer}.det-ghost:not(:disabled):hover{border-color:#43547a;color:#fff}   /* pGhost:hover */
+.det-ghost:disabled{color:#6a7488;border-color:var(--f-border)}                                      /* pDone:disabled */
+.det-b.verde:hover{background:#b6ee43}                                                                /* pClone:hover */
+.det-b.ok:not(:disabled):hover{background:var(--f-green);color:var(--f-ink);border-color:var(--f-green)}   /* pDone:hover */
+.det-b.perigo:not(:disabled):hover{background:#f5766b;color:#fff;border-color:#f5766b}                /* pDanger:hover */
+.det-b.ambar:hover{background:#e0a63a;color:var(--f-ink);border-color:#e0a63a}                        /* pChamado:hover */
+.det-b:disabled{opacity:.7}
+.det-anexo[data-acao]{cursor:pointer}
+.det-anexo.v[data-acao]:hover{border-color:var(--f-green)}.det-anexo.a[data-acao]:hover{border-color:#57B6F5}   /* _AnexoCard:hover */
+.acoes-msg{margin-bottom:-2px}
+.acoes-mini{min-height:32px;padding:0 12px;font-size:12.5px}
+/* editor da observação (QTextEdit#readbox): a mesma caixa da leitura, editável */
+.acoes-ta{width:100%;min-height:110px;resize:vertical;background:var(--f-input);border:1px solid var(--f-border);border-radius:12px;padding:12px 14px;color:#c4cbdb;font:inherit;font-size:14px;margin-top:-6px}
+.acoes-ta:focus{outline:none;border-color:var(--f-green)}
+.acoes-ta.curta{min-height:64px;margin-top:0}
+/* ── overlay + caixa (QDialog com QSS_FORM). z 80: acima do card do Histórico (.os-modal, z 60) ── */
+.acoes-fundo{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(4,7,14,.68)}
+.acoes-dlg{position:relative;display:flex;flex-direction:column;gap:10px;width:min(480px,96vw);max-height:92vh;overflow-y:auto;overflow-x:hidden;padding:16px;background:var(--f-bg);border:1px solid var(--f-border);border-radius:14px;box-shadow:0 26px 70px rgba(0,0,0,.55);color:#fff;font-size:13px}
+.acoes-t{font-size:15px;font-weight:600;color:#fff}.acoes-t.grande{font-size:21px;font-weight:800}
+.acoes-s{font-size:12px;color:var(--f-muted)}.acoes-s b{color:#fff}
+.acoes-hint{color:var(--f-muted);font-size:12px;min-height:16px;white-space:pre-wrap}.acoes-hint.i{font-style:italic}.acoes-hint.centro{text-align:center}
+.acoes-bts{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}.acoes-bts .det-b{min-height:40px}
+.acoes-dlg select,.acoes-dlg input[type=search]{width:100%}
+.acoes-dlg .os-campo{gap:6px}
+.acoes-cab2{display:flex;align-items:flex-start;gap:14px}
+.acoes-sep{height:1px;background:var(--f-border)}
+/* etiquetas (_EtiquetasDialog 380x420) */
+.acoes-dlg-etiquetas{width:min(420px,96vw);min-height:420px}
+.acoes-busca{display:flex;align-items:center;gap:8px;background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;height:40px;padding:0 10px}
+.acoes-busca input{background:transparent!important;border:none!important;height:36px!important;flex:1;color:#fff;outline:none;padding:0!important}
+.acoes-lista{flex:1;min-height:200px;max-height:48vh;overflow:auto;background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;padding:6px}
+.acoes-etq{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;cursor:pointer;color:#e6e8ef}.acoes-etq:hover{background:var(--f-card)}
+.acoes-etq input[type=checkbox]{width:16px;height:16px;accent-color:var(--f-green);flex:none}
+.acoes-etq i{width:12px;height:12px;border-radius:6px;flex:none}
+/* concluir (_ConcluirDialog 480) */
+.acoes-dlg-concluir{width:min(500px,96vw);padding:22px 24px 18px}
+.acoes-cab{display:flex;gap:14px;align-items:flex-start}
+.acoes-tile{width:46px;height:46px;border-radius:13px;background:rgba(166,226,46,.14);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.acoes-dlg-concluir .acoes-t{font-size:18.5px;font-weight:700}.acoes-dlg-concluir .acoes-s{font-size:13.5px;margin-top:3px}
+.acoes-pbox{background:var(--f-input);border:1px solid var(--f-border);border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.acoes-prow{display:flex;align-items:center;justify-content:space-between;color:var(--f-muted);font-size:12.5px}
+.acoes-prow b{font-size:20px;font-weight:800;color:var(--f-green)}.acoes-prow b.parcial{color:#eb8b57}       /* cor_pct */
+.acoes-bar{height:7px;border-radius:4px;background:var(--f-bg);overflow:hidden}.acoes-bar div{height:100%;border-radius:4px;background:var(--f-green)}.acoes-bar.parcial div{background:#eb8b57}
+.acoes-pc{color:var(--f-muted);font-size:12px}
+.acoes-warn,.acoes-dt{display:flex;gap:11px;align-items:flex-start;border-radius:11px;padding:12px 14px 12px 13px;font-size:13.5px}
+.acoes-warn{background:rgba(240,138,93,.10);border:1px solid rgba(240,138,93,.35);color:#e9b89e}               /* warnBox */
+.acoes-dt{background:rgba(224,84,84,.11);border:1px solid rgba(224,84,84,.42);color:#f0b4b4}                    /* dtBox */
+.acoes-warn p,.acoes-dt p{margin:0}.acoes-warn svg,.acoes-dt svg{flex:none}.acoes-warn b,.acoes-dt b{color:inherit}
+/* QUAIS subtarefas ficam pendentes ao concluir (Levi, 21/09) — o numero nao dizia o que falta */
+.acoes-pend{margin-top:9px;border-radius:11px;padding:11px 14px;font-size:13px;
+  background:rgba(240,138,93,.06);border:1px solid rgba(240,138,93,.22);color:#d8c0b2}
+.acoes-pend-t{font-weight:700;margin-bottom:5px;color:#e9b89e}
+.acoes-pend ul{margin:0;padding-left:18px}
+.acoes-pend li{margin:2px 0;line-height:1.35}
+.acoes-pend-k{opacity:.65;font-size:11.5px}
+.acoes-pend-m{margin-top:5px;opacity:.75;font-size:12px}
+/* cancelar (CancelarOSDialog 440) */
+.acoes-dlg-cancelar{width:min(460px,96vw)}
+/* fluxo (FluxoDialog 1060x330): nós de 226x132 e seta de 96, centralizados; mais que 3 nós rola na horizontal */
+.acoes-dlg-fluxo{width:min(1060px,96vw);padding:18px 24px 16px}
+.acoes-fluxo-corpo{display:flex;flex-direction:column;gap:16px;min-height:150px}
+.acoes-cadeia{display:flex;align-items:center;overflow-x:auto;padding:8px 0;min-height:150px}
+.acoes-cadeia>:first-child{margin-left:auto}.acoes-cadeia>:last-child{margin-right:auto}
+.acoes-no{display:flex;flex-direction:column;gap:5px;width:226px;height:132px;flex:none;padding:12px 15px;background:var(--f-card);border:1px solid var(--f-border);border-radius:14px;text-decoration:none;color:#fff;cursor:pointer}
+.acoes-no.atual{border:3px solid var(--f-green)}
+.acoes-no-topo{display:flex;align-items:center;gap:8px}.acoes-no-topo b{font-size:23px;font-weight:800}
+.acoes-atual{margin-left:auto;background:rgba(166,226,46,.15);color:var(--f-green);border-radius:7px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.6px}
+.acoes-no-tipo{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acoes-no-desc{font-size:11px;color:var(--f-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acoes-no-base{margin-top:auto;display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700}
+.acoes-no-base i{width:8px;height:8px;border-radius:4px;flex:none}.acoes-no-base small{margin-left:auto;color:var(--f-muted);font-size:11px;font-weight:400}
+.acoes-seta{position:relative;width:96px;height:132px;flex:none}
+.acoes-seta::before{content:"";position:absolute;left:4px;right:18px;top:66px;border-top:2px solid var(--f-border)}
+.acoes-seta::after{content:"";position:absolute;right:17px;top:61px;width:10px;height:10px;border-top:2px solid var(--f-green);border-right:2px solid var(--f-green);transform:rotate(45deg)}
+.acoes-seta span{position:absolute;left:0;right:0;top:38px;text-align:center;font-size:10px;font-weight:700;color:var(--f-muted)}
+/* anexos (GaleriaDialog: grade de miniaturas 273x205; DocumentosDialog: linha com tag da extensão, Abrir e Baixar) */
+.acoes-dlg-anexos{width:min(980px,96vw)}
+.acoes-anx-corpo{display:flex;flex-direction:column;gap:12px}
+.acoes-fotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.acoes-foto{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
+.acoes-foto figcaption{color:var(--f-muted);font-size:11.5px;min-height:30px;overflow:hidden}
+.acoes-foto .img{display:block;height:165px;border-radius:10px;overflow:hidden;background:var(--f-input);border:1px solid var(--f-border)}
+.acoes-foto img{width:100%;height:100%;object-fit:cover;display:block}
+.acoes-foto .img:hover{border-color:var(--f-green)}
+.acoes-nota{background:rgba(166,226,46,.05);border:1px solid rgba(166,226,46,.28);border-radius:10px;padding:0 12px;color:#c4cbdb}   /* célula de nota da galeria */
+.acoes-nota summary{padding:11px 0;cursor:pointer;font-size:11.5px;list-style:none}.acoes-nota summary::-webkit-details-marker{display:none}
+.acoes-nota[open]{border-color:rgba(166,226,46,.6)}.acoes-nota pre{white-space:pre-wrap;font:inherit;margin:0 0 12px;color:#e6eaf2}
+.acoes-docs{display:flex;flex-direction:column;gap:8px}
+.acoes-doc{display:flex;align-items:center;gap:11px;background:var(--f-card);border:1px solid var(--f-border);border-radius:10px;padding:10px 13px}   /* docRow */
+.acoes-ext{width:46px;text-align:center;background:rgba(166,226,46,.12);color:#a3d900;border-radius:6px;padding:3px 0;font-size:10.5px;font-weight:700;flex:none}
+.acoes-doc-t{flex:1;min-width:0;font-size:12.5px;overflow-wrap:anywhere}.acoes-doc-t small{display:block;color:var(--f-muted);font-size:11px}
+.acoes-baixar{color:var(--f-green);font-size:11.5px;text-decoration:none;align-self:flex-end}.acoes-baixar:hover{text-decoration:underline}
+
+/* ── Fazer a tarefa (Levi, 21/09) ─────────────────────────────────────────────────────────── */
+.acoes-pend-fazer{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.acoes-exec{display:flex;flex-direction:column;gap:9px;max-height:46vh;overflow-y:auto;overflow-x:hidden;padding:2px 2px 6px}
+.acoes-exec-c .os-lbl{text-transform:none;letter-spacing:0;font-size:12.5px;color:#c9cfe0;font-weight:500}
+.acoes-exec-reg{border-top:1px solid var(--f-border,#2a3550);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.acoes-exec-dt{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:520px){.acoes-exec-dt{grid-template-columns:1fr}}

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block titulo %}Painel de tickets{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/tickets_painel.css">{% endblock %}
+{# O painel de acompanhamento dos tickets (Levi, 22/09/2026: item 11). Porte do mockup aprovado,
+   docs/design/dashboard-tickets-mockup.html. As DUAS abas vêm prontas do servidor, calculadas pelo
+   mesmo leitor da tela de Tickets; a troca Trackers/Strings é só redesenho, sem ida ao servidor.
+   Tudo que é número leva à tela de Tickets com o filtro correspondente: o painel aponta, a lista
+   resolve. #}
+{% block conteudo %}
+<section class="os-pagina tp">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" id="tp_voltar" href="/os/tickets?aba={{ aba }}">← Tickets</a>
+    <div class="tp-tit"><h1>Acompanhamento de tickets</h1><div class="tp-sub" id="tp_sub">—</div></div>
+    <span class="os-cresce"></span>
+    <div class="os-seg os-subnav" role="group" aria-label="Aba">
+      {% for a in abas_tk %}<a class="{% if a == aba %}on{% endif %}" data-aba="{{ a }}" href="/os/tickets/painel?aba={{ a }}">{{ a }}</a>{% endfor %}
+    </div>
+  </div>
+
+  <p class="tp-erro" id="tp_erro" hidden></p>
+
+  <div class="tp-grade" id="tp_corpo">
+    <div class="tp-kpis">
+      <div class="tp-card tp-hero"><div class="tp-v" id="k_qtd">—</div><div class="tp-l" id="k_qtd_l">—</div></div>
+      <a class="tp-card tp-tile" id="k_30_a" href="#" title="Abrir na tela de Tickets só as abertas há mais de 30 dias">
+        <div class="tp-l">Abertas há mais de 30 dias</div><div class="tp-v" id="k_30">—</div><div class="tp-d" id="k_30_d">—</div></a>
+      <div class="tp-card tp-tile"><div class="tp-l">Idade mediana das abertas</div><div class="tp-v" id="k_med">—</div><div class="tp-d" id="k_med_d">—</div></div>
+      <div class="tp-card tp-tile"><div class="tp-l">Fechadas nos últimos 30 dias</div><div class="tp-v" id="k_fech">—</div><div class="tp-d">pela data de fim</div></div>
+      <a class="tp-card tp-tile" id="k_semos_a" href="#" title="Abrir na tela de Tickets as abertas sem OS">
+        <div class="tp-l">Abertas sem OS vinculada</div><div class="tp-v" id="k_semos">—</div><div class="tp-d" id="k_semos_d">—</div></a>
+    </div>
+
+    <div class="tp-alerta" id="tp_alerta" hidden>
+      <div class="tp-ic" aria-hidden="true">!</div>
+      <div><b id="tp_alerta_t">—</b><p id="tp_alerta_p">—</p></div>
+    </div>
+
+    <div class="tp-grade tp-g2">
+      <div class="tp-card">
+        <h2>Fluxo semanal — abertas × fechadas</h2>
+        <div class="tp-h2s">ocorrências por semana, pela data de início e pela data de fim · 12 semanas até hoje</div>
+        <div class="tp-leg"><span><i style="background:var(--tp-s1)"></i>abertas</span><span><i style="background:var(--tp-s2)"></i>fechadas</span></div>
+        <svg id="g_fluxo" viewBox="0 0 560 230" width="100%" role="img" aria-label="Fluxo semanal de ocorrências abertas e fechadas"></svg>
+        <details class="tp-numeros"><summary>ver os números</summary><div class="tp-rola"><table id="t_fluxo"></table></div></details>
+      </div>
+      <div class="tp-card">
+        <h2>Há quanto tempo estão abertas</h2>
+        <div class="tp-h2s">ocorrências abertas por idade</div>
+        <div class="tp-leg"><span><i style="background:var(--tp-s1)"></i>até 30 dias</span><span><i style="background:var(--tp-crit)"></i>acima de 30 dias — o alarme da tela de Tickets</span></div>
+        <svg id="g_idade" viewBox="0 0 560 230" width="100%" role="img" aria-label="Ocorrências abertas por faixa de idade"></svg>
+        <details class="tp-numeros"><summary>ver os números</summary><div class="tp-rola"><table id="t_idade"></table></div></details>
+      </div>
+    </div>
+
+    <div class="tp-grade tp-g2">
+      <div class="tp-card">
+        <h2 id="cli_t">Equipamento parado por cliente</h2>
+        <div class="tp-h2s">nas ocorrências abertas · a barra cinza é quem não tem cliente preenchido na planilha · clique para abrir na tela de Tickets</div>
+        <svg id="g_cli" viewBox="0 0 560 230" width="100%" role="img" aria-label="Equipamento parado por cliente"></svg>
+      </div>
+      <div class="tp-card">
+        <h2>Em que pé estão</h2>
+        <div class="tp-h2s">todas as ocorrências da aba, pelo ciclo de vida</div>
+        <div class="tp-ciclo" id="tp_ciclo"></div>
+        <h2 style="margin-top:16px">Qualidade do dado</h2>
+        <div class="tp-h2s">o que impede o painel de contar certo — e se resolve na planilha</div>
+        <ul class="tp-qual" id="tp_qual"></ul>
+      </div>
+    </div>
+
+    <div class="tp-card">
+      <h2 id="top_t">As 10 usinas com mais equipamento parado</h2>
+      <div class="tp-h2s">clique na usina para abrir as ocorrências dela na tela de Tickets</div>
+      <div class="tp-rola"><table><thead><tr><th>#</th><th>Usina</th><th>Cliente</th><th id="top_q">Parados</th><th class="tp-num">Abertas</th></tr></thead><tbody id="tp_top"></tbody></table></div>
+    </div>
+  </div>
+  <div id="tp_tip" role="tooltip"></div>
+</section>
+<script type="application/json" id="tp_dados">{{ {"dados": dados, "estados": estados_def, "aba": aba, "lido": lido, "sem_cliente": sem_cliente}|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/os/static/tickets_painel.js"></script>{% endblock %}

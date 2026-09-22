@@ -58,6 +58,9 @@ def criar_app(segredo: str | None = None, testing: bool = False) -> Flask:
     app.jinja_env.filters["iniciais"] = lancador.iniciais
     app.jinja_env.globals.update(icone=lancador.icone, abas=lancador.ABAS)
     app.register_blueprint(bp)
+    from . import blueprints as _bps                     # as telas portadas em 13/09: um rotas_<tela>.py cada, registro automático
+    for _b in _bps.TODOS():
+        app.register_blueprint(_b)
 
     @app.before_request
     def _abrir_sessao():

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block titulo %}Histórico de solicitações{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{# `steps/historico_solic.py` na web: TUDO, inclusive as devolvidas para refazer, que o painel
+   esconde de propósito. É a única tela onde elas aparecem — some-las em todo lugar seria perder
+   sessenta pedidos de vista. Sem paginação e sem recarga viva: uma tabela e uma busca. #}
+{% block conteudo %}
+<section class="os-pagina">
+  <nav class="os-seg os-subnav" aria-label="Solicitação / PCM">
+    <a href="/os/solicitacao">Nova solicitação</a>
+    <a href="/os/solicitacao/fila">Fila do PCM</a>
+    <a class="on" href="/os/solicitacao/historico">Histórico</a>
+  </nav>
+
+  <form class="os-hist-topo" method="get" action="/os/solicitacao/historico">
+    <div class="os-hist-dir">
+      <label class="os-hist-buscar"><span class="os-lbl">Buscar</span>
+        <input type="search" name="busca" value="{{ busca }}" placeholder="nº, usina, ativo, status, OS…"></label>
+      <button type="submit" class="os-btn secondary">Filtrar</button>
+    </div>
+  </form>
+
+  <div class="os-hist-hint">{{ itens|length }} solicitação(ões){% if busca %} com “{{ busca }}”{% endif %}.</div>
+  <div class="os-tbl-wrap">
+    <table class="os-tbl os-hist">
+      <thead><tr><th class="k-folio">Nº</th><th class="k-cliente">Cliente</th><th class="k-usina">Usina</th>
+        <th>Ativo</th><th>Título</th><th class="k-etiqueta">Tema</th><th class="k-status">Status</th>
+        <th class="k-folio">OS</th><th>Quem pediu</th><th class="c-data">Data</th></tr></thead>
+      <tbody>
+      {% for s in itens %}
+      <tr>
+        <td class="k-folio">{{ s.id_code }}</td>
+        <td class="k-cliente">{{ s.cliente }}</td><td class="k-usina">{{ s.usina }}</td>
+        <td>{{ s._ativo }}</td><td class="c-desc" title="{{ s.descricao_full }}">{{ s.descricao }}</td>
+        <td class="k-etiqueta">{{ s._tema_nome or '—' }}</td>
+        <td class="k-status"><span class="os-status" {% if s.cor_status %}style="color:{{ s.cor_status }};background:{{ s.cor_status }}29;border-color:{{ s.cor_status }}6b"{% endif %}>{{ s.status }}</span></td>
+        <td class="k-folio">{% if s.id_work_order %}<a class="os-link" href="/os/os/{{ s.id_work_order }}">{{ s.os_folio }}</a>{% else %}—{% endif %}</td>
+        <td>{{ s.criado_por or '—' }}</td>
+        <td class="c-data">{{ fmt(s.data) if s.data else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr class="vazio"><td colspan="10">Nenhuma solicitação{% if busca %} com esse texto{% endif %}.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

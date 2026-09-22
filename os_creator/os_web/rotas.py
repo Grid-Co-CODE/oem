@@ -9,7 +9,6 @@ from urllib.parse import quote
 from flask import (Blueprint, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for)
 
 import api
-import secrets
 
 from . import lancador, oauth_fracttal, perf_web, sessao, sso
 
@@ -72,9 +71,10 @@ def _conta() -> dict:
 
 
 # ── porta ─────────────────────────────────────────────────────────────────────
-def _tela_login(erro=None, email="", prox="", aviso=None, sso_aberto=False, status=200, auto=False):
-    return render_template("login.html", erro=erro, email=email, next=prox, aviso=aviso, sso_aberto=sso_aberto,
-                           bookmarklet=sso.bookmarklet_href(), auto=auto), status
+def _tela_login(erro=None, email="", prox="", aviso=None, sso_aberto=False, status=200):
+    # `sso_aberto` sobrevive porque as rotas do OAuth ainda o passam ao devolver erro; a tela
+    # simplesmente nao o usa mais desde que o login virou so e-mail e senha (Levi, 21/09).
+    return render_template("login.html", erro=erro, email=email, next=prox, aviso=aviso), status
 
 
 def _abrir_sessao(jwt: str, email: str, prox: str, conta: dict | None = None):
@@ -116,9 +116,10 @@ def login():
         if not jwt:
             return _tela_login(erro="Login sem token de sessão. Tente de novo.", email=email, prox=prox, status=401)
         return _abrir_sessao(jwt, email, prox)
-    # abre direto na tela do Fracttal (Levi, 13/09): sem erro/aviso, sem ?manual=1, e com OAuth configurado
-    auto = not aviso and not request.args.get("manual") and bool(api.CLIENT_ID and api.CLIENT_SECRET)
-    return _tela_login(prox=prox, aviso=aviso, auto=auto)
+    # A tela abre no FORMULARIO. Ate 21/09 ela redirecionava sozinha para a tela do Fracttal
+    # (Levi, 13/09) e o formulario so aparecia com ?manual=1 — agora e o contrario: o caminho
+    # unico e e-mail e senha, e o OAuth ficou sem porta de entrada.
+    return _tela_login(prox=prox, aviso=aviso)
 
 
 @bp.route("/login/fracttal")
@@ -250,6 +251,18 @@ def performance_criar():
                            programada=(dt.datetime.now(perf_web.BRT) + dt.timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M"))
 
 
+@bp.route("/api/performance/qtd")
+@exige_sessao
+def api_qtd_ticket():
+    """Quantas ocorrências a observação daquele ativo vale, pela regra do app.
+
+    A tela pergunta em vez de contar: a regra ("PV"/"STR"/"String", cada uma uma vez) foi medida
+    no corpus e vive em `tickets_nasce.contar_strings`. Portá-la para o JavaScript criaria uma
+    segunda verdade, e a primeira divergência apareceria numa planilha de produção."""
+    return jsonify(perf_web.qtd_sugerida(request.args.get("frase") or "",
+                                         request.args.get("texto") or ""))
+
+
 @bp.route("/api/performance/usinas")
 @exige_sessao
 def api_usinas():
@@ -330,7 +343,9 @@ def api_performance_criar():
         if cheio:
             it["asset"] = cheio
     res = api.create_performance_os(itens, **kwargs)
-    return jsonify(perf_web.mensagem_resultado(res))
+    # a frase e a caixa vao junto: e delas que sai o "N tickets criados na aba X" (e o "sem ticket")
+    return jsonify(perf_web.mensagem_resultado(res, corpo.get("frase") or "",
+                                               bool(corpo.get("gerar_ticket", True))))
 
 
 # ── Históricos de OS ──────────────────────────────────────────────────────────

@@ -24,9 +24,16 @@
         <button type="button" data-modo="cos" class="{% if modo == 'cos' %}on{% endif %}" title="Corretivas, emergenciais e religamentos — com programação, equipe e gatilho, como no Power BI">Visão COS</button>
       </div>
       <label class="os-busca-os" title="Digite o número da OS e tecle Enter — abre a OS direto, mesmo fora do período e dos filtros">{{ icone('search', '#A6E22E', 15) }}<input type="text" id="busca_os" placeholder="Buscar OS pelo nº — direto, ignora filtros" inputmode="numeric"></label>
-      <label class="os-cell os-cresce" style="max-width:260px"><span class="os-lbl">Buscar</span><input type="search" name="busca" id="busca_no" value="{{ busca }}" placeholder="nº, ativo, descrição, status…" title="Filtra as OS do período por nº, cliente, usina, ativo, descrição, status, tipo de tarefa e etiqueta  [Ctrl+F]"></label>
-      <button type="button" class="os-btn secondary" id="b_limpar" title="Limpa Cliente/Usina/Status/Tipos, a busca e a Etiqueta">Limpar filtros</button>
-      <button type="submit" class="os-btn">Atualizar</button>
+      {# a partir daqui tudo vai para a DIREITA: é o `row.addStretch(1)` do app, que separa o que
+         BUSCA (esquerda) do que age sobre o que já está na tela (direita). Sem ele os oito
+         controles ficavam encostados num canto só. #}
+      <div class="os-hist-dir">
+        <span class="os-hist-auto" id="lbl_auto" title="Com a aba aberta, o histórico se atualiza sozinho a cada 10 minutos.">&#8635; Atualiza a cada 10 min</span>
+        <label class="os-hist-buscar"><span class="os-lbl">Buscar</span><input type="search" name="busca" id="busca_no" value="{{ busca }}" placeholder="nº, ativo, descrição, status…" title="Filtra as OS do período por nº, cliente, usina, ativo, descrição, status, tipo de tarefa e etiqueta  [Ctrl+F]"></label>
+        <button type="button" class="os-btn secondary" id="b_export" title="Exporta as OS exibidas p/ CSV (abre no Excel).  [Ctrl+E]">Exportar</button>
+        <button type="button" class="os-btn secondary" id="b_limpar" title="Limpa Cliente/Usina/Status/Tipos, a busca e a Etiqueta">Limpar filtros</button>
+        <button type="submit" class="os-btn secondary os-btn-ico" title="Atualizar  [F5]">&#8635;</button>
+      </div>
     </div>
     <div class="os-hist-grid">
       {% if modo != 'atribuidas' %}
@@ -50,17 +57,17 @@
   <div class="os-hist-hint" id="hint">{{ linhas|length }} OS no período {{ fmt(de + 'T03:00:00', False) }} a {{ fmt(ate + 'T03:00:00', False) }}.</div>
   <div class="os-tbl-wrap">
     <table class="os-tbl os-hist" id="tab_hist">
-      <thead><tr>{% for rot, chave in cols %}<th>{{ rot }}</th>{% endfor %}</tr></thead>
+      <thead><tr>{% for rot, chave in cols %}<th class="k-{{ chave }}">{{ rot }}</th>{% endfor %}</tr></thead>
       <tbody>
       {% for l in linhas %}
       <tr data-id="{{ l.id }}" data-cliente="{{ l.cliente }}" data-usina="{{ l.usina }}" data-tipo="{{ l.tipo }}" data-status="{{ l.status }}" data-tarefa="{{ l.tipo_tarefa or '' }}" data-texto="{{ l._texto }}">
         {% for rot, chave in cols %}
-        {% if chave == 'folio' %}<td><a class="os-folio" href="/os/os/{{ l.id }}?status={{ l.status|urlencode }}">{{ l.folio }}</a></td>
-        {% elif chave == 'status' %}<td>{% if l.status %}<span class="os-status" {% if l._status_cor %}style="color:{{ l._status_cor }};background:{{ l._status_cor }}29;border-color:{{ l._status_cor }}6b"{% endif %}>{{ l.status }}</span>{% endif %}</td>
-        {% elif chave == 'etiqueta' %}<td>{{ l._etiqueta }}</td>
-        {% elif chave == 'descricao' %}<td class="c-desc">{{ l.descricao }}</td>
-        {% elif chave in datas %}<td class="c-data" data-k="{{ chave }}">{{ fmt(l[chave]) if l.get(chave) else '—' }}</td>
-        {% else %}<td data-k="{{ chave }}">{{ l.get(chave) or '—' }}</td>{% endif %}
+        {% if chave == 'folio' %}<td class="k-folio"><a class="os-folio" href="/os/os/{{ l.id }}?status={{ l.status|urlencode }}">{{ l.folio }}</a></td>
+        {% elif chave == 'status' %}<td class="k-status">{% if l.status %}<span class="os-status" {% if l._status_cor %}style="color:{{ l._status_cor }};background:{{ l._status_cor }}29;border-color:{{ l._status_cor }}6b"{% endif %}>{{ l.status }}</span>{% endif %}</td>
+        {% elif chave == 'etiqueta' %}<td class="k-etiqueta">{{ l._etiqueta }}</td>
+        {% elif chave == 'descricao' %}<td class="c-desc k-descricao">{{ l.descricao }}</td>
+        {% elif chave in datas %}<td class="c-data k-{{ chave }}" data-k="{{ chave }}">{{ fmt(l[chave]) if l.get(chave) else '—' }}</td>
+        {% else %}<td class="k-{{ chave }}" data-k="{{ chave }}">{{ l.get(chave) or '—' }}</td>{% endif %}
         {% endfor %}
       </tr>
       {% else %}
@@ -178,6 +185,47 @@
     var n = (this.value || "").replace(/\D/g, "");
     if (n) { abrir("/os/os/folio/" + n); this.value = ""; }
   });
+
+  // Exportar: as OS EXIBIDAS (ja filtradas) e as COLUNAS DA VISAO ATUAL — mesma decisao do app,
+  // que existe por causa da visao COS: exportar as colunas do Historico Geral entregaria um
+  // arquivo sem programacao, inicio, equipe nem gatilho, que e justamente o que se leva pro Excel.
+  // ';' + UTF-8 com BOM = abre direto no Excel pt-BR (steps/exportar.py).
+  function csvCampo(t) {
+    t = String(t == null ? "" : t).replace(/\s+/g, " ").trim();
+    if (t === "\u2014") t = "";                                   // travessao vira celula VAZIA
+    return /[";\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  }
+  document.getElementById("b_export").addEventListener("click", function () {
+    var ths = Array.prototype.slice.call(document.querySelectorAll("#tab_hist thead th"));
+    var vis = linhas.filter(function (tr) { return !tr.hidden; });
+    if (!vis.length) { alert("Nada para exportar — a lista está vazia."); return; }
+    var temTarefa = ths.some(function (t) { return t.classList.contains("k-tipo_tarefa"); });
+    var cab = ths.map(function (t) { return csvCampo(t.textContent); });
+    if (!temTarefa) cab.push("Tipo de tarefa");                    // esperada na planilha mesmo fora da visao
+    var txt = cab.join(";") + "\r\n";
+    vis.forEach(function (tr) {
+      var cs = Array.prototype.slice.call(tr.cells).map(function (td) { return csvCampo(td.textContent); });
+      if (!temTarefa) cs.push(csvCampo(tr.dataset.tarefa || ""));
+      txt += cs.join(";") + "\r\n";
+    });
+    var de = form.querySelector("input[name=de]").value, ate = form.querySelector("input[name=ate]").value;
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\ufeff" + txt], {type: "text/csv;charset=utf-8"}));
+    a.download = "historico_os_" + de + "_a_" + ate + ".csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  });
+  document.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "e") { e.preventDefault(); document.getElementById("b_export").click(); }
+    if (e.key === "F5" && !e.ctrlKey) { e.preventDefault(); form.submit(); }
+  });
+
+  // Atualizacao automatica de 10 min (INTERVALO_MIN do app). So recarrega com a aba VISIVEL e
+  // sem card aberto: recarregar por baixo de uma OS que a pessoa esta lendo fecharia a leitura.
+  setInterval(function () {
+    if (document.hidden || !modal.hidden) return;
+    form.submit();
+  }, 10 * 60 * 1000);
 
   // Limpar filtros: Cliente/Usina/Status/Tipos, a busca e a Etiqueta (mantem visao, Criado por e periodo), como no app
   document.getElementById("b_limpar").addEventListener("click", function () {

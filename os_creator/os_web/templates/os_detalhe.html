@@ -1,17 +1,9 @@
 {% extends "base.html" %}
 {% block titulo %}OS {{ d.folio }}{% endblock %}
 {% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/os_acoes.css">{% endblock %}
 {% block conteudo %}
 {% include "os_detalhe_conteudo.html" %}
 {% endblock %}
-{% block scripts %}
-<script>
-(function () {
-  var el = document.querySelector("[data-anexos]"); if (!el) return;
-  fetch(el.getAttribute("data-anexos"), {credentials: "same-origin", headers: {"Accept": "application/json"}})
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (j) { document.querySelectorAll(".det-n").forEach(function (n) { var v = j ? j[n.getAttribute("data-n")] : null; n.textContent = (v === null || v === undefined) ? "\u2014" : v; }); })
-    .catch(function () { document.querySelectorAll(".det-n").forEach(function (n) { n.textContent = "\u2014"; }); });
-})();
-</script>
-{% endblock %}
+{# as ações do card (e a contagem dos anexos, que chega depois) vivem no os_acoes.js — o mesmo que o card do Histórico usa #}
+{% block scripts %}<script src="/os/static/os_acoes.js"></script>{% endblock %}

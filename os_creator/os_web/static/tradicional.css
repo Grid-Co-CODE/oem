@@ -1,0 +1,48 @@
+/* os_creator/os_web/static/tradicional.css — só o que o os.css não tem para o wizard Tradicional (Step1/2/3 + ResponsavelDialog
+   + PerfAnexoDialog). Cores SÓ pelas variáveis do os.css. */
+.trad-clonar-lbl{color:var(--txt);font-size:13px;white-space:nowrap}
+.trad-clonar-in{width:110px!important}
+/* "Passo N de 4" + barra do wizard (QProgressBar de 6px, range 0-4) */
+.trad-prog{height:6px;border-radius:3px;background:var(--f-input);overflow:hidden}
+.trad-prog-f{height:100%;background:var(--f-green);border-radius:3px;transition:width .2s}
+.trad-cresce{flex:1}
+/* o título do Card do app dentro do card numerado do passo (Card "Ativo", "Detalhes da OS", "Classificação", "Subtarefas") */
+.trad-sub-t{font-size:13px;font-weight:600;color:var(--txt);padding-bottom:6px;border-bottom:1px solid var(--f-border)}
+/* QTextEdit (Descrição / Observação): o os.css só estiliza input e select */
+body.os-form textarea{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;color:#fff;padding:9px 12px;font:13px/1.4 'Segoe UI',Arial,sans-serif;resize:vertical;min-height:60px}
+body.os-form textarea:focus{outline:none;border-color:var(--f-green)}
+/* QListWidget com checkbox (etiquetas) e QListWidget de pessoas */
+.trad-lista{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;min-height:120px;max-height:180px;overflow:auto;padding:6px}
+.trad-item,.trad-check{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;color:var(--txt);cursor:pointer;font-size:13px}
+.trad-item:hover{background:var(--f-card)}
+.trad-lista input[type=checkbox],.trad-check input[type=checkbox],.trad-chk input[type=checkbox],.trad-radios input{width:16px;height:16px;accent-color:var(--f-green);margin:0;flex:none}
+.trad-check[hidden]{display:none}
+/* tabela ["Ativo","Anexos"]: o check dentro da célula do ativo, como o item checável do QTableWidget */
+.trad-chk{display:flex;align-items:center;gap:10px;cursor:pointer;color:#fff}
+.os-tbl .c-anx{width:140px}
+.os-tbl .anx.tem{color:var(--f-green)}
+/* Data do incidente + "Agora" (64px) */
+.trad-dt-agora{display:flex;gap:8px}.trad-dt-agora input{flex:1;min-width:0}.trad-dt-agora .os-btn{width:64px;padding:0;flex:none}
+.trad-reload{width:40px;padding:0;flex:none}
+/* subtarefas: linha + "✕" (34px) */
+#subs{display:flex;flex-direction:column;gap:6px}
+.trad-sub{display:flex;gap:6px}.trad-sub input{flex:1;min-width:0}.trad-x{width:34px;padding:0;flex:none;font-weight:500}
+.trad-add{align-self:flex-start}
+/* Step 4 (ResponsavelDialog 460x560) e o diálogo de imagens (PerfAnexoDialog 520x460) */
+.trad-modal-h{display:flex;align-items:center;gap:10px;padding:16px 18px 0}
+.trad-pessoas{min-height:130px;max-height:220px}
+.trad-pessoa{padding:5px 8px;border-radius:4px;cursor:pointer;color:var(--txt);font-size:13px}
+.trad-pessoa:hover{background:var(--f-card)}.trad-pessoa.on{background:rgba(166,226,46,.16);color:var(--f-green)}
+#fin{display:flex;flex-direction:column;gap:6px}#fin[hidden]{display:none}
+.trad-finpanel{background:var(--card);border:1px solid var(--f-border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.trad-finpanel[hidden]{display:none}
+.trad-radios{display:flex;align-items:center;gap:12px;color:var(--txt);font-size:13px}
+.trad-radios label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.trad-fin-resp{display:flex;flex-direction:column;gap:4px}
+.trad-sub-lbl{color:var(--txt);font-size:13px;margin-top:4px}
+/* OS pai (OsPaiPicker): campo pesquisável + lista de resultados por baixo */
+.trad-ospai{position:relative}.trad-ospai input{width:100%}
+.trad-ospai-lista{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:var(--f-card);border:1px solid var(--f-border);border-radius:10px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.45)}
+.trad-ospai-lista[hidden]{display:none}
+.trad-ospai-item{padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--txt);font-size:13px}.trad-ospai-item:hover{background:var(--f-input)}
+/* imagens: botões, grade de 3 miniaturas (150px), nome editável e Remover */

@@ -10,35 +10,30 @@ from markupsafe import Markup
 # (chave, icone, titulo, subtitulo, destino). Ativos em 1º (Levi, 06/08): consulta é a porta de entrada. As áreas
 # (Engenharia) entram DEPOIS dos cards do app, sempre — a grade não muda para quem já usa.
 CARDS = [
-    {"chave": "ativos", "icone": "rack", "titulo": "Ativos", "sub": "Todo o catálogo do Fracttal — busca, histórico e atalhos", "href": "/os/em-breve/ativos"},
+    {"chave": "ativos", "icone": "rack", "titulo": "Ativos", "sub": "Todo o catálogo do Fracttal — busca, histórico e atalhos", "href": "/os/ativos"},
     {"chave": "perf", "icone": "bolt", "titulo": "Performance", "sub": "Inversores, Strings, Trackers e ETM", "href": "/os/performance"},
     {"chave": "cos", "icone": "stack", "titulo": "COS", "sub": "Ocorrência de desligamento, religamento e inspeção", "href": "/os/em-breve/cos"},
     {"chave": "pcm", "icone": "calendar", "titulo": "PCM", "sub": "OS planejada por família de plano, vários ativos", "href": "/os/em-breve/pcm"},
     {"chave": "chamados", "icone": "headset", "titulo": "Chamados", "sub": "Nova OS ligada a uma OS pai, com a etiqueta CHAMADOS", "href": "/os/em-breve/chamados"},
     {"chave": "insp", "icone": "searchcheck", "titulo": "Inspeção de chamados", "sub": "OS de teste que fundamenta o chamado — subtarefas por ativo e marca", "href": "/os/em-breve/insp"},
-    {"chave": "tradicional", "icone": "file", "titulo": "Tradicional", "sub": "Criar OS do zero, passo a passo", "href": "/os/em-breve/tradicional"},
-    {"chave": "clonar", "icone": "copy", "titulo": "Clonar OS", "sub": "Duplicar uma OS existente pelo número", "href": "/os/em-breve/clonar"},
-    {"chave": "eng", "icone": "etm", "titulo": "Engenharia", "sub": "OS de ETM e as análises da Engenharia", "href": "/os/em-breve/eng"},
+    {"chave": "tradicional", "icone": "file", "titulo": "Tradicional", "sub": "Criar OS do zero, passo a passo", "href": "/os/tradicional"},
+    {"chave": "clonar", "icone": "copy", "titulo": "Clonar OS", "sub": "Duplicar uma OS existente pelo número", "href": "/os/clonar"},
+    {"chave": "eng", "icone": "etm", "titulo": "Engenharia", "sub": "OS de ETM e as análises da Engenharia", "href": "/os/engenharia"},
 ]
 
-# as abas do app, na ordem (a de Solicitação / PCM ainda mora só no app)
+# as abas do app, na ordem
 ABAS = [
     {"chave": "criar", "titulo": "Criar OS", "icone": "plus", "href": "/os/"},
-    {"chave": "solic", "titulo": "Solicitação / PCM", "icone": None, "href": "/os/em-breve/solic"},
+    {"chave": "solic", "titulo": "Solicitação / PCM", "icone": "clipboard", "href": "/os/solicitacao"},
     {"chave": "hist", "titulo": "Históricos de OS", "icone": "history", "href": "/os/historico"},
 ]
 
 # O que cada card/aba faz no app e ainda não faz na web (a página "em breve" explica com estas palavras).
 NO_APP = {
-    "ativos": ("Ativos", "o catálogo inteiro do Fracttal, com busca, histórico do ativo e atalhos para criar OS"),
     "cos": ("COS", "a OS de ocorrência: desligamento, religamento e inspeção, com as regras de proteção do COS"),
     "pcm": ("PCM", "a OS planejada por família de plano, para vários ativos de uma vez"),
     "chamados": ("Chamados", "a OS nova ligada a uma OS pai, com a etiqueta CHAMADOS"),
     "insp": ("Inspeção de chamados", "a OS de teste que fundamenta o chamado, com subtarefas por ativo e marca"),
-    "tradicional": ("Tradicional", "o passo a passo de criar uma OS do zero"),
-    "clonar": ("Clonar OS", "duplicar uma OS existente pelo número"),
-    "eng": ("Engenharia", "as OS de ETM e as análises da Engenharia"),
-    "solic": ("Solicitação / PCM", "o painel de solicitações, o formulário, a fila do PCM e o histórico"),
     "tickets": ("Tickets", "as ocorrências de trackers e strings da Gridco Performance API"),
 }
 

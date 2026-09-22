@@ -1,0 +1,74 @@
+/* os_creator/os_web/static/tickets_painel.css — o painel de acompanhamento dos tickets (22/09/2026).
+   Porte do mockup aprovado (docs/design/dashboard-tickets-mockup.html), com TUDO escopado em .tp:
+   o mockup tinha regra solta em table/th/td/svg text, e aqui ela vazaria para as outras telas.
+
+   As cores de gráfico foram VALIDADAS (validate_palette.js, 22/09) contra a superfície #161d30:
+   azul × laranja (fluxo semanal) e azul × vermelho crítico (idade) passam em todas as verificações.
+   As cores de STATUS do ciclo de vida são as do app e reprovam como conjunto encostado (Aberta ×
+   OS criada ΔE 12,3 < 15) — por isso aparecem em cartões separados, com o nome escrito, e nunca
+   numa barra empilhada. */
+.tp{--tp-card:#161d30;--tp-borda:#232a3d;--tp-grade:#232a3d;--tp-txt2:#c3c8d6;--tp-mudo:#8a90a2;
+    --tp-s1:#3987e5;--tp-s2:#d95926;--tp-crit:#d03b3b;--tp-aviso:#fab219;--tp-cinza:#56607a}
+.tp .os-topo-linha{flex-wrap:wrap}
+.tp-tit h1{font-size:19px;margin:0;font-weight:600;color:#fff}
+.tp-sub{color:var(--tp-mudo);font-size:12.5px}
+.tp-erro{background:rgba(208,59,59,.10);border:1px solid rgba(208,59,59,.40);border-radius:12px;padding:12px 14px;color:#f3b0b0;margin:0}
+.tp-grade{display:grid;gap:14px}
+.tp-grade > *{min-width:0}            /* sem isto a tabela das 10 usinas alarga a coluna no celular */
+.tp-g2{grid-template-columns:1fr 1fr}
+@media (max-width:960px){.tp-g2{grid-template-columns:1fr}}
+.tp-card{background:var(--tp-card);border:1px solid var(--tp-borda);border-radius:14px;padding:14px 16px}
+.tp-card h2{font-size:13.5px;margin:0 0 2px;font-weight:600;color:#fff}
+.tp-card .tp-h2s{color:var(--tp-mudo);font-size:12px;margin-bottom:10px}
+/* números do topo */
+.tp-kpis{display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:14px}
+@media (max-width:960px){.tp-kpis{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.tp-kpis{grid-template-columns:1fr}.tp-hero .tp-v{font-size:42px}}
+.tp-hero .tp-v{font-size:52px;font-weight:650;line-height:1.05;letter-spacing:-.5px;color:#fff}
+.tp-hero .tp-l{color:var(--tp-txt2);font-size:13px;margin-top:4px}
+.tp-tile .tp-l{color:var(--tp-mudo);font-size:12px}
+.tp-tile .tp-v{font-size:26px;font-weight:600;margin-top:2px;color:#fff}
+.tp-tile .tp-d{color:var(--tp-mudo);font-size:12px;margin-top:2px}
+a.tp-tile{text-decoration:none;display:block}
+a.tp-tile:hover{border-color:var(--f-green)}
+/* alerta */
+.tp-alerta{display:flex;gap:12px;align-items:flex-start;background:rgba(208,59,59,.10);border:1px solid rgba(208,59,59,.40);border-radius:12px;padding:12px 14px}
+.tp-alerta .tp-ic{flex:0 0 22px;height:22px;border-radius:50%;background:var(--tp-crit);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+.tp-alerta b{color:#fff}
+.tp-alerta p{margin:2px 0 0;color:var(--tp-txt2);font-size:12.5px}
+/* ciclo de vida: cartões separados, cor do app no número (a convenção da tela de Tickets) */
+.tp-ciclo{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}
+.tp-ciclo > a{background:var(--bg);border:1px solid var(--tp-borda);border-radius:10px;padding:9px 10px;text-decoration:none}
+.tp-ciclo > a:hover{border-color:var(--f-green)}
+.tp-ciclo .tp-n{font-size:22px;font-weight:650;line-height:1.1}
+.tp-ciclo .tp-r{color:var(--tp-mudo);font-size:11.5px}
+/* legenda */
+.tp-leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--tp-txt2);margin-bottom:6px}
+.tp-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+/* tabelas */
+.tp-rola{overflow-x:auto}
+.tp table{width:100%;border-collapse:collapse;font-size:13px}
+.tp th{color:var(--tp-mudo);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;text-align:left;padding:6px 8px;border-bottom:1px solid var(--tp-grade)}
+.tp td{padding:7px 8px;border-bottom:1px solid var(--tp-grade);font-variant-numeric:tabular-nums;color:var(--txt)}
+.tp td.tp-num,.tp th.tp-num{text-align:right}
+.tp td a{color:inherit;text-decoration:none}.tp td a:hover{color:var(--f-green);text-decoration:underline}
+.tp-barra{display:flex;align-items:center;gap:8px}
+.tp-barra span.tp-b{display:block;height:10px;border-radius:0 4px 4px 0;background:var(--tp-s1)}
+.tp-barra span.tp-b.tp-cinza{background:var(--tp-cinza)}
+/* "ver os números" embaixo de cada gráfico */
+.tp details.tp-numeros{margin-top:6px}
+.tp details.tp-numeros summary{cursor:pointer;color:var(--tp-mudo);font-size:12px}
+.tp details.tp-numeros table{margin-top:6px;font-size:12px}
+.tp details.tp-numeros td,.tp details.tp-numeros th{padding:4px 8px}
+/* qualidade do dado */
+.tp ul.tp-qual{list-style:none;padding:0;margin:0}
+.tp-qual li{margin:6px 0;color:var(--tp-txt2);font-size:13px}
+.tp-qual li b{color:#fff}
+.tp-qual a{color:var(--f-green);text-decoration:none;margin-left:6px;white-space:nowrap}.tp-qual a:hover{text-decoration:underline}
+.tp-qual .tp-ic{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--tp-aviso);color:#1b1402;font-weight:800;font-size:11px;align-items:center;justify-content:center;margin-right:6px}
+/* gráficos */
+.tp svg text{fill:var(--tp-mudo);font-size:11px;font-family:inherit}
+.tp svg .tp-lab{fill:var(--tp-txt2);font-size:11.5px}
+.tp svg .tp-clicavel{cursor:pointer}
+#tp_tip{position:fixed;pointer-events:none;background:#0d1322;border:1px solid var(--tp-borda,#232a3d);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--txt);box-shadow:0 10px 26px rgba(0,0,0,.45);display:none;z-index:9;max-width:260px}
+#tp_tip .tp-t{color:var(--tp-mudo,#8a90a2);font-size:11px;margin-bottom:2px}

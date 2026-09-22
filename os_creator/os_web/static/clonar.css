@@ -1,0 +1,28 @@
+/* Clonar OS — o que o QSS_FORM não cobre: busca no topo, tabela com editor de data, linhas de subtarefa */
+.cl-busca{display:flex;align-items:center;gap:8px}
+.cl-busca .os-lbl{margin:0;white-space:nowrap}
+.cl-busca input{width:120px}
+.cl-tbl .c-ativo{width:34%}.cl-tbl .c-subt{width:56px;text-align:center}.cl-tbl .c-data{width:210px}
+.cl-tbl td.c-subt{text-align:center}
+.cl-tbl tr.sel td{background:rgba(166,226,46,.08)}
+.cl-tbl tr.tem{cursor:pointer}
+.cl-tbl .sem{color:#dc2626}
+.cl-tbl .ativo-nome{display:flex;align-items:center;gap:8px}
+.cl-tbl input[type=datetime-local]{height:34px;padding:0 8px;font-size:12.5px}
+.cl-datas{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.cl-datas input[type=date]{height:34px}
+.cl-sub-h{display:flex;align-items:center;gap:8px;margin:10px 0 6px}
+.cl-sub-h .os-lbl{margin:0}
+.cl-subs{display:flex;flex-direction:column;gap:6px;max-height:190px;overflow:auto;padding-right:4px;scrollbar-width:thin;scrollbar-color:var(--f-border) transparent}
+.cl-sub{display:flex;align-items:center;gap:8px}
+.cl-sub input[type=text]{flex:1;height:34px}
+.cl-sub input[type=text]:disabled{opacity:.55}
+.cl-sub .os-btn.mini{width:70px;justify-content:center}
+.cl-baixo{align-items:stretch}
+.cl-chk{display:inline-flex;align-items:center;gap:8px;color:var(--f-muted);font-size:13px;margin-top:6px}
+.cl-chk input{accent-color:var(--f-green)}
+.cl-filtro{margin-bottom:6px}
+#resultado.ok{border-color:rgba(166,226,46,.5)}
+#resultado.erro{border-color:rgba(245,118,107,.6);color:#f5a49c}
+#clonar textarea{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;color:#fff;padding:8px 10px;font:inherit;font-size:13px;width:100%;resize:vertical;min-height:104px}
+#clonar textarea:focus{outline:none;border-color:var(--f-green)}

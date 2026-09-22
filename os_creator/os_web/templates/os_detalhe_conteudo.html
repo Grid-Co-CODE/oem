@@ -2,16 +2,22 @@
    tipo + pílula da Solicitação; banner do ativo; datas/pessoas (com avatar) ao lado de DURAÇÃO TOTAL + etiqueta; TÍTULO e NOTAS
    em caixa; SUBTAREFAS com barra de progresso e uma linha-card por subtarefa (checkbox, chip do tipo, seta — o clique abre a
    resposta); ANEXOS DA OS em dois cards (verde = das subtarefas, azul = da OS; a contagem chega depois, por /anexos);
-   REGISTRO NO FRACTTAL; rodapé fixo com as ações nas cores do original. As ações de escrita ainda vivem só no app instalado:
-   ficam visíveis e desabilitadas, com o aviso no título. Usado pela página cheia (os_detalhe.html) e pelo card sobreposto do
-   Histórico (parcial=1). #}
+   REGISTRO NO FRACTTAL; rodapé fixo com as ações nas cores do original. Usado pela página cheia (os_detalhe.html) e pelo card
+   sobreposto do Histórico (parcial=1).
+
+   As AÇÕES (trocar responsável, etiquetas, Editar notas, Concluir, Cancelar, Fluxo, anexos) vivem em static/os_acoes.js, por
+   delegação de eventos — o card chega por innerHTML. Cada QDialog do app virou um <template data-dlg> aqui embaixo, com o
+   MESMO texto, que o JS clona por cima do card. Clonar e Abrir chamado são telas de outros pacotes: links pelo número. #}
 {% set n_sub = d.subtarefas|length %}
 {% set n_feitas = d.subtarefas|selectattr('feito')|list|length %}
 {% set pct = ((100 * n_feitas / n_sub)|round|int) if n_sub else 0 %}
+{% set pct_dlg = pct if n_sub else 100 %}
 {% set completo = n_sub and n_feitas == n_sub %}
 {% set dur = duracao(d.event_date, d.data_fim) %}
-{% set indisp = 'Disponível no OS Creator instalado' %}
-<section class="det">
+{% set nota_regra = acoes_nota_regra(d, status) %}
+{% set sem_fim = acoes_sem_fim(d) %}
+<section class="det" data-wid="{{ wid }}" data-folio="{{ d.folio }}" data-status="{{ status }}">
+  {% if parcial %}<link rel="stylesheet" href="/os/static/os_acoes.css">{% endif %}
   <header class="det-top">
     <span class="det-ico-round">{{ icone('copy', '#A6E22E', 20) }}</span>
     <div class="det-num"><div class="det-os">OS {{ d.folio }}</div><div class="det-sub">Ordem de serviço</div></div>
@@ -22,6 +28,7 @@
   </header>
 
   <div class="det-corpo">
+    <div class="os-resultado acoes-msg" data-msg hidden></div>
     <div class="det-card det-banner">
       <span class="det-ico-sq v">{{ icone('clipboard', '#A6E22E', 22) }}</span>
       <span class="det-banner-t">{{ d.ativo or '—' }}</span>
@@ -34,7 +41,7 @@
         <div class="det-row">{{ icone('calendar', '#8A93A8', 18) }}<span class="det-k">Data fim</span><span class="det-v">{{ fmt(d.data_fim) if d.data_fim else '—' }}</span></div>
         <div class="det-row">{{ icone('user', '#8A93A8', 18) }}<span class="det-k">Atribuído a</span>
           <span class="det-pessoa">{% if d.responsavel %}<span class="det-av">{{ d.responsavel|iniciais }}</span>{% endif %}<b>{{ d.responsavel or '—' }}</b></span>
-          <button type="button" class="det-mini" disabled title="{{ indisp }}">trocar</button></div>
+          <button type="button" class="det-mini" data-acao="responsavel" title="Atribuir esta OS a outra pessoa">trocar</button></div>
         <div class="det-row">{{ icone('userplus', '#8A93A8', 18) }}<span class="det-k">Criado por</span>
           <span class="det-pessoa">{% if d.criado_por %}<span class="det-av">{{ d.criado_por|iniciais }}</span>{% endif %}<b>{{ d.criado_por or '—' }}</b></span></div>
       </div>
@@ -43,16 +50,22 @@
         <div class="det-dur-v">{{ dur or '—' }}</div>
         <div class="det-ajuda">{% if dur %}do evento ao fim{% elif not d.data_fim %}OS ainda sem data de fim{% else %}datas sem intervalo válido{% endif %}</div>
         <div class="det-etq-l"><span class="det-sec">ETIQUETA</span>
-          {% for e in d.etiquetas %}{% set c = e.cor or '#A6A6A6' %}<span class="det-chip" style="color:{{ c }};border-color:{{ c }};background:{{ c }}22">{{ e.nome }}</span>{% else %}<span class="det-ajuda">sem etiqueta</span>{% endfor %}
-          <span class="det-dot">·</span><button type="button" class="det-link" disabled title="{{ indisp }}">editar</button></div>
+          {% for e in d.etiquetas %}{% set c = e.cor or '#A6A6A6' %}<span class="det-chip" data-id="{{ e.id }}" style="color:{{ c }};border-color:{{ c }};background:{{ c }}22">{{ e.nome }}</span>{% else %}<span class="det-ajuda">nenhuma</span>{% endfor %}
+          <span class="det-dot">·</span><button type="button" class="det-link" data-acao="etiquetas">{% if d.etiquetas %}editar{% else %}definir{% endif %}</button></div>
       </div>
     </div>
 
     <div class="det-sec">TÍTULO</div>
     <div class="det-box det-box-t">{{ d.descricao or '—' }}</div>
 
-    <div class="det-sec-line"><span class="det-sec">NOTAS</span><span class="os-cresce"></span><button type="button" class="det-ghost" disabled title="{{ indisp }}">Editar</button></div>
-    <div class="det-box det-pre">{{ d.notas or '—' }}</div>
+    {# NOTAS — ler e editar no MESMO lugar (Levi, 02/09): só um dos dois blocos fica visível, senão o card cresce e some com as
+       subtarefas. O Editar nasce desabilitado com o motivo (tooltip do app) quando a regra recusa. #}
+    <div class="det-sec-line"><span class="det-sec">NOTAS</span><span class="os-cresce"></span>
+      <button type="button" class="det-ghost" data-acao="nota-editar"{% if not nota_regra[0] %} disabled{% endif %} title="{{ nota_regra[1] }}">Editar</button>
+      <button type="button" class="det-b verde acoes-mini" data-acao="nota-salvar" hidden>Salvar</button>
+      <button type="button" class="det-ghost" data-acao="nota-cancelar" hidden>Cancelar</button></div>
+    <div class="det-box det-pre" data-nota-leitura>{{ d.notas or '—' }}</div>
+    <textarea class="acoes-ta" data-nota-editor placeholder="Observação da OS…" hidden>{{ d.notas or '' }}</textarea>
 
     <div class="det-sec-line"><span class="det-sec">SUBTAREFAS</span><span class="det-ajuda">clique para ver a resposta</span><span class="os-cresce"></span>
       <span class="det-pill-ok">{{ n_feitas }} de {{ n_sub }} concluídas</span></div>
@@ -73,8 +86,8 @@
 
     <div class="det-sec">ANEXOS DA OS</div>
     <div class="det-cols" data-anexos="/os/os/{{ wid }}/anexos">
-      <div class="det-card det-anexo v"><span class="det-ico-sq v">{{ icone('camera', '#A6E22E', 22) }}</span><div class="det-anexo-t"><b>Anexos das subtarefas</b><div class="det-ajuda">do técnico</div></div><span class="det-n v" data-n="sub">…</span></div>
-      <div class="det-card det-anexo a"><span class="det-ico-sq a">{{ icone('monitor', '#57B6F5', 22) }}</span><div class="det-anexo-t"><b>Anexos da OS</b><div class="det-ajuda">por usuário</div></div><span class="det-n a" data-n="os">…</span></div>
+      <div class="det-card det-anexo v" data-acao="anexos-sub" role="button" tabindex="0" title="Fotos, arquivos e notas das subtarefas"><span class="det-ico-sq v">{{ icone('camera', '#A6E22E', 22) }}</span><div class="det-anexo-t"><b>Anexos das subtarefas</b><div class="det-ajuda">do técnico</div></div><span class="det-n v" data-n="sub">…</span></div>
+      <div class="det-card det-anexo a" data-acao="anexos-os" role="button" tabindex="0" title="Fotos, arquivos e notas anexados à OS"><span class="det-ico-sq a">{{ icone('monitor', '#57B6F5', 22) }}</span><div class="det-anexo-t"><b>Anexos da OS</b><div class="det-ajuda">por usuário</div></div><span class="det-n a" data-n="os">…</span></div>
     </div>
 
     <div class="det-sec">REGISTRO NO FRACTTAL</div>
@@ -84,11 +97,112 @@
 
   <footer class="det-foot">
     <span class="det-ajuda">{{ n_sub }} subtarefa(s)</span><span class="os-cresce"></span>
-    <button type="button" class="det-b verde" disabled title="{{ indisp }}">{{ icone('copy', '#0B1020', 16) }}Clonar esta OS</button>
-    <button type="button" class="det-b verde" disabled title="{{ indisp }}">{{ icone('branch', '#0B1020', 16) }}Fluxo</button>
-    <button type="button" class="det-b ambar" disabled title="{{ indisp }}">Abrir chamado</button>
-    <button type="button" class="det-b ok" disabled title="{{ indisp }}">Concluir OS</button>
-    <button type="button" class="det-b perigo" disabled title="{{ indisp }}">Cancelar OS</button>
+    <a class="det-b verde" href="/os/clonar?folio={{ d.folio }}">{{ icone('copy', '#0B1020', 16) }}Clonar esta OS</a>
+    <button type="button" class="det-b verde" data-acao="fluxo" title="Mostra esta OS encadeada com as outras — pais, filhas e todo o histórico do ativo">{{ icone('branch', '#0B1020', 16) }}Fluxo</button>
+    <a class="det-b ambar" href="/os/chamados/abrir?folio={{ d.folio }}" title="Cria a OS de chamado como filha desta, com a etiqueta CHAMADOS">Abrir chamado</a>
+    <button type="button" class="det-b ok" data-acao="concluir" title="Fecha a OS no Fracttal (irreversível — precisa de permissão na sua conta)">Concluir OS</button>
+    <button type="button" class="det-b perigo" data-acao="cancelar" title="Cancela a OS no Fracttal (precisa de permissão na sua conta)">Cancelar OS</button>
     {% if parcial %}<button type="button" class="det-b ghost" data-fechar>Fechar</button>{% else %}<a class="det-b ghost" href="/os/historico">Fechar</a>{% endif %}
   </footer>
+
+  {# ── os diálogos do app, um <template> cada (o JS clona por cima do card) ── #}
+  {# TrocarResponsavelDialog #}
+  <template data-dlg="responsavel">
+    <div class="acoes-t">Trocar o responsável da OS {{ d.folio }}</div>
+    {% if d.responsavel and d.responsavel != '—' %}<div class="acoes-s">Hoje está com <b>{{ d.responsavel }}</b>.</div>{% endif %}
+    <select data-resp-sel><option value="">carregando o pessoal…</option></select>
+    <div class="acoes-hint" data-hint></div>
+    <div class="acoes-bts"><button type="button" class="det-b ghost" data-fechar>Cancelar</button><button type="button" class="det-b verde" data-conf="responsavel" disabled>Atribuir</button></div>
+  </template>
+
+  {# _EtiquetasDialog: catálogo marcável com a bolinha da cor de cada uma → grava via apply_labels (o conjunto inteiro) #}
+  <template data-dlg="etiquetas">
+    <div class="acoes-t">Etiquetas da OS {{ d.folio }}</div>
+    <label class="acoes-busca">{{ icone('search', '#8A93A8', 15) }}<input type="search" data-etq-busca placeholder="carregando etiquetas…" autocomplete="off"></label>
+    <div class="acoes-lista" data-etq-lista></div>
+    <div class="acoes-hint" data-hint></div>
+    <div class="acoes-bts"><button type="button" class="det-b ghost" data-fechar>Cancelar</button><button type="button" class="det-b verde" data-conf="etiquetas">Salvar</button></div>
+  </template>
+
+  {# _ConcluirDialog: % pelas subtarefas da OS INTEIRA, aviso âmbar (pendentes/irreversível) e, só quando falta, o vermelho da
+     data de fim — severidades diferentes com a mesma cor viram ruído (Levi, 03/08, OS 10509) #}
+  <template data-dlg="concluir">
+    <div class="acoes-cab"><span class="acoes-tile"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#A6E22E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+      <div><div class="acoes-t">Concluir a OS {{ d.folio }}?</div><div class="acoes-s">A OS será marcada como concluída e fechada no Fracttal.</div></div></div>
+    <div class="acoes-pbox">
+      <div class="acoes-prow"><span>Conclusão da OS</span><b{% if pct_dlg < 100 %} class="parcial"{% endif %}>{{ pct_dlg }}%</b></div>
+      <div class="acoes-bar{% if pct_dlg < 100 %} parcial{% endif %}"><div style="width:{{ pct_dlg }}%"></div></div>
+      <div class="acoes-pc">{% if n_sub %}{{ n_feitas }} de {{ n_sub }} subtarefas concluídas{% else %}OS sem subtarefas{% endif %}</div>
+    </div>
+    <div class="acoes-warn">{{ icone('alert', '#eb8b57', 19) }}<p>As subtarefas que não foram concluídas ficarão registradas como <b>pendentes</b>. Esta ação é <b>irreversível</b>!</p></div>
+    {# QUAIS ficam pendentes, e nao so quantas (Levi, 21/09). O numero dizia que faltava algo; a
+       lista diz O QUE falta — e e a diferenca entre fechar a OS assim mesmo e voltar para
+       preencher a subtarefa. Teto de 6 para o dialogo nao virar a tela inteira numa OS de 13. #}
+    {% set pendentes = d.subtarefas|rejectattr('feito')|list %}
+    {% if pendentes %}
+    <div class="acoes-pend">
+      <div class="acoes-pend-t">{{ pendentes|length }} subtarefa{{ 's' if pendentes|length > 1 }} que fica{{ 'm' if pendentes|length > 1 }} pendente{{ 's' if pendentes|length > 1 }}:</div>
+      <ul>{% for s in pendentes[:6] %}<li>{{ s.descricao }}{% if s.tipo %} <span class="acoes-pend-k">{{ s.tipo }}</span>{% endif %}</li>{% endfor %}</ul>
+      {% if pendentes|length > 6 %}<div class="acoes-pend-m">e mais {{ pendentes|length - 6 }}</div>{% endif %}
+      {# FAZER A TAREFA, em vez de so avisar (Levi, 21/09). Ate aqui o dialogo dizia o que ficaria
+         pendente e o unico caminho era sair para o Fracttal — e na saida o que mais se perdia era
+         o REGISTRO de inicio e fim, o campo que a conclusao nao preenche depois. #}
+      {% set tp = acoes_tarefas_pendentes(d) %}
+      {% if tp %}
+      <div class="acoes-pend-fazer">
+        {% for t in tp[:3] %}
+        <button type="button" class="det-b" data-fazer="{{ t.id_tarefa }}" data-fazer-titulo="{{ t.titulo }}">Fazer a tarefa{% if tp|length > 1 %} · {{ t.titulo }}{% endif %} ({{ t.n_pendentes }})</button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if sem_fim %}
+    <div class="acoes-dt">{{ icone('alert', '#e05454', 19) }}<p>{% if sem_fim|length == 1 %}Esta OS vai fechar <b>sem data de fim da tarefa</b>. O campo fica vazio para sempre — a conclusão não preenche depois.{% else %}<b>{{ sem_fim|length }} tarefas</b> desta OS vão fechar <b>sem data de fim</b>. O campo fica vazio para sempre — a conclusão não preenche depois.<br>{{ sem_fim[:3]|join('; ') }}{% if sem_fim|length > 3 %} e mais {{ sem_fim|length - 3 }}{% endif %}{% endif %}</p></div>
+    {% endif %}
+    <div class="acoes-hint" data-hint></div>
+    <div class="acoes-bts"><button type="button" class="det-b ghost" data-fechar>Cancelar</button><button type="button" class="det-b ok" data-conf="concluir">Concluir OS</button></div>
+  </template>
+
+  {# Fazer a tarefa: o checklist da tarefa + o Registro (inicio/fim). Os campos sao desenhados pelo
+     JS a partir de /tarefa/<tid>/checklist — so o servidor sabe o tipo de cada subtarefa e o que
+     ja foi respondido. A ORDEM da gravacao (checklist, depois registro) e a da tela do Fracttal. #}
+  <template data-dlg="executar">
+    <div class="acoes-cab"><span class="acoes-tile">{{ icone('clipboard', '#A6E22E', 25) }}</span>
+      <div><div class="acoes-t" data-exec-titulo>Fazer a tarefa</div><div class="acoes-s">Preenche as subtarefas e lança o registro de execução, como no Fracttal.</div></div></div>
+    <div class="acoes-exec" data-exec-campos><p class="det-ajuda">carregando o checklist…</p></div>
+    <div class="acoes-exec-reg">
+      <div class="acoes-pend-t">Registro de execução</div>
+      <div class="acoes-exec-dt">
+        <label class="os-campo"><span class="os-lbl">Início <span class="os-req">obrigatório</span></span><input type="datetime-local" data-exec-ini></label>
+        <label class="os-campo"><span class="os-lbl">Fim</span><input type="datetime-local" data-exec-fim></label>
+      </div>
+      <label class="os-campo"><span class="os-lbl">Nota (opcional)</span><input type="text" data-exec-nota placeholder="o que foi feito, se quiser registrar"></label>
+    </div>
+    <div class="acoes-hint" data-hint></div>
+    <div class="acoes-bts"><button type="button" class="det-b ghost" data-fechar>Cancelar</button><button type="button" class="det-b ok" data-conf="executar">Salvar e registrar</button></div>
+  </template>
+
+  {# CancelarOSDialog: motivo (status custom) + observação; tipo fixo 'Cancelar OS'; a autorização é a do usuário no Fracttal #}
+  <template data-dlg="cancelar">
+    <div class="acoes-t">Cancelar a OS {{ d.folio }}</div>
+    <div class="acoes-s">Tipo: <b>Cancelar OS</b> · a autorização é a do seu usuário no Fracttal.</div>
+    <label class="os-campo"><span class="os-lbl">Motivo do cancelamento</span><select data-canc-motivo><option value="">carregando motivos…</option></select></label>
+    <label class="os-campo"><span class="os-lbl">Observação <small>(opcional)</small></span><textarea class="acoes-ta curta" data-canc-obs></textarea></label>
+    <div class="acoes-hint" data-hint></div>
+    <div class="acoes-bts"><button type="button" class="det-b ghost" data-fechar>Voltar</button><button type="button" class="det-b perigo" data-conf="cancelar" disabled>Confirmar cancelamento</button></div>
+  </template>
+
+  {# FluxoDialog: só a CADEIA (origem → gerada → …), centralizada; clique num nó abre o card daquela OS no lugar deste #}
+  <template data-dlg="fluxo">
+    <div class="acoes-cab2"><div><div class="acoes-t grande">Fluxo da OS {{ d.folio }}</div><div class="acoes-s" data-fluxo-sub>—</div></div><span class="os-cresce"></span><button type="button" class="det-b ghost" data-fechar>Fechar</button></div>
+    <div class="acoes-sep"></div>
+    <div class="acoes-fluxo-corpo" data-fluxo-corpo><div class="acoes-hint i">carregando o fluxo…</div></div>
+  </template>
+
+  {# GaleriaDialog + DocumentosDialog numa janela: fotos em grade, arquivos com Abrir/Baixar, notas de texto clicáveis #}
+  <template data-dlg="anexos">
+    <div class="acoes-cab2"><div><div class="acoes-t" data-anx-titulo></div><div class="acoes-s" data-anx-sub></div></div><span class="os-cresce"></span><button type="button" class="det-b ghost" data-fechar>Fechar</button></div>
+    <div class="acoes-anx-corpo" data-anx-corpo><div class="acoes-hint i">carregando anexos…</div></div>
+  </template>
 </section>

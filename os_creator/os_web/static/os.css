@@ -78,9 +78,12 @@ body.os-form .os-btn.primaria{background:var(--f-green);color:var(--f-ink)}
 @media (max-width:900px){.os-linha2{grid-template-columns:1fr}.os-linha2 .os-campo:nth-child(3){grid-column:auto}}
 .os-campo{display:flex;flex-direction:column;gap:4px}
 .os-lbl{font-size:12px;font-weight:600;color:#cfd6e4}.os-lbl i{color:var(--f-green);font-style:normal}.os-lbl small{color:var(--f-muted);font-weight:400}
-body.os-form input,body.os-form select{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;color:#fff;height:40px;padding:0 12px;font-size:13px}
-body.os-form input:hover,body.os-form select:hover{border-color:#39456a}
-body.os-form input:focus,body.os-form select:focus{outline:none;border-color:var(--f-green)}
+body.os-form input,body.os-form select,body.os-form textarea{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;color:#fff;font-size:13px}
+body.os-form input,body.os-form select{height:40px;padding:0 12px}
+body.os-form textarea{padding:9px 12px;font-family:inherit;line-height:1.45;resize:vertical;min-height:64px}
+body.os-form input:hover,body.os-form select:hover,body.os-form textarea:hover{border-color:#39456a}
+body.os-form input:focus,body.os-form select:focus,body.os-form textarea:focus{outline:none;border-color:var(--f-green)}
+body.os-form textarea::placeholder,body.os-form input::placeholder{color:var(--f-muted)}
 .os-seg{display:inline-flex;border:1px solid var(--f-border);border-radius:10px;overflow:hidden}
 .os-seg-btn{background:var(--f-input);color:var(--f-muted);border:none;padding:8px 14px;font-weight:600;cursor:pointer}
 .os-seg-btn.on{background:rgba(166,226,46,.16);color:var(--f-green)}
@@ -91,6 +94,9 @@ body.os-form input:focus,body.os-form select:focus{outline:none;border-color:var
 .os-tbl td{padding:4px 8px;border-bottom:1px solid var(--f-border);vertical-align:middle;height:46px}
 .os-tbl tr:last-child td{border-bottom:none}.os-tbl tr.vazio td{color:var(--f-muted);text-align:center}
 .os-tbl .c-chk{width:34px}.os-tbl .c-qtd{width:146px}.os-tbl .c-pai{width:130px}.os-tbl .c-img{width:104px}
+/* a coluna Imagens tem um botao so, centralizado (Levi, 21/09) */
+.os-tbl th.c-img,.os-tbl td.c-img{text-align:center}
+.os-tbl th.c-qtd,.os-tbl td.c-qtd{text-align:center}
 .os-tbl .oculta{display:none}
 .os-tbl td input{height:30px;border-radius:7px;padding:0 8px;width:100%}
 .os-tbl input[type=checkbox]{width:16px;height:16px;accent-color:var(--f-green)}
@@ -106,7 +112,15 @@ body.os-form input:focus,body.os-form select:focus{outline:none;border-color:var
 /* histórico */
 .os-filtros{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .os-filtros input,.os-filtros select{background:var(--input);border:1px solid var(--input-b);border-radius:8px;color:var(--txt);height:36px;padding:0 9px}
-.os-hist{background:var(--card);border-color:#2c3142}.os-hist th{background:var(--card);color:var(--muted)}
+.os-hist{background:var(--card);border-color:#2c3142}
+/* cabecalho CENTRALIZADO so no Historico (Levi, 21/09): ali a coluna e estreita e o rotulo
+   curto, entao alinhado a esquerda ele ficava solto em cima de numero centralizado. */
+/* Cliente, Usina, Status e Etiqueta sao rotulos curtos: alinhados a esquerda ficavam soltos numa
+   coluna larga. Descricao e Ativo continuam a esquerda — sao texto corrido (Levi, 21/09). */
+.os-hist th.k-cliente,.os-hist td.k-cliente,.os-hist th.k-usina,.os-hist td.k-usina,
+.os-hist th.k-status,.os-hist td.k-status,.os-hist th.k-etiqueta,.os-hist td.k-etiqueta,
+.os-hist th.k-folio,.os-hist td.k-folio{text-align:center}
+.os-hist th{background:var(--card);color:var(--muted);text-align:center}
 .os-hist td{height:auto;padding:8px;border-color:#262b3b}
 .os-folio{color:var(--verde);font-weight:700;text-decoration:none}.os-folio:hover{text-decoration:underline}
 .c-data{white-space:nowrap;color:#c4cbdb}.c-desc{min-width:220px}
@@ -200,12 +214,27 @@ body.os-modal-aberto{overflow:hidden}
 .det-b.ghost{background:transparent;color:#c4cbdb;border-color:var(--f-border)}.det-b.ghost:hover{border-color:#43547a;color:#fff}
 .os-modal-corpo .det-top{padding-right:58px}
 /* ── Históricos: filtros do app (steps/historico.py) ── */
-.os-hist-topo{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.os-hist-topo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:10px}
+.os-hist-topo .os-seg,.os-hist-topo .os-busca-os,.os-hist-topo .os-btn,
+.os-hist-dir .os-btn,.os-hist-buscar,.os-hist-auto{height:36px;box-sizing:border-box}
+.os-hist-topo .os-seg button{height:100%}
+.os-hist-topo .os-btn,.os-hist-dir .os-btn{padding:0 14px}
+.os-hist-dir .os-btn-ico{width:36px;padding:0}
+.os-hist-auto{display:flex;align-items:center}
 .os-hist-topo .os-seg button{background:var(--sec);color:var(--sec-txt);border:none;padding:0 14px;height:36px;font-weight:500;cursor:pointer;font-family:inherit;font-size:13px}
 .os-hist-topo .os-seg button.on{background:var(--f-green);color:var(--f-ink);font-weight:600}
 .os-busca-os{display:flex;align-items:center;gap:8px;background:var(--f-input);border:1px solid #5c7a2a;border-radius:10px;height:36px;padding:0 10px;min-width:280px}
 .os-busca-os input{background:transparent!important;border:none!important;height:34px!important;flex:1;color:#fff;font-size:13px;outline:none}
-.os-hist-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 14px;margin-top:6px}
+/* o bloco da DIREITA da barra (o `addStretch(1)` do app) — ver templates/historico.html */
+.os-hist-dir{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.os-hist-auto{color:var(--f-muted);font-size:12px;white-space:nowrap}
+.os-hist-buscar{display:flex;align-items:center;gap:6px}
+.os-hist-buscar .os-lbl{font-size:12px;color:var(--f-muted);text-transform:none;letter-spacing:0;font-weight:500}
+.os-hist-buscar input{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;color:#fff;height:36px;padding:0 10px;font-size:13px;width:200px}
+.os-btn-ico{width:38px;padding:0;font-size:16px;line-height:1}
+/* grade dos filtros: 3 colunas, 22px na horizontal e 9 na vertical — os numeros do QGridLayout */
+.os-hist-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px 22px;margin-top:6px}
+.os-cell select,.os-cell .os-multi{min-width:150px}
 @media (max-width:900px){.os-hist-grid{grid-template-columns:1fr 1fr}}
 .os-cell{display:flex;flex-direction:column;gap:4px}
 .os-cell .os-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--f-muted);font-weight:600}
@@ -220,3 +249,173 @@ body.os-modal-aberto{overflow:hidden}
 .os-multi-lista label:hover{background:var(--f-input)}.os-multi-lista label[hidden]{display:none}
 .os-multi-lista input{accent-color:var(--f-green)}
 .os-hist-hint{color:var(--f-muted);font-size:12px;margin-top:6px}
+
+/* ── anexar imagens na criação (Levi, 21/09) ───────────────────────────────────────────────
+   Estas regras nasceram em perf.css — que NINGUÉM carrega (arquivo vazio, sobra de outra fase).
+   Por isso o botão aparecia como o quadradão cinza padrão do navegador. */
+.img-b{background:transparent;border:1px dashed var(--f-border);border-radius:8px;color:var(--f-muted);
+  font-size:12px;padding:5px 10px;cursor:pointer;transition:border-color .12s,color .12s}
+.img-b:hover:not(:disabled){border-color:var(--f-green);color:#cfd6e4}
+.img-b.tem{border-style:solid;border-color:var(--f-green);color:#a9d96a;font-weight:600}
+.img-b:disabled{opacity:.4;cursor:default}
+
+/* ── busca dentro do <select> (os_busca.js, Levi 21/09) ────────────────────────────────────
+   O <select> nativo continua na pagina, escondido: ele guarda o valor e dispara o change. */
+.osb{position:relative}
+.osb select{position:absolute;opacity:0;pointer-events:none;width:0;height:0}
+.osb-in{width:100%}
+.osb-lista{position:absolute;z-index:120;left:0;right:0;top:calc(100% + 4px);max-height:280px;
+  overflow:auto;background:var(--card);border:1px solid var(--f-border);border-radius:10px;
+  box-shadow:0 10px 28px rgba(0,0,0,.45);padding:4px}
+.osb-op{padding:7px 10px;border-radius:7px;font-size:13px;color:var(--txt);cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.osb-op:hover,.osb-op.on{background:rgba(166,226,46,.16);color:#eaf3d6}
+.osb-vazio{padding:8px 10px;color:var(--muted);font-size:12.5px}
+
+/* caixa "Gerar ticket automaticamente" e a quantidade por ativo (Levi, 21/09) */
+.os-tk{display:flex;align-items:center;gap:8px;color:#cfd6e4;font-size:13px;cursor:pointer}
+.os-tk small{color:var(--muted);font-size:11.5px}
+.os-tbl .qtd{width:62px;text-align:center;background:var(--f-input);border:1px solid var(--f-border);
+  border-radius:7px;color:var(--txt);padding:4px 6px;font-size:13px}
+.os-tbl .qtd:disabled{opacity:.4}
+
+/* ── Solicitação / PCM (templates/solic*.html) ────────────────────────────────────────────── */
+/* A navegação entre as três telas usa o mesmo segmentado do Histórico, só que com links. */
+.os-subnav{align-self:flex-start}
+.os-subnav a{background:var(--sec);color:var(--sec-txt);padding:0 16px;height:36px;display:flex;align-items:center;font-size:13px;font-weight:500;text-decoration:none}
+.os-subnav a.on{background:var(--f-green);color:var(--f-ink);font-weight:600}
+.os-subnav a:hover:not(.on){color:#fff}
+.os-h2{margin:0 0 8px;font-size:15px;color:#fff}
+.os-req{color:var(--f-green);font-weight:600;text-transform:none;letter-spacing:0}
+.os-check{display:inline-flex;align-items:center;gap:7px;color:#e6e8ef;font-size:13px;cursor:pointer}
+.os-check input{accent-color:var(--f-green)}
+.os-acoes{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}
+/* subtarefas editáveis: uma linha por subtarefa, campos na mesma régua da grade de filtros */
+.os-subs{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.os-sub{display:grid;grid-template-columns:1fr 150px auto 34px;gap:8px;align-items:center}
+body.os-form .os-sub input[type=text],body.os-form .os-sub select,body.os-form .os-sub .s-x{height:34px;padding:0 10px;font-size:13px;border-radius:10px}
+body.os-form .os-sub .s-x{width:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1}
+.os-sub .os-check{height:34px}
+.os-subs-lista{margin:6px 0 0;padding-left:20px;color:#e6e8ef;font-size:13px}
+.os-subs-lista li{margin:3px 0}
+/* o painel de contagem: três números clicáveis que também são o filtro da tabela */
+.os-painel{display:flex;gap:10px;flex-wrap:wrap}
+.os-painel-card{display:flex;flex-direction:column;gap:2px;min-width:132px;padding:10px 14px;background:var(--f-card);border:1px solid var(--f-border);border-radius:12px;text-decoration:none}
+.os-painel-card.on{border-color:var(--f-green);background:rgba(166,226,46,.08)}
+.os-painel-card:hover{border-color:var(--f-green)}
+.os-painel-n{font-size:22px;font-weight:700;color:#fff;line-height:1}
+.os-painel-card.on .os-painel-n{color:var(--f-green)}
+.os-painel-r{font-size:12px;color:var(--f-muted)}
+/* tabela + painel lado a lado; abaixo de 1100px o painel desce, como qualquer coluna estreita */
+/* Com o painel FECHADO a tabela ocupa tudo. A coluna de 420px so nasce quando ha o que por
+   nela: um grid fixo reservava a faixa vazia e espremia a tabela em 60% da largura. */
+.os-fila{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
+.os-fila.com-painel{grid-template-columns:1fr 420px}
+@media (max-width:1100px){.os-fila.com-painel{grid-template-columns:1fr}}
+.os-analise{background:var(--f-card);border:1px solid var(--f-border);border-radius:14px;padding:14px 16px;position:sticky;top:12px;max-height:calc(100vh - 40px);overflow:auto}
+.os-analise-topo{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#fff;font-size:14px;margin-bottom:8px}
+.os-analise-corpo{display:flex;flex-direction:column;gap:8px}
+.os-analise-lin{font-size:13px;color:#e6e8ef}
+.os-recusar{margin-top:10px;border-top:1px solid var(--f-border);padding-top:10px}
+.os-recusar summary{cursor:pointer;color:var(--f-muted);font-size:13px}
+.os-recusar[open] summary{color:#fff;margin-bottom:8px}
+.os-recusar .os-cell{margin-bottom:8px}
+.os-hist tr.sol-l.on td{background:rgba(166,226,46,.07)}
+.os-hist tr.sol-l .os-folio{cursor:pointer}
+
+/* ── Tickets (templates/tickets.html) ─────────────────────────────────────────────────────── */
+.os-hist th.k-centro,.os-hist td.k-centro,.os-hist th.k-estado,.os-hist td.k-estado{text-align:center}
+.os-hist td.k-estado{white-space:nowrap}
+/* Aberta ha mais de 30 dias. Vermelho na CELULA e nao na linha inteira: o atraso e da ocorrencia,
+   e pintar a linha toda faria o resto do dado parecer suspeito tambem (steps/tickets.py). */
+.os-hist td.tk-alarme{color:#e05454;font-weight:600}
+/* A AUSENCIA de OS e o que esta tela cacar: vermelho, a cor do estado 'aberta' (steps/tickets.py).
+   Em verde ela lia como link e passava por uma OS que existe. */
+.tk-sem-os{color:#e05454;font-weight:600}
+.tk-os{color:var(--f-green);font-weight:600}
+.os-hist tr.tk-l{cursor:pointer}
+.os-hist tr.tk-l.on td{background:rgba(166,226,46,.07)}
+.os-hist tr.tk-l:hover td{background:rgba(255,255,255,.03)}
+.os-aviso-leitura{display:flex;align-items:center;gap:8px;background:rgba(235,139,87,.10);border:1px solid rgba(235,139,87,.32);border-radius:10px;padding:9px 12px;color:#e6e8ef}
+.os-analise .os-campo{display:flex;flex-direction:column;gap:4px;margin-bottom:9px}
+.os-analise .os-campo .os-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--f-muted);font-weight:600}
+
+/* Rodape da tabela de ativos: "mostrando N de M" + os dois botoes (Levi, 22/09) */
+.os-tbl tr.mais td{padding:10px 12px;background:var(--f-input);border-top:1px solid var(--f-border)}
+/* o flex vai no DIV, nunca no <td>: `display:flex` numa celula a tira do layout de tabela e o
+   `colspan` para de valer — o rodape ficava espremido na largura da 1a coluna (medido em 22/09) */
+.os-tbl tr.mais .mais-in{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.os-tbl tr.mais .os-ajuda{margin-right:auto}
+.os-tbl tr.mais:hover td{background:var(--f-input)}
+
+/* Grupo de usina no drill-down dos Tickets (Levi, 22/09) */
+.os-hist tr.tk-g{cursor:pointer}
+.os-hist tr.tk-g td{background:#121a2c;border-top:1px solid var(--f-border);padding:9px 12px}
+.os-hist tr.tk-g:hover td{background:#16203a}
+.os-hist tr.tk-g.on td{background:rgba(166,226,46,.07)}
+.os-hist tr.tk-g:focus-visible td{outline:2px solid var(--f-green);outline-offset:-2px}
+.tk-g-in{display:flex;align-items:center;gap:10px}
+.tk-seta{color:var(--f-muted);transition:transform .14s ease;display:inline-block}
+.os-hist tr.tk-g.on .tk-seta{transform:rotate(90deg);color:var(--f-green)}
+.tk-g-usina{color:#fff;font-size:13.5px}
+.tk-g-cli{font-size:12px}
+/* o numero que a pessoa veio ver: quantos equipamentos estao parados nesta usina */
+.tk-g-qtd{color:#e05454;font-weight:700;font-size:13px;white-space:nowrap}
+.os-hist tr.tk-f td{padding-left:16px}
+.os-hist tr.tk-f td:first-child{border-left:2px solid var(--f-border)}
+
+/* Tickets: TODAS as colunas centralizadas, nas duas abas (Levi, 22/09) */
+#tab_tk th,#tab_tk td{text-align:center}
+#tab_tk tr.tk-g td{text-align:left}
+.tk-filtro{cursor:pointer}
+
+/* ── A BARRA DE ROLAGEM no tema escuro (Levi, 22/09: "esse scroll está muito feio em branco e
+   cinza"). O navegador desenha a barra do sistema — clara — em cima do fundo navy, e ela vira o
+   elemento mais chamativo da lista. `scrollbar-color` cobre o Firefox; o `::-webkit-scrollbar`
+   cobre Chrome e Edge, que é o que a equipe usa. Vale para a página e para toda caixa que rola. */
+html{scrollbar-color:#2c3a5c #0d1322;scrollbar-width:thin}
+.osb-lista,.os-multi-lista,.os-tbl-wrap,.os-analise,.acoes-dlg,.acoes-exec,.os-modal-corpo,textarea{
+  scrollbar-color:#2c3a5c transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2c3a5c;border-radius:10px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#3d4f7a;background-clip:padding-box;border:2px solid transparent}
+::-webkit-scrollbar-corner{background:transparent}
+/* a lista do combo: sem o "degrau" branco das setas do Windows */
+.osb-lista::-webkit-scrollbar-button{display:none;height:0;width:0}
+
+/* Tickets: o painel (vincular OS, trocar usina, excluir) — Levi, 22/09 */
+a.tk-os{color:var(--f-green);font-weight:600;text-decoration:none}
+/* "Sem OS" quebrava em duas linhas na coluna estreita (22/09) */
+.tk-sem-os,a.tk-os,.tk-os{white-space:nowrap}
+a.tk-os:hover{text-decoration:underline}
+.tk-p-usina{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.os-btn.tk-excluir{background:rgba(224,84,84,.14);color:#f08a8a;border:1px solid rgba(224,84,84,.4)}
+.os-btn.tk-excluir:hover{background:rgba(224,84,84,.24);color:#fff}
+.tk-confirma{background:rgba(224,84,84,.08);border:1px solid rgba(224,84,84,.35);border-radius:10px;padding:10px 12px;margin:6px 0 10px}
+.tk-confirma p{margin:0 0 8px;color:#e6e8ef;font-size:13px;line-height:1.5}
+.tk-vinc{border:1px solid var(--f-border);border-radius:10px;padding:9px 10px;margin:4px 0 10px}
+.tk-vinc-l{display:flex;gap:8px;margin-top:6px}
+.tk-vinc-l input{flex:1}
+.tk-vinc-res{display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:220px;overflow-y:auto}
+.tk-vinc-op,.tk-usi-op{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:var(--f-input);border:1px solid var(--f-border);border-radius:8px;padding:6px 9px;color:#e6e8ef;font-size:12.5px;cursor:pointer}
+.tk-vinc-op:hover,.tk-usi-op:hover{border-color:var(--f-green)}
+.tk-vinc-ok{color:var(--f-green);font-size:12.5px;margin:4px 0}
+.tk-usi{border:1px solid var(--f-border);border-radius:10px;padding:9px 10px;margin:4px 0 10px}
+.tk-usi input{width:100%}
+.tk-usi-l{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:280px;overflow-y:auto}
+.tk-usi-cli{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--f-muted);font-weight:600;margin:6px 0 2px}
+.tk-usi-op{flex-direction:row;align-items:center;justify-content:space-between}
+
+/* A JANELA DE IMAGENS do app (PerfAnexoDialog), comum ao Tradicional e à Performance. Estava no
+   tradicional.css; veio para cá quando a Performance passou a usá-la (22/09). */
+.trad-modal{width:min(480px,96vw)}
+.trad-modal-img{width:min(560px,96vw)}
+.trad-modal-corpo{display:flex;flex-direction:column;gap:8px;padding:14px 18px 16px}
+.trad-txt{margin:0;color:var(--txt);font-size:13px}.trad-txt small{color:var(--f-muted)}
+.trad-img-btns{display:flex;gap:8px;flex-wrap:wrap}
+.trad-img-grid{display:grid;grid-template-columns:repeat(3,150px);gap:10px;max-height:320px;overflow:auto}
+.trad-img-cell{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:7px;align-items:center}
+.trad-img-cell img{width:134px;height:100px;object-fit:contain;background:var(--f-bg);border:1px solid var(--f-border);border-radius:7px}
+.trad-img-cell .trad-img-nome{width:134px;height:28px!important;font-size:11.5px;padding:0 7px!important;border-radius:6px!important}
+.trad-img-cell .os-btn{width:134px}

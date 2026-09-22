@@ -6,6 +6,7 @@
 <title>{% block titulo %}Criar OS{% endblock %} · Grid Co.</title>
 <link rel="icon" href="/os/assets/grid-icon.png">
 <link rel="stylesheet" href="/os/static/os.css">
+<script src="/os/static/os_busca.js" defer></script>
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -29,8 +30,9 @@
 <div class="os-sep"></div>
 {% if conta %}
 <nav class="os-tabs">
+  {# `aba_nav` existe para a tela que usa `aba` para outra coisa (Tickets: Trackers/Strings) #}
   {% for t in abas %}
-  <a class="os-tab {% if aba == t.chave %}on{% endif %}" href="{{ t.href }}">{% if t.icone %}{{ icone(t.icone, '#c9cfe0', 18) }}{% endif %}<span>{{ t.titulo }}</span></a>
+  <a class="os-tab {% if (aba_nav|default(aba)) == t.chave %}on{% endif %}" href="{{ t.href }}">{% if t.icone %}{{ icone(t.icone, '#c9cfe0', 18) }}{% endif %}<span>{{ t.titulo }}</span></a>
   {% endfor %}
 </nav>
 {% endif %}

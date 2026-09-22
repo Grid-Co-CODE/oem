@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block titulo %}Nova solicitação{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{# SolicitacaoTab (steps/solicitacao.py) na web. Mesma cascata cliente→usina→ativo, mesmo tema
+   sugerindo classificação e subtarefas, e a mesma observação com o bloco [PCM] — é por ele que
+   o tema, o técnico e a data sugerida chegam à fila do PCM, já que a solicitação não tem campo
+   para isso no Fracttal.
+   Menos dinamicidade que o app (Levi, 21/09): quatro blocos empilhados, sem cartões que se
+   rearranjam. A única parte viva é a cascata, que não tem como não ser. #}
+{% block conteudo %}
+<section class="os-pagina">
+  <nav class="os-seg os-subnav" aria-label="Solicitação / PCM">
+    <a class="on" href="/os/solicitacao">Nova solicitação</a>
+    <a href="/os/solicitacao/fila">Fila do PCM</a>
+    <a href="/os/solicitacao/historico">Histórico</a>
+  </nav>
+
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-cardf-t">1 · Ativo</span></div>
+    <div class="os-hist-grid">
+      <label class="os-cell"><span class="os-lbl">Cliente</span>
+        <select id="cb_cliente"><option value="">{{ todos_cliente }}</option>{% for c in clientes %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></label>
+      <label class="os-cell"><span class="os-lbl">Usina</span>
+        <select id="cb_usina" disabled><option value="">{{ todos_usina }}</option></select></label>
+      <label class="os-cell"><span class="os-lbl">Tipo de ativo</span>
+        <select id="cb_tipo" disabled><option value="">{{ todos_tipo }}</option></select></label>
+    </div>
+    <label class="os-cell" style="margin-top:8px"><span class="os-lbl">Buscar ativo</span>
+      <input type="search" id="busca" placeholder="parte do nome do ativo" disabled></label>
+    <div class="os-tbl-wrap" style="max-height:260px;margin-top:8px">
+      <table class="os-tbl"><thead><tr><th class="c-chk"></th><th>Ativo</th><th>Tipo</th></tr></thead>
+        <tbody id="tbody"><tr class="vazio"><td colspan="3">Selecione cliente e usina para ver os ativos.</td></tr></tbody></table>
+    </div>
+    <div class="os-ajuda" id="hint_ativos">Marque um ou mais ativos — cada um vira uma solicitação com os mesmos campos.</div>
+  </div>
+
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-cardf-t">2 · O pedido</span></div>
+    <label class="os-cell"><span class="os-lbl">Tema</span>
+      <select id="cb_tema">
+        <option value="">— sem tema (só as subtarefas da base) —</option>
+        {% for t in temas %}<option value="{{ t.chave }}" data-c1="{{ t.classif1 }}" data-tipo="{{ t.tipo }}" data-n="{{ t.n_subs }}">{{ t.nome }}</option>{% endfor %}
+      </select></label>
+    <div class="os-ajuda" id="hint_tema">O tema põe o título no padrão, desce a classificação certa e a OS já nasce com o checklist.</div>
+    <label class="os-cell" style="margin-top:8px"><span class="os-lbl">Título</span>
+      <input type="text" id="ed_desc" maxlength="180" placeholder="[Usina][Ativo] - Motivo"></label>
+    <label class="os-cell" style="margin-top:8px"><span class="os-lbl">Relato (observação)</span>
+      <textarea id="ed_obs" rows="4" placeholder="o que aconteceu, com o detalhe que o PCM precisa para programar"></textarea></label>
+  </div>
+
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-cardf-t">3 · Classificação e datas</span></div>
+    <div class="os-hist-grid">
+      <label class="os-cell"><span class="os-lbl">Classificação 1 <span class="os-req">obrigatória</span></span>
+        <select id="cb_c1"><option value="">— selecione —</option>{% for o in c1 %}<option value="{{ o.id }}">{{ o.description }}</option>{% endfor %}</select></label>
+      <label class="os-cell"><span class="os-lbl">Grupo</span>
+        <select id="cb_grupo"><option value="">— selecione —</option>{% for o in grupos %}<option value="{{ o.id }}">{{ o.description }}</option>{% endfor %}</select></label>
+      <label class="os-cell"><span class="os-lbl">Classificação 2</span>
+        <select id="cb_c2"><option value="">— selecione —</option>{% for o in c2 %}<option value="{{ o.id }}">{{ o.description }}</option>{% endfor %}</select></label>
+      <label class="os-cell"><span class="os-lbl">Data do incidente</span>
+        <input type="datetime-local" id="dt_inc" value="{{ agora }}"></label>
+      <label class="os-cell"><span class="os-lbl">Data sugerida ao PCM</span>
+        <input type="datetime-local" id="dt_sug" value="{{ sugerida }}"></label>
+      <label class="os-cell"><span class="os-lbl">Técnico sugerido</span>
+        <select id="cb_tec"><option value="">— nenhum —</option>{% for p in pessoas %}<option value="{{ p.name }}">{{ p.name }}</option>{% endfor %}</select></label>
+    </div>
+    <label class="os-check" style="margin-top:10px"><input type="checkbox" id="ck_urg"> Urgente</label>
+  </div>
+
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-cardf-t">4 · Subtarefas que a OS vai receber</span></div>
+    <div class="os-ajuda">Vêm do tema. Editar aqui vale: a lista viaja no bloco [PCM] e é ela que o PCM vê ao aprovar.</div>
+    <div id="subs" class="os-subs"></div>
+    <button type="button" class="os-btn secondary" id="b_sub_add">Acrescentar subtarefa</button>
+  </div>
+
+  <div class="os-acoes">
+    <button type="button" class="os-btn" id="b_criar">Criar solicitação</button>
+    <span class="os-ajuda" id="hint"></span>
+  </div>
+  <div class="os-resultado" id="resultado" hidden></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var cbCli = document.getElementById("cb_cliente"), cbUsi = document.getElementById("cb_usina"),
+      cbTipo = document.getElementById("cb_tipo"), busca = document.getElementById("busca"),
+      tbody = document.getElementById("tbody"), hintA = document.getElementById("hint_ativos");
+  var ativos = [], marcados = new Set();
+  // 10 em 10 (Levi, 22/09) — so a EXIBICAO; o marcado continua valendo fora da tela
+  var PAGINA = 10, limite = PAGINA;
+  // O RODAPE da tabela, o mesmo da Performance: quantos de quantos, quantos MARCADOS estao fora
+  // da tela (cada um vira uma OS/solicitacao, e nao ve-los nao pode significar nao saber), e os
+  // dois botoes. O flex vai num DIV dentro do <td>: no proprio <td> ele anularia o colspan.
+  function rodapeMais(rows, vis, estaMarcado, colunas) {
+    if (rows.length <= vis.length) return '';
+    var fora = rows.slice(vis.length).filter(estaMarcado).length, faltam = rows.length - vis.length;
+    return '<tr class="mais"><td colspan="' + colunas + '"><div class="mais-in">'
+      + '<span class="os-ajuda">Mostrando ' + vis.length + ' de ' + rows.length + ' ativos'
+      + (fora ? ' · <b>' + fora + ' marcado(s) fora da tela</b>' : '') + '</span>'
+      + '<button type="button" class="os-btn secondary mini" data-mais="' + PAGINA + '">Mostrar mais ' + Math.min(PAGINA, faltam) + '</button>'
+      + '<button type="button" class="os-btn secondary mini" data-mais="tudo">Mostrar todos (' + rows.length + ')</button>'
+      + '</div></td></tr>';
+  }
+
+
+  function pintar() {
+    var t = (busca.value || "").toLowerCase(), tp = cbTipo.value;
+    var vis = ativos.filter(function (a) {
+      return (!tp || a.tipo === tp) && (!t || String(a.label || "").toLowerCase().indexOf(t) >= 0);
+    });
+    var mostra = vis.slice(0, limite);
+    tbody.innerHTML = vis.length ? mostra.map(function (a) {
+      return '<tr data-code="' + a.code + '"><td class="c-chk"><input type="checkbox" class="chk"'
+        + (marcados.has(a.code) ? " checked" : "") + '></td><td>' + a.label + '</td><td>' + (a.tipo || "") + '</td></tr>';
+    }).join("") + rodapeMais(vis, mostra, function (a) { return marcados.has(a.code); }, 3)
+      : '<tr class="vazio"><td colspan="3">Nenhum ativo com esse filtro.</td></tr>';
+    hintA.textContent = marcados.size
+      ? marcados.size + " ativo(s) marcado(s) — cada um vira uma solicitação com os mesmos campos."
+      : "Marque um ou mais ativos — cada um vira uma solicitação com os mesmos campos.";
+  }
+  tbody.addEventListener("click", function (e) {
+    var mais = e.target.dataset && e.target.dataset.mais;
+    if (mais) { limite = mais === "tudo" ? Infinity : limite + PAGINA; pintar(); }
+  });
+  tbody.addEventListener("change", function (e) {
+    if (!e.target.classList.contains("chk")) return;
+    var code = e.target.closest("tr").dataset.code;
+    e.target.checked ? marcados.add(code) : marcados.delete(code);
+    pintar();
+  });
+  // a cascata reaproveita o catalogo do Tradicional: e o MESMO `load_assets_cached` do lado de la,
+  // e ter dois endpoints para a mesma pergunta so criaria duas respostas possiveis.
+  function busca_json(u) { return fetch(u, {credentials: "same-origin"}).then(function (r) { return r.json(); }); }
+  cbCli.addEventListener("change", function () {
+    cbUsi.innerHTML = '<option value="">{{ todos_usina }}</option>'; cbUsi.disabled = true;
+    cbTipo.innerHTML = '<option value="">{{ todos_tipo }}</option>'; cbTipo.disabled = true;
+    busca.disabled = true; ativos = []; marcados.clear(); pintar();
+    if (!cbCli.value) return;
+    busca_json("/os/api/tradicional/catalogo?cliente=" + encodeURIComponent(cbCli.value)).then(function (j) {
+      (j.usinas || []).forEach(function (u) { cbUsi.add(new Option(u, u)); });
+      cbUsi.disabled = false;
+    });
+  });
+  cbUsi.addEventListener("change", function () {
+    ativos = []; marcados.clear(); pintar();
+    if (!cbUsi.value) { cbTipo.disabled = true; busca.disabled = true; return; }
+    busca_json("/os/api/tradicional/catalogo?cliente=" + encodeURIComponent(cbCli.value)
+      + "&usina=" + encodeURIComponent(cbUsi.value)).then(function (j) {
+      cbTipo.innerHTML = '<option value="">{{ todos_tipo }}</option>';
+      (j.tipos || []).forEach(function (t) { cbTipo.add(new Option(t, t)); });
+      cbTipo.disabled = false; busca.disabled = false;
+      ativos = j.ativos || []; limite = PAGINA; pintar();
+    });
+  });
+  cbTipo.addEventListener("change", function () { limite = PAGINA; pintar(); });
+  busca.addEventListener("input", function () { limite = PAGINA; pintar(); });
+
+  // ── tema → classificação sugerida + subtarefas ──
+  var cbTema = document.getElementById("cb_tema"), hintTema = document.getElementById("hint_tema"),
+      cbC1 = document.getElementById("cb_c1"), caixaSubs = document.getElementById("subs");
+  var subs = [];
+  function semAcento(t) { return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase(); }
+  function pintarSubs() {
+    caixaSubs.innerHTML = subs.map(function (s, i) {
+      return '<div class="os-sub" data-i="' + i + '">'
+        + '<input type="text" class="s-desc" value="' + String(s.desc || "").replace(/"/g, "&quot;") + '">'
+        + '<select class="s-tipo">' + ["texto", "num", "simnao", "verif"].map(function (t) {
+            return '<option value="' + t + '"' + (s.tipo === t ? " selected" : "") + '>'
+              + ({texto: "Texto", num: "Numérico", simnao: "Sim/Não", verif: "Verificação"}[t]) + "</option>"; }).join("")
+        + '</select>'
+        + '<label class="os-check"><input type="checkbox" class="s-anexo"' + (s.anexo ? " checked" : "") + '> foto</label>'
+        + '<button type="button" class="os-btn secondary s-x" title="Remover">&times;</button></div>';
+    }).join("");
+  }
+  caixaSubs.addEventListener("click", function (e) {
+    if (!e.target.classList.contains("s-x")) return;
+    subs.splice(Number(e.target.closest(".os-sub").dataset.i), 1); pintarSubs();
+  });
+  caixaSubs.addEventListener("input", function (e) {
+    var d = e.target.closest(".os-sub"); if (!d) return;
+    var s = subs[Number(d.dataset.i)]; if (!s) return;
+    if (e.target.classList.contains("s-desc")) s.desc = e.target.value;
+    if (e.target.classList.contains("s-tipo")) s.tipo = e.target.value;
+    if (e.target.classList.contains("s-anexo")) s.anexo = e.target.checked;
+  });
+  caixaSubs.addEventListener("change", function (e) {
+    var d = e.target.closest(".os-sub"); if (!d) return;
+    var s = subs[Number(d.dataset.i)]; if (!s) return;
+    if (e.target.classList.contains("s-tipo")) s.tipo = e.target.value;
+    if (e.target.classList.contains("s-anexo")) s.anexo = e.target.checked;
+  });
+  document.getElementById("b_sub_add").addEventListener("click", function () {
+    subs.push({desc: "", tipo: "texto", anexo: false}); pintarSubs();
+  });
+  function carregarSubs() {
+    busca_json("/os/api/solic/subtarefas?tema=" + encodeURIComponent(cbTema.value || "")).then(function (j) {
+      subs = j.subtarefas || []; pintarSubs();
+    });
+  }
+  cbTema.addEventListener("change", function () {
+    var op = cbTema.options[cbTema.selectedIndex], c1 = op.getAttribute("data-c1") || "";
+    hintTema.textContent = cbTema.value
+      ? "Sugere Classificação 1 “" + c1 + "”" + (op.getAttribute("data-tipo") ? " · " + op.getAttribute("data-tipo") : "")
+        + " e " + op.getAttribute("data-n") + " subtarefas."
+      : "O tema põe o título no padrão, desce a classificação certa e a OS já nasce com o checklist.";
+    // marca a Classificação 1 sugerida PELO NOME, e só se ela existir nesta conta: o id da lista
+    // muda de conta para conta, e o nome é o que o `solic_spec` guarda.
+    if (c1) {
+      // SEM ACENTO na comparacao: o nome vem do `solic_spec` ("Nao Para o Ativo") e o do dropdown,
+      // do cadastro do Fracttal, onde alguem pode ter digitado com ou sem acento. Um til de
+      // diferenca fazia a sugestao do tema simplesmente nao acontecer, sem aviso nenhum.
+      var alvo = semAcento(c1);
+      for (var i = 0; i < cbC1.options.length; i++) {
+        if (semAcento(cbC1.options[i].text) === alvo) { cbC1.selectedIndex = i; break; }
+      }
+    }
+    carregarSubs();
+  });
+  carregarSubs();
+
+  // ── criar ──
+  var btn = document.getElementById("b_criar"), hint = document.getElementById("hint"),
+      res = document.getElementById("resultado");
+  function txt(sel) { return sel.selectedIndex > 0 ? sel.options[sel.selectedIndex].text : ""; }
+  btn.addEventListener("click", function () {
+    var corpo = {
+      ativos: Array.from(marcados),
+      descricao: document.getElementById("ed_desc").value,
+      observacao: document.getElementById("ed_obs").value,
+      classif1: cbC1.value ? Number(cbC1.value) : null, classif1_txt: txt(cbC1),
+      grupo: document.getElementById("cb_grupo").value ? Number(document.getElementById("cb_grupo").value) : null,
+      grupo_txt: txt(document.getElementById("cb_grupo")),
+      classif2: document.getElementById("cb_c2").value ? Number(document.getElementById("cb_c2").value) : null,
+      classif2_txt: txt(document.getElementById("cb_c2")),
+      data: document.getElementById("dt_inc").value,
+      data_sugerida: document.getElementById("dt_sug").value.replace("T", " "),
+      tecnico: document.getElementById("cb_tec").value,
+      tema: cbTema.value, urgente: document.getElementById("ck_urg").checked,
+      subtarefas: subs.filter(function (s) { return String(s.desc || "").trim(); })
+    };
+    if (!corpo.ativos.length) { hint.textContent = "Marque ao menos um ativo."; return; }
+    if (marcados.size > 1 && !confirm("Vão ser criadas " + marcados.size + " solicitações, uma por ativo, com os mesmos campos. Confirma?")) return;
+    btn.disabled = true; hint.textContent = "criando…"; res.hidden = true;
+    fetch("/os/api/solic/criar", {method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)})
+      .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (x) {
+        btn.disabled = false; hint.textContent = "";
+        res.hidden = false;
+        res.className = "os-resultado" + (x.ok && !x.j.falhas ? "" : " ruim");
+        res.textContent = x.j.erro || x.j.mensagem || "Sem resposta do servidor.";
+        if (x.ok && x.j.ok) { marcados.clear(); pintar(); document.getElementById("ed_desc").value = ""; document.getElementById("ed_obs").value = ""; }
+      })
+      .catch(function (e) { btn.disabled = false; hint.textContent = ""; res.hidden = false; res.className = "os-resultado ruim"; res.textContent = "Falhou: " + e; });
+  });
+})();
+</script>
+{% endblock %}

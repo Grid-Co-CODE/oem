@@ -148,7 +148,9 @@ def test_criar_uma_os_por_ativo_com_o_payload_do_app(cli, monkeypatch):
     it = visto["itens"][0]
     assert it["asset"] == ASSETS[0] and it["plano_id_task"] == 900 and it["plano_id_item"] == 11 and it["linkar"] is True
     assert it["base"] == "Recomposição de String" and it["note"] == "Strings Ipv10 e Ipv17 com corrente nula"
-    assert it["os_pai"] == "9786" and it["titulo"] == "" and it["imagens"] == [] and it["gerar_ticket"] is False
+    # `gerar_ticket` era False fixo ("só no app por ora"); desde 21/09 a web gera a ocorrência,
+    # com a caixa marcada por padrão — a mesma regra do app.
+    assert it["os_pai"] == "9786" and it["titulo"] == "" and it["imagens"] == [] and it["gerar_ticket"] is True
     assert (visto["idr"], visto["nome"], visto["extra"]) == (1414413, "Levi Maia", None)
     brt = dt.timezone(dt.timedelta(hours=-3))
     assert visto["evt"] == dt.datetime(2026, 9, 12, 1, 10, tzinfo=brt) and visto["prog"] == dt.datetime(2026, 9, 12, 8, 0, tzinfo=brt)

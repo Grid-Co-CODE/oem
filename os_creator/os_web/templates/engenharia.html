@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block conteudo %}
+{# EngenhariaTab: a moldura do app — título, aviso de área em construção e o Voltar que o _wrap_modo desenha #}
+<section class="os-pagina">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/">&larr; Voltar</a>
+    <span class="os-head-ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#A6E22E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ icone_svg|safe }}</svg></span>
+    <span class="os-head-titulo">{{ titulo }}</span>
+  </div>
+  <div class="os-cardf" style="padding:22px 26px">
+    <div style="font-size:20px;font-weight:600;color:#fff">{{ titulo }}</div>
+    <div style="font-size:13px;color:var(--f-muted);margin-top:8px;max-width:640px">{{ aviso }}</div>
+    <div style="font-size:12px;color:var(--f-muted);margin-top:18px">{{ descricao }}</div>
+  </div>
+</section>
+{% endblock %}

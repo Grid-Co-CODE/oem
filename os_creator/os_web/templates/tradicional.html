@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block titulo %}Tradicional{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/tradicional.css">{% endblock %}
+{% block conteudo %}
+{# O wizard "Tradicional" do app (app.py ~304-330): barra "← Voltar | Clonar OS nº [ex.: 8125] Clonar", "Passo N de 4 · rótulo"
+   com a barra de progresso, e os passos — aqui como cards numerados na mesma ordem: 1 Ativo + Data (steps/step1.py),
+   2 Detalhes da Tarefa (steps/step2.py: cards "Detalhes da OS" e "Classificação"), 3 Sub tarefas (steps/step3.py) e
+   4 Responsável (app.py::ResponsavelDialog, um diálogo — aqui um modal), com "Esta tarefa já foi realizada?" (steps/finalizar.py),
+   "Agrupar em UMA OS com várias tarefas" e a OS pai (steps/ospai.py). O diálogo de imagens por ativo é o PerfAnexoDialog. #}
+<section class="os-pagina" id="trad" data-agora="{{ agora }}" data-programada="{{ programada }}" data-crit-default="{{ crit_default }}">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/">← Voltar</a>
+    <span class="trad-clonar-lbl">Clonar OS nº</span>
+    <input id="clone_in" type="text" class="trad-clonar-in" placeholder="ex.: 8125" inputmode="numeric" autocomplete="off">
+    <a class="os-btn secondary" id="b_clone" href="/os/clonar">Clonar</a>
+    <span class="os-cresce"></span>
+    <span class="os-ajuda" id="steplbl">Passo 1 de 4  ·  {{ passos[0] }}</span>
+  </div>
+  <div class="trad-prog"><div class="trad-prog-f" id="prog" style="width:25%"></div></div>
+
+  {# ── Passo 1 — Step1: Card "Ativo" + as duas datas ── #}
+  <div class="os-cardf" id="card1"><div class="os-cardf-h"><span class="os-badge">1</span><span class="os-cardf-t">{{ passos[0] }}</span></div>
+    <div class="trad-sub-t">Ativo</div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Cliente <i>*</i></span>
+        <select id="cb_cliente"><option value="">{{ todos_cliente }}</option>{% for c in clientes %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></label>
+      <label class="os-campo"><span class="os-lbl">Usina <i>*</i></span>
+        <select id="cb_usina" disabled><option value="">{{ todos_usina }}</option></select></label>
+    </div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Tipo de equipamento</span>
+        <select id="cb_tipo" disabled><option value="">{{ todos_tipo }}</option></select></label>
+      <label class="os-campo"><span class="os-lbl">&nbsp;</span>
+        <input id="busca" type="search" placeholder="Refinar por código ou nome…" autocomplete="off"></label>
+    </div>
+    <span class="os-lbl">Ativos <i>*</i> <small>(marque um ou vários — no fim você escolhe uma OS por ativo ou uma OS só com várias tarefas; anexe imagens por ativo)</small></span>
+    <div class="os-tbl-wrap">
+      <table class="os-tbl" id="tbl">
+        <thead><tr><th>Ativo</th><th class="c-anx">Anexos</th></tr></thead>
+        <tbody id="tbody"><tr class="vazio"><td colspan="2">Selecione cliente e usina para ver os ativos.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="os-ajuda" id="hint">Selecione cliente e usina para ver os ativos.</div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Data do incidente <small>(Brasília)</small></span>
+        <span class="trad-dt-agora"><input id="dt_prog" type="datetime-local" value="{{ agora }}" max="{{ agora }}" title="Data do evento não aceita futuro — é quando aconteceu."><button type="button" class="os-btn secondary" id="b_agora">Agora</button></span></label>
+      <label class="os-campo"><span class="os-lbl">Data programada <small>(quando executar)</small></span>
+        <input id="dt_exec" type="datetime-local" value="{{ programada }}"></label>
+    </div>
+    <div class="os-rodape">
+      <button type="button" class="os-btn secondary trad-reload" id="b_reload" title="Recarregar ativos do Fracttal">↻</button>
+      <button type="button" class="os-btn primaria trad-cresce" id="b_next1" disabled>Próximo ›››</button>
+    </div>
+  </div>
+
+  {# ── Passo 2 — Step2: Card "Detalhes da OS" + Card "Classificação" (TipoTarefaBox) ── #}
+  <div class="os-cardf" id="card2"><div class="os-cardf-h"><span class="os-badge">2</span><span class="os-cardf-t">{{ passos[1] }}</span></div>
+    <div class="trad-sub-t">Detalhes da OS</div>
+    <label class="os-campo"><span class="os-lbl">Descrição da tarefa <i>*</i></span>
+      <textarea id="desc" rows="2" placeholder="Somente uma ação"></textarea></label>
+    <label class="os-campo"><span class="os-lbl">Observação <small>(opcional)</small></span>
+      <textarea id="obs" rows="2" placeholder="Observações da OS (opcional)"></textarea></label>
+    <label class="os-campo"><span class="os-lbl">Etiquetas <small>(opcional — marque as que quiser)</small></span>
+      <input id="etiq_busca" type="search" placeholder="carregando etiquetas…" autocomplete="off"></label>
+    <div class="trad-lista" id="etiq_lista"></div>
+    <div class="trad-sub-t">Classificação</div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Tipo de tarefa</span>
+        <select id="cb_tipo_tarefa"><option value="">carregando…</option></select></label>
+      <label class="os-campo"><span class="os-lbl">Criticidade</span>
+        <select id="cb_crit">{% for nome, idp in criticidades %}<option value="{{ idp }}"{% if idp == crit_default %} selected{% endif %}>{{ nome }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Classificação 1 <small>(opcional)</small></span>
+        <select id="cb_c1"><option value="">{{ nenhuma }}</option></select></label>
+      <label class="os-campo"><span class="os-lbl">Classificação 2 <small>(opcional)</small></span>
+        <select id="cb_c2"><option value="">{{ nenhuma }}</option></select></label>
+    </div>
+    <div class="os-rodape">
+      <button type="button" class="os-btn secondary" id="b_back2">‹‹‹ Voltar</button>
+      <button type="button" class="os-btn primaria trad-cresce" id="b_next2" disabled>Próximo ›››</button>
+    </div>
+  </div>
+
+  {# ── Passo 3 — Step3: Card "Subtarefas" ── #}
+  <div class="os-cardf" id="card3"><div class="os-cardf-h"><span class="os-badge">3</span><span class="os-cardf-t">{{ passos[2] }}</span></div>
+    <div class="trad-sub-t">Subtarefas</div>
+    <span class="os-lbl">Passos <i>*</i> <small>(mínimo 1)</small></span>
+    <div id="subs"></div>
+    <button type="button" class="os-btn secondary trad-add" id="b_add_sub">+ Adicionar subtarefa</button>
+    <div class="os-rodape">
+      <button type="button" class="os-btn secondary" id="b_back3">‹‹‹ Voltar</button>
+      <button type="button" class="os-btn primaria trad-cresce" id="b_done" disabled>Concluir e Gerar OS</button>
+    </div>
+    <div class="os-resultado" id="resultado" hidden></div>
+  </div>
+</section>
+
+{# ── Passo 4 — ResponsavelDialog (440x520): responsável + "já realizada" + agrupar + OS pai + Cancelar/Gerar N OS ── #}
+<div class="os-modal" id="modal_resp" hidden>
+  <div class="os-modal-fundo" data-fechar></div>
+  <div class="os-modal-card os-form trad-modal" role="dialog" aria-modal="true" aria-label="{{ passos[3] }}">
+    <div class="trad-modal-h"><span class="os-badge">4</span><span class="os-cardf-t">{{ passos[3] }}</span></div>
+    <div class="trad-modal-corpo">
+      <p class="trad-txt" id="resp_titulo"><b>1 OS</b> a gerar — escolha o <b>responsável</b> <small>(obrigatório na criação)</small>:</p>
+      <input id="resp_busca" type="search" placeholder="Filtrar responsável…" autocomplete="off">
+      <div class="trad-lista trad-pessoas" id="resp_lista"></div>
+      <div id="fin">
+        <label class="trad-check"><input type="checkbox" id="ck_fin"> Esta tarefa já foi realizada?</label>
+        <div class="trad-finpanel" id="finpanel" hidden>
+          <div class="trad-radios"><span>Enviar para OS:</span>
+            <label><input type="radio" name="fin_dest" value="verif"> Verificação</label>
+            <label><input type="radio" name="fin_dest" value="final" checked> Finalizados</label></div>
+          <div class="os-linha2">
+            <label class="os-campo"><span class="os-lbl">Data inicial <small>(= evento)</small></span><input id="fin_ini" type="datetime-local"></label>
+            <label class="os-campo"><span class="os-lbl">Data final</span><input id="fin_fim" type="datetime-local"></label>
+          </div>
+          <div class="os-lbl">Respostas das subtarefas <small>(opcional)</small></div>
+          <div id="fin_resp" class="trad-fin-resp"></div>
+        </div>
+      </div>
+      <label class="trad-check" id="w_agrupar" hidden title="Em vez de uma OS por ativo, cria uma OS só em que cada ativo marcado vira uma tarefa."><input type="checkbox" id="ck_agrupar"> Agrupar em UMA OS com várias tarefas</label>
+      <div class="os-lbl">Ela depende de outra OS? <small>(opcional)</small></div>
+      <div class="trad-ospai">
+        <input id="ospai_in" type="text" placeholder="Selecione a OS pai (nº) — opcional" title="Opcional: vincula esta OS a uma OS pai. Digite o número e escolha." autocomplete="off" inputmode="numeric">
+        <div class="trad-ospai-lista" id="ospai_lista" hidden></div>
+      </div>
+      <p class="os-erro" id="resp_erro" hidden></p>
+      <div class="os-rodape">
+        <button type="button" class="os-btn secondary" id="b_cancel" data-fechar>Cancelar</button>
+        <button type="button" class="os-btn primaria trad-cresce" id="b_gerar" disabled>Gerar OS</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Imagens de UM ativo (PerfAnexoDialog, 520x460): adicionar arquivo(s) ou colar captura, miniaturas com remover ── #}
+<div class="os-modal" id="modal_img" hidden>
+  <div class="os-modal-fundo" data-fechar-img></div>
+  <div class="os-modal-card os-form trad-modal trad-modal-img" role="dialog" aria-modal="true" aria-label="Imagens">
+    <div class="trad-modal-corpo">
+      <p class="trad-txt" id="img_titulo">Anexar imagens à OS de <b>ativo</b></p>
+      <p class="os-ajuda trad-txt">Adicione arquivos ou cole uma captura de tela com <b>Ctrl+V</b>.</p>
+      <div class="trad-img-btns">
+        <button type="button" class="os-btn secondary" id="b_img_add">Adicionar arquivo…</button>
+        <button type="button" class="os-btn secondary" id="b_img_paste">Colar (Ctrl+V)</button>
+        <input type="file" id="img_file" accept="image/*" multiple hidden>
+      </div>
+      <div class="trad-img-grid" id="img_grid"></div>
+      <div class="os-ajuda" id="img_vazio">Nenhuma imagem ainda.</div>
+      <p class="os-erro" id="img_erro" hidden></p>
+      <div class="os-rodape"><span class="os-cresce"></span><button type="button" class="os-btn primaria" id="b_img_ok" data-fechar-img>Concluir</button></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/os/static/tradicional.js"></script>{% endblock %}

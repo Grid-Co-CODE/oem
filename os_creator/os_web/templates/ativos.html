@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block titulo %}Ativos{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/ativos.css">{% endblock %}
+{% block conteudo %}
+{# AtivosTab (steps/ativos.py): cabeçalho em UMA linha (Voltar + título/subtítulo | Atualizar + busca);
+   esquerda árvore CLIENTE / USINA; centro VISÃO + TIPO + tabela ou hierarquia; direita ATIVO SELECIONADO #}
+<section class="os-pagina at-pagina" id="ativos" data-limite="{{ limite }}">
+  <div class="at-cab">
+    <a class="os-btn secondary os-voltar" href="/os/">&larr; Voltar</a>
+    <div class="at-titulo"><div class="at-h1">Ativos</div><div class="at-sub" id="sub">carregando o catálogo…</div></div>
+    <span class="os-cresce"></span>
+    <button type="button" class="os-btn secondary" id="b_reload" title="Busca o catálogo de ativos no Fracttal agora, ignorando o cache de 24 h. Use quando um ativo novo ainda não aparece.">Atualizar</button>
+    <input id="busca" type="search" class="at-busca" placeholder="código, nome, usina…   [Ctrl+F]" autocomplete="off">
+  </div>
+
+  <div class="at-corpo">
+    <aside class="at-painel at-arv">
+      <div class="at-k">CLIENTE / USINA</div>
+      <input id="busca_usina" type="search" placeholder="buscar usina…" autocomplete="off">
+      <div class="at-arvore" id="arvore"><div class="at-hint">carregando…</div></div>
+    </aside>
+
+    <div class="at-painel at-centro">
+      <div class="at-topo">
+        <span class="at-k">VISÃO</span>
+        <button type="button" class="at-chip on" data-visao="lista">Lista</button>
+        <button type="button" class="at-chip" data-visao="hier">Hierarquia</button>
+        <span class="at-esp"></span>
+        <span class="at-k">TIPO</span>
+        <button type="button" class="at-chip on" data-tipo="">Todos</button>
+        {% for rotulo, valor in tipos_chip %}<button type="button" class="at-chip" data-tipo="{{ valor }}">{{ rotulo }}</button>{% endfor %}
+      </div>
+      <div class="at-lista" id="v_lista">
+        <table class="at-tbl" id="tabela">
+          <thead><tr><th>Código</th><th>Ativo</th><th>Tipo</th><th>Usina</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="at-lista" id="v_hier" hidden>
+        <table class="at-tbl" id="hier"><thead><tr><th>Ativo</th><th>Código</th><th>Tipo</th></tr></thead><tbody id="hbody"></tbody></table>
+      </div>
+      <div class="at-rodape" id="rodape">—</div>
+    </div>
+
+    <aside class="at-painel at-det">
+      <div class="at-k">ATIVO SELECIONADO</div>
+      <div class="at-nome" id="d_nome">—</div>
+      <div class="at-code" id="d_code"></div>
+      <div class="at-campos">
+        <div><span>Tipo</span><b id="d_tipo">—</b></div>
+        <div><span>Marca</span><b id="d_marca">—</b></div>
+        <div><span>Usina</span><b id="d_usina">—</b></div>
+        <div><span>Cliente</span><b id="d_cliente">—</b></div>
+      </div>
+      <div class="at-sep"></div>
+      <div class="at-k">ÚLTIMAS 4 OS</div>
+      <div class="at-os" id="os_box"></div>
+      <div class="at-hint" id="os_hint">selecione um ativo</div>
+      <span class="os-cresce"></span>
+      <div class="at-menu-wrap">
+        <button type="button" class="os-btn primaria at-criar" id="b_os" disabled>Criar OS neste ativo&nbsp;&nbsp;&#9662;</button>
+        <div class="at-menu" id="menu" hidden></div>
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/os/static/ativos.js"></script>{% endblock %}
