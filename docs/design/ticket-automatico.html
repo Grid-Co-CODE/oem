@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket automático — pré-visual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Paleta = steps/ui.py. O mockup tem de parecer o app, não uma página sobre o app. */
+:root{
+  --bg:#0B1020; --card:#121A2B; --input:#1A2337; --border:#2A3550;
+  --green:#A6E22E; --green-ink:#0B1020; --text:#FFFFFF; --muted:#8A93A8;
+  --blue:#4a9eff; --amber:#eb8b57; --red:#e05454; --ok:#3fb27f;
+  --page:#090d18;
+  --display:"Bricolage Grotesque",Inter,"Segoe UI",system-ui,sans-serif;
+  --body:Inter,"Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:#EEF1F8;font:15px/1.55 var(--body);-webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono);font-size:.92em}
+code{background:var(--input);border:1px solid var(--border);border-radius:6px;padding:1px 6px;white-space:nowrap}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
+
+header.hero{padding:56px 0 8px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(166,226,46,.12)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,5.4vw,56px);line-height:1.02;letter-spacing:-.02em;margin:16px 0 18px;color:#fff}
+h1 em{font-style:normal;color:var(--green)}
+.lead{font-size:17px;color:#B7BFD1;max-width:820px;margin:0 0 26px}
+
+.achado{display:grid;grid-template-columns:auto 1fr;gap:18px;background:linear-gradient(90deg,rgba(235,139,87,.10),transparent 65%);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:12px;padding:18px 20px;margin-bottom:10px}
+.achado .rot{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);white-space:nowrap;padding-top:3px}
+.achado p{margin:0 0 8px}
+.achado p:last-child{margin:0}
+.achado b{color:#fff;font-weight:600}
+
+section{padding:52px 0 0}
+.sec-head{display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:baseline;margin-bottom:24px;border-top:1px solid var(--border);padding-top:22px}
+.sec-head .q{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--green)}
+.sec-head h2{font-family:var(--display);font-weight:600;font-size:clamp(23px,3vw,31px);letter-spacing:-.015em;margin:0;color:#fff;line-height:1.1}
+.sec-head p{grid-column:2;margin:6px 0 0;color:var(--muted);max-width:760px}
+@media (max-width:760px){.sec-head{grid-template-columns:1fr}.sec-head p{grid-column:1}}
+
+/* ══ o "print" da tela Qt ══ */
+.app{background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.app-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #1a2236;background:var(--page)}
+.app-bar .volta{font-size:13px;color:#c9cfe0}
+.app-bar .tit{font-family:var(--display);font-size:15px;font-weight:600;color:#fff;margin-left:6px}
+.app-bar .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.app-body{padding:18px 18px 20px;display:flex;flex-direction:column;gap:14px}
+
+.qcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px 16px}
+.qcard-h{display:flex;align-items:center;gap:10px;padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--border)}
+.qbadge{width:22px;height:22px;border-radius:7px;background:var(--green);color:var(--green-ink);font-family:var(--mono);font-size:11px;font-weight:700;display:grid;place-items:center;flex:none}
+.qcard-h .t{font-weight:600;font-size:14.5px;color:#fff}
+.qcard-h .extra{margin-left:auto;font-size:12px;color:var(--muted)}
+
+.qrot{font-size:12.5px;font-weight:600;color:#E6EAF3;margin:0 0 6px;display:flex;align-items:center;gap:6px}
+.qrot .ob{color:var(--green)}
+.qrot .dica{font-weight:400;color:var(--muted)}
+.qrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:760px){.qrow{grid-template-columns:1fr}}
+.qinput{background:var(--input);border:1px solid var(--border);border-radius:9px;padding:0 12px;height:40px;display:flex;align-items:center;font-size:13.5px;color:#E6EAF3;gap:8px}
+.qinput.sel::after{content:"▾";margin-left:auto;color:var(--muted);font-size:11px}
+.qinput .ph{color:var(--muted)}
+
+/* tabela de ativos */
+.qtbl{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.qtbl table{width:100%;border-collapse:collapse;font-size:13px}
+.qtbl th{background:var(--card);color:var(--muted);font-weight:500;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;text-align:left;padding:9px 12px;border-bottom:1px solid var(--border)}
+.qtbl td{padding:7px 12px;border-bottom:1px solid #1e2740;background:var(--input);vertical-align:middle}
+.qtbl tr:last-child td{border-bottom:none}
+.qtbl tr.on td{background:rgba(166,226,46,.055)}
+.qtbl tr.off td .ativo{color:var(--muted)}
+.qtbl td.dash{color:var(--muted)}
+.ck{width:15px;height:15px;border-radius:4px;border:1.5px solid #55618a;flex:none;display:inline-grid;place-items:center;cursor:pointer;background:transparent;padding:0}
+.ck.on{background:var(--green);border-color:var(--green)}
+.ck.on::after{content:"";width:8px;height:4.5px;border-left:2px solid var(--green-ink);border-bottom:2px solid var(--green-ink);transform:rotate(-45deg) translate(1px,-1px)}
+.cel-ativo{display:flex;align-items:center;gap:10px}
+.cel-ativo .ativo{color:#fff;font-weight:500;white-space:nowrap}
+.cel-in{background:#0F1626;border:1px solid var(--border);border-radius:7px;height:26px;display:flex;align-items:center;padding:0 9px;font-size:12.5px;color:#DDE3F0;width:100%}
+.cel-in.ph{color:#5d6788}
+.cel-in:focus{outline:none;border-color:var(--green)}
+.btn-img{border:1px solid var(--border);background:transparent;color:#cdd2e0;border-radius:7px;height:24px;padding:0 10px;font-size:12px;font-family:var(--body);cursor:pointer}
+
+/* ★ o card de strings, ao lado do ativo */
+.strchip{margin-left:auto;display:inline-flex;align-items:center;gap:0;background:#0F1626;border:1px solid rgba(166,226,46,.42);border-radius:8px;height:26px;overflow:hidden;flex:none}
+.strchip button{width:22px;height:24px;border:none;background:transparent;color:var(--green);font-size:14px;line-height:1;cursor:pointer;font-family:var(--body)}
+.strchip button:hover{background:rgba(166,226,46,.14)}
+.strchip input{width:30px;height:24px;border:none;background:transparent;color:var(--green);font-family:var(--mono);font-size:13px;font-weight:500;text-align:center;padding:0}
+.strchip input:focus{outline:none}
+.strchip .un{font-size:11px;color:var(--green);opacity:.75;padding:0 8px 0 2px;white-space:nowrap}
+.strchip.man{border-color:var(--amber)}
+.strchip.man button,.strchip.man input,.strchip.man .un{color:var(--amber)}
+.strchip.zero{border-color:#55618a}
+.strchip.zero button,.strchip.zero input,.strchip.zero .un{color:var(--muted)}
+
+/* ★ o marcador */
+.marc{display:flex;align-items:flex-start;gap:11px;background:rgba(166,226,46,.06);border:1px solid rgba(166,226,46,.3);border-radius:10px;padding:11px 13px}
+.marc .txt{font-size:13.5px;color:#E6EAF3;font-weight:500}
+.marc .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.marc .sub b{color:var(--green);font-weight:600}
+.marc.off{background:transparent;border-color:var(--border)}
+.marc.off .sub b{color:var(--muted)}
+
+.qfoot{display:flex;align-items:center;gap:14px;justify-content:flex-end;padding-top:2px}
+.qfoot .resumo{margin-right:auto;font-size:12.5px;color:var(--muted)}
+.qfoot .resumo b{color:var(--green)}
+.qbtn{background:var(--green);color:var(--green-ink);border:none;border-radius:9px;height:40px;padding:0 20px;font-weight:700;font-size:13.5px;font-family:var(--body);display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+
+/* caixa de mensagem do Qt */
+.msgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(370px,1fr));gap:16px;align-items:start}
+.msg{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.msg.antes{opacity:.72}
+.msg-h{padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;background:var(--page)}
+.msg-h .tag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid var(--border)}
+.msg.antes .tag{color:var(--muted)}
+.msg.depois .tag{color:var(--green);border-color:var(--green)}
+.msg-b{padding:16px 18px 14px;display:flex;gap:14px}
+.msg-ico{width:30px;height:30px;border-radius:50%;background:rgba(166,226,46,.14);color:var(--green);display:grid;place-items:center;font-size:16px;font-weight:700;flex:none}
+.msg.antes .msg-ico{background:rgba(138,147,168,.14);color:var(--muted)}
+.msg-t{font-size:13.5px;color:#E6EAF3;line-height:1.6}
+.msg-t .l2{color:var(--green);font-weight:600}
+.msg-t .aviso{color:var(--amber);font-size:12.5px;display:block;margin-top:8px}
+.msg-btn{display:flex;justify-content:flex-end;padding:0 18px 14px}
+.msg-btn span{background:var(--input);border:1px solid var(--border);border-radius:7px;padding:5px 18px;font-size:12.5px;color:#cdd2e0}
+
+/* laboratório da régua */
+.lab{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+.lab h3{font-family:var(--display);font-size:16px;margin:0 0 4px;color:#fff}
+.lab .hint{color:var(--muted);font-size:13px;margin:0 0 14px}
+.lab-in{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.lab-in input{flex:1;min-width:280px;background:var(--input);border:1px solid var(--border);border-radius:9px;height:42px;padding:0 13px;color:#E6EAF3;font-size:13.5px;font-family:var(--body)}
+.lab-in input:focus{outline:none;border-color:var(--green)}
+.lab-out{display:flex;align-items:center;gap:10px;background:var(--input);border:1px solid rgba(166,226,46,.35);border-radius:9px;height:42px;padding:0 16px;white-space:nowrap}
+.lab-out .n{font-family:var(--mono);font-size:19px;color:var(--green);font-weight:500}
+.lab-out .u{font-size:12.5px;color:var(--muted)}
+.lab-toks{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;min-height:24px}
+.tok{font-family:var(--mono);font-size:11px;background:rgba(166,226,46,.13);border:1px solid rgba(166,226,46,.35);color:var(--green);border-radius:999px;padding:2px 9px}
+.tok.via{background:rgba(74,158,255,.12);border-color:rgba(74,158,255,.4);color:var(--blue)}
+.tok.pre{background:rgba(235,139,87,.12);border-color:rgba(235,139,87,.4);color:var(--amber)}
+.casos{width:100%;border-collapse:collapse;margin-top:18px;font-size:13.5px}
+.casos th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500;padding:0 12px 8px 0;border-bottom:1px solid var(--border)}
+.casos td{padding:9px 12px 9px 0;border-bottom:1px solid #1a2236;vertical-align:top}
+.casos tr:last-child td{border-bottom:none}
+.casos .t{font-family:var(--mono);font-size:12px;color:#DDE3F0}
+.casos .n{font-family:var(--mono);color:var(--green);white-space:nowrap;font-weight:500}
+.casos .n.w{color:var(--amber)}
+.casos .obs{color:var(--muted);font-size:12.5px}
+.passos{counter-reset:p;display:grid;gap:8px;margin:16px 0 0;padding:0;list-style:none}
+.passos li{counter-increment:p;display:grid;grid-template-columns:26px 1fr;gap:12px;font-size:13.5px;color:#C5CCDC}
+.passos li::before{content:counter(p);font-family:var(--mono);font-size:11px;color:var(--green);border:1px solid rgba(166,226,46,.4);border-radius:50%;width:20px;height:20px;display:grid;place-items:center;margin-top:2px}
+.passos b{color:#fff;font-weight:600}
+
+/* decisões */
+.dec{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.dec li{display:grid;grid-template-columns:34px 1fr;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:14px 17px}
+.dec .n{font-family:var(--mono);font-size:12px;color:var(--green);padding-top:2px}
+.dec h3{font-family:var(--display);font-size:15.5px;margin:0 0 5px;color:#fff;font-weight:600}
+.dec p{margin:0 0 6px;font-size:13.5px;color:#C5CCDC}
+.dec p:last-child{margin:0}
+.dec .rec{color:var(--green);font-weight:500}
+.dec .rec::before{content:"decidido: ";color:var(--muted);font-weight:400}
+.dec .rec.meu{color:var(--amber)}
+.dec .rec.meu::before{content:"escolha minha: "}
+.dec .fala{border-left:2px solid var(--border);padding:2px 0 2px 12px;color:#9aa3b8;font-style:italic;font-size:13px;margin:0 0 8px}
+
+/* ficha: a linha que vai para a planilha */
+.ficha{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}
+.ficha .col{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.ficha .col>h4{margin:0;padding:11px 16px;border-bottom:1px solid var(--border);background:var(--page);font-family:var(--display);font-size:14px;font-weight:600;color:#fff;display:flex;align-items:center;gap:9px}
+.ficha .col>h4 small{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400;letter-spacing:.06em}
+.par{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px;padding:8px 16px;border-bottom:1px solid #1a2236;font-size:12.5px;align-items:baseline}
+.par:last-child{border-bottom:none}
+.par .k{color:var(--muted)}
+.par .v{font-family:var(--mono);font-size:11.5px;color:#DDE3F0;overflow-wrap:anywhere}
+.par .v.g{color:var(--green)}
+.par .v.vaz{font-family:var(--body);font-size:12px;color:#5d6788}
+.par.novo{background:rgba(166,226,46,.055)}
+.par.novo .k{color:#C5CCDC}
+.ficha .rod{padding:10px 16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+.nota{border-left:2px solid var(--green);padding:8px 15px;color:#B7BFD1;font-size:14px;margin:20px 0 0}
+.nota b{color:#fff;font-weight:600}
+footer{padding:44px 0 60px;margin-top:52px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">OS Creator · Performance · pré-visual</div>
+    <h1>O ticket nasce com a OS, <em>e agora aparece</em></h1>
+    <p class="lead">Segunda volta, com as suas cinco respostas já aplicadas: card de quantidade nas duas telas, confirmação ao desmarcar, ticket também no modo agrupado e a observação da OS descendo para a linha da planilha. Continua sendo desenho — nenhum código foi alterado.</p>
+
+    <div class="achado">
+      <div class="rot">o que achei</div>
+      <div>
+        <p><b>A linha de ticket já é criada hoje</b>, desde 31/08. Criar OS de Recomposição de String ou de Verificação de Tracker Parado no Performance já acrescenta a ocorrência na aba, com a OS vinculada no diário.</p>
+        <p><b>O que não existe é o que você viu faltar:</b> nenhum marcador na tela, e a confirmação só fala de ticket quando ele <i>falha</i>. Dando certo, o app não diz nada — então parece que não faz.</p>
+        <p><b>E tem um defeito real junto:</b> em Strings a quantidade é gravada fixa em <code>1</code>, sempre, mesmo com o inversor tendo seis strings sem corrente. É esse número que o card editável passa a preencher.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════ TELA A — STRINGS ══════════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">tela 1 de 2</span>
+      <h2>Recomposição de String — um ticket por inversor</h2>
+      <p>O card de strings fica ao lado do ativo e já vem contado da observação. Edite a observação ou o próprio card: os números do rodapé acompanham. Dados ilustrativos.</p>
+    </div>
+
+    <div class="app">
+      <div class="app-bar">
+        <span class="volta">← Voltar</span>
+        <span class="dot"></span>
+        <span class="tit">Recomposição de String</span>
+      </div>
+      <div class="app-body">
+
+        <div class="qcard">
+          <div class="qcard-h"><span class="qbadge">1</span><span class="t">Usina</span></div>
+          <div class="qrow">
+            <div><div class="qrot">Cliente <span class="ob">*</span></div><div class="qinput sel">Thopen</div></div>
+            <div><div class="qrot">Usina <span class="ob">*</span></div><div class="qinput sel">Thopen - Tanabi 2 - SP</div></div>
+          </div>
+        </div>
+
+        <div class="qcard">
+          <div class="qcard-h">
+            <span class="qbadge">2</span><span class="t">Ativos</span>
+            <span class="extra">marque um ou vários — cada um vira uma OS</span>
+          </div>
+          <div class="qtbl">
+            <table id="tbl-str">
+              <thead><tr>
+                <th style="width:38%">Ativo</th><th style="width:96px">OS Pai</th>
+                <th>Observação</th><th style="width:92px">Imagens</th>
+              </tr></thead>
+              <tbody>
+                <tr class="on" data-n="3">
+                  <td><div class="cel-ativo">
+                    <button class="ck on" aria-label="Inversor 2.18 marcado"></button>
+                    <span class="ativo">Inversor 2.18</span>
+                    <span class="strchip"><button class="menos">−</button><input value="3" inputmode="numeric" aria-label="strings do Inversor 2.18"><button class="mais">+</button><span class="un">strings</span></span>
+                  </div></td>
+                  <td><span class="cel-in ph">nº</span></td>
+                  <td><input class="cel-in obs" value="Strings Ipv10, Ipv11 e Ipv12 com corrente nula, verificar e normalizar"></td>
+                  <td><button class="btn-img">🖼</button></td>
+                </tr>
+                <tr class="on" data-n="1">
+                  <td><div class="cel-ativo">
+                    <button class="ck on" aria-label="Inversor 1.1 marcado"></button>
+                    <span class="ativo">Inversor 1.1</span>
+                    <span class="strchip"><button class="menos">−</button><input value="1" inputmode="numeric" aria-label="strings do Inversor 1.1"><button class="mais">+</button><span class="un">strings</span></span>
+                  </div></td>
+                  <td><span class="cel-in ph">nº</span></td>
+                  <td><input class="cel-in obs" value="String Ipv4 com corrente nula, verificar e normalizar"></td>
+                  <td><button class="btn-img">🖼</button></td>
+                </tr>
+                <tr class="on" data-n="2">
+                  <td><div class="cel-ativo">
+                    <button class="ck on" aria-label="Inversor 3.2 marcado"></button>
+                    <span class="ativo">Inversor 3.2</span>
+                    <span class="strchip"><button class="menos">−</button><input value="2" inputmode="numeric" aria-label="strings do Inversor 3.2"><button class="mais">+</button><span class="un">strings</span></span>
+                  </div></td>
+                  <td><span class="cel-in ph">nº</span></td>
+                  <td><input class="cel-in obs" value="STR2 e STR7 sem corrente desde a manhã"></td>
+                  <td><button class="btn-img">🖼</button></td>
+                </tr>
+                <tr class="off">
+                  <td><div class="cel-ativo">
+                    <button class="ck" aria-label="Inversor 4.5 desmarcado"></button>
+                    <span class="ativo">Inversor 4.5</span>
+                  </div></td>
+                  <td class="dash">—</td><td class="dash">—</td>
+                  <td><button class="btn-img" disabled style="opacity:.4">🖼</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px">3 marcado(s) · o card de strings só aparece no ativo marcado, e some nos outros planos</div>
+        </div>
+
+        <div class="qcard">
+          <div class="qcard-h"><span class="qbadge">4</span><span class="t">Responsável</span></div>
+          <div class="qrow" style="margin-bottom:12px">
+            <div><div class="qrot">Data do incidente <span class="dica">(aplica a todas)</span></div><div class="qinput">10/09/2026 07:30</div></div>
+            <div><div class="qrot">Responsável <span class="ob">*</span></div><div class="qinput sel">Roger Lélis</div></div>
+          </div>
+          <div class="qrot">Ocorrência</div>
+          <label class="marc" id="marc-str">
+            <button class="ck on" id="ck-str" aria-label="Gerar ticket automaticamente"></button>
+            <span>
+              <span class="txt">Gerar ticket automaticamente</span>
+              <span class="sub" id="sub-str">Acrescenta <b>3 ocorrências</b> na aba <b>Strings indisp</b> — uma por inversor, com <b>6 strings</b> no total, já vinculadas à OS.</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="qfoot">
+          <span class="resumo" id="res-str">3 OS · <b>3 tickets</b></span>
+          <button class="qbtn">Criar OS</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="nota"><b>O card fica na célula do ativo</b>, como você pediu, e não em coluna própria: assim ele não ocupa largura nas outras três telas de Performance, onde strings não existem. Ele nasce contado da observação e vira âmbar quando alguém corrige o número à mão, para a diferença entre contado e conferido ficar visível.</p>
+  </div>
+</section>
+
+<!-- ══════════════ TELA B — TRACKERS ══════════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">tela 2 de 2</span>
+      <h2>Verificação de Tracker Parado — um ticket por tracker</h2>
+      <p>Cada tracker marcado é uma OS e uma ocorrência. O card também está aqui, como você pediu: nasce em 1 e não lê a observação — quem muda o número é a pessoa.</p>
+    </div>
+
+    <div class="app">
+      <div class="app-bar">
+        <span class="volta">← Voltar</span>
+        <span class="dot"></span>
+        <span class="tit">Verificação de Tracker Parado</span>
+      </div>
+      <div class="app-body">
+        <div class="qcard">
+          <div class="qcard-h">
+            <span class="qbadge">2</span><span class="t">Ativos</span>
+            <span class="extra">Salto Pirapora 3 · trackers individuais</span>
+          </div>
+          <div class="qtbl">
+            <table>
+              <thead><tr>
+                <th style="width:38%">Ativo</th><th style="width:96px">OS Pai</th>
+                <th>Observação</th><th style="width:92px">Imagens</th>
+              </tr></thead>
+              <tbody>
+                <tr class="on"><td><div class="cel-ativo"><button class="ck on"></button><span class="ativo">Tracker 1.101</span>
+                    <span class="strchip" data-fixo="1"><button class="menos">−</button><input value="1" inputmode="numeric" aria-label="trackers parados"><button class="mais">+</button><span class="un">parados</span></span></div></td>
+                  <td><span class="cel-in ph">nº</span></td><td><input class="cel-in" value="Travado em fim de curso"></td><td><button class="btn-img">🖼</button></td></tr>
+                <tr class="on"><td><div class="cel-ativo"><button class="ck on"></button><span class="ativo">Tracker 1.102</span>
+                    <span class="strchip" data-fixo="1"><button class="menos">−</button><input value="1" inputmode="numeric" aria-label="trackers parados"><button class="mais">+</button><span class="un">parados</span></span></div></td>
+                  <td><span class="cel-in ph">nº</span></td><td><input class="cel-in ph" value="" placeholder="motivo / observação (opcional)"></td><td><button class="btn-img">🖼</button></td></tr>
+                <tr class="on"><td><div class="cel-ativo"><button class="ck on"></button><span class="ativo">Tracker 2.104</span>
+                    <span class="strchip" data-fixo="1"><button class="menos">−</button><input value="1" inputmode="numeric" aria-label="trackers parados"><button class="mais">+</button><span class="un">parados</span></span></div></td>
+                  <td><span class="cel-in ph">nº</span></td><td><input class="cel-in ph" value="" placeholder="motivo / observação (opcional)"></td><td><button class="btn-img">🖼</button></td></tr>
+                <tr class="off"><td><div class="cel-ativo"><button class="ck"></button><span class="ativo">Tracker 2.105</span></div></td>
+                  <td class="dash">—</td><td class="dash">—</td><td><button class="btn-img" disabled style="opacity:.4">🖼</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px">3 marcado(s)</div>
+        </div>
+
+        <div class="qcard">
+          <div class="qcard-h"><span class="qbadge">4</span><span class="t">Responsável</span></div>
+          <div class="qrot">Ocorrência</div>
+          <label class="marc">
+            <button class="ck on"></button>
+            <span>
+              <span class="txt">Gerar ticket automaticamente</span>
+              <span class="sub">Acrescenta <b>3 ocorrências</b> na aba <b>Trackers</b> — uma por tracker, com skid, identificação e <b>3 parados</b> no total, já vinculadas à OS.</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="qfoot">
+          <span class="resumo">3 OS · <b>3 tickets</b></span>
+          <button class="qbtn">Criar OS</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ A CONFIRMAÇÃO ══════════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">o aviso do fim</span>
+      <h2>A confirmação passa a contar os tickets</h2>
+      <p>É a caixa que aparece depois de criar. Hoje ela fala só das OS; ticket só aparece quando dá errado.</p>
+    </div>
+    <div class="msgs">
+      <div class="msg antes">
+        <div class="msg-h"><span class="tag">hoje</span> OS de Performance</div>
+        <div class="msg-b">
+          <div class="msg-ico">i</div>
+          <div class="msg-t">3 OS criada(s) — Nº 12401, 12402, 12403.</div>
+        </div>
+        <div class="msg-btn"><span>OK</span></div>
+      </div>
+      <div class="msg depois">
+        <div class="msg-h"><span class="tag">proposto</span> OS de Performance</div>
+        <div class="msg-b">
+          <div class="msg-ico">✓</div>
+          <div class="msg-t">
+            3 OS criada(s) — Nº 12401, 12402, 12403.<br>
+            <span class="l2">3 tickets criados na aba Strings indisp — 6 strings no total.</span>
+            <span class="aviso">A planilha de Tickets ainda sobrescreve esta aba no próximo sync.</span>
+          </div>
+        </div>
+        <div class="msg-btn"><span>OK</span></div>
+      </div>
+    </div>
+    <div class="msgs" style="margin-top:16px">
+      <div class="msg depois">
+        <div class="msg-h"><span class="tag">ao desmarcar</span> Gerar ticket</div>
+        <div class="msg-b">
+          <div class="msg-ico" style="background:rgba(235,139,87,.16);color:var(--amber)">?</div>
+          <div class="msg-t">
+            Sem o ticket, estas 3 OS não vão gerar ocorrência na planilha de Tickets — e nada vai lembrar disso depois.<br>
+            <span style="color:var(--muted);font-size:12.5px;display:block;margin-top:8px">Criar as OS sem registrar a ocorrência?</span>
+          </div>
+        </div>
+        <div class="msg-btn" style="gap:8px"><span>Sim, sem ticket</span><span style="background:var(--green);border-color:var(--green);color:var(--green-ink);font-weight:600">Manter o ticket</span></div>
+      </div>
+      <div style="align-self:center;color:#B7BFD1;font-size:13.5px;line-height:1.6">
+        <b style="color:#fff">A pergunta é no clique que desmarca</b>, não na hora de criar. É onde a decisão está sendo tomada, e sai do caminho de quem só quer criar a OS.<br><br>
+        O botão que continua marcado é o verde: quem clicou por engano volta com um Enter.
+      </div>
+    </div>
+
+    <p class="nota"><b>O aviso do sync só aparece enquanto o corte estiver desligado</b>, como está desde 08/09. A tela de Tickets já diz isso ao salvar; a caixa passa a dizer o mesmo, lendo a mesma lista <code>SHEETS_QUE_O_SYNC_SOBRESCREVE</code>. No dia em que o corte voltar, a frase some sozinha. Se o ticket falhar e a OS sair, a caixa fica âmbar e diz qual ativo ficou sem ocorrência — a OS nunca é derrubada por causa do ticket.</p>
+  </div>
+</section>
+
+<!-- ══════════════ A RÉGUA ══════════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">a régua</span>
+      <h2>Como as strings são contadas</h2>
+      <p>Fechada com a sua resposta: a palavra só vale com número junto, colado ou depois de um espaço. O quadro mostra por que a versão ao pé da letra erra nos textos que a plataforma gera. Escreva no campo abaixo para conferir.</p>
+    </div>
+
+    <div class="lab">
+      <h3>Teste a régua</h3>
+      <p class="hint">Cole ou digite uma observação. O número é o que iria para o card do inversor.</p>
+      <div class="lab-in">
+        <input id="lab" value="Strings Ipv10, Ipv11 e Ipv12 com corrente nula, verificar e normalizar" aria-label="observação para testar a contagem">
+        <div class="lab-out"><span class="n" id="lab-n">3</span><span class="u" id="lab-u">strings</span></div>
+      </div>
+      <div class="lab-toks" id="lab-toks"></div>
+
+      <ol class="passos">
+        <li><span><b>Conta os nomes de string.</b> A palavra vale quando vem com número, colado ou depois de um espaço: <code>Ipv10</code>, <code>PV 3</code>, <code>STR2</code>, <code>String 4</code>. Palavra sozinha não conta, e nome repetido conta uma vez.</span></li>
+        <li><span><b>Se não achar nenhum, procura o número antes da palavra:</b> "3 strings sem corrente" vale 3.</span></li>
+        <li><span><b>Se ainda assim não achar, fica 1</b> e o card avisa que foi presumido. A OS existe porque pelo menos uma string caiu.</span></li>
+      </ol>
+
+      <table class="casos">
+        <thead><tr><th>Observação real</th><th>Sua régua ao pé da letra</th><th>Proposta</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="t">Strings Ipv10, Ipv11 e Ipv12 com corrente nula…</td>
+            <td class="n w">4</td><td class="n">3</td>
+            <td class="obs">"Strings" do texto corrido contaria como mais uma. O ajuste é só contar marcador colado a número.</td>
+          </tr>
+          <tr>
+            <td class="t">String Ipv4 com corrente nula, verificar e normalizar</td>
+            <td class="n w">2</td><td class="n">1</td>
+            <td class="obs">Mesmo caso, no texto de uma string só — é o formato mais comum vindo da plataforma.</td>
+          </tr>
+          <tr><td class="t">STR2 e STR7 sem corrente desde a manhã</td><td class="n">2</td><td class="n">2</td><td class="obs">Aqui as duas réguas concordam.</td></tr>
+          <tr><td class="t">3 strings sem corrente no inversor</td><td class="n w">1</td><td class="n">3</td><td class="obs">O número vem antes da palavra. É o passo 2.</td></tr>
+          <tr><td class="t">Strings 1 a 12 sem corrente</td><td class="n w">1</td><td class="n w">1</td><td class="obs">Faixa nenhuma das duas entende, e as duas erram igual. O card nasce em 1, marcado como presumido, e se corrige à mão. É o caso que justifica ele ser editável.</td></tr>
+          <tr><td class="t">(observação vazia)</td><td class="n w">0</td><td class="n">1</td><td class="obs">Zero não pode ir para a planilha: a ocorrência existe.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ A LINHA DA PLANILHA ══════════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">o que é gravado</span>
+      <h2>A linha que entra na planilha</h2>
+      <p>Sua resposta 5 pedia a observação descendo para o ticket. Ela vira uma frase montada, com a data do incidente, na coluna Comentários gerais. Edite a observação da primeira tela e veja o texto mudar aqui.</p>
+    </div>
+
+    <div class="ficha">
+      <div class="col">
+        <h4><span class="qbadge" style="width:18px;height:18px;font-size:10px">S</span>Strings indisp <small>SHEET 128 · INVERSOR 2.18</small></h4>
+        <div class="par"><span class="k">Usina</span><span class="v">TNB200</span></div>
+        <div class="par"><span class="k">Inversor</span><span class="v">Inversor 2.18</span></div>
+        <div class="par novo"><span class="k">Quantidade de strings no afetadas</span><span class="v g" id="f-qtd">3</span></div>
+        <div class="par"><span class="k">Quantidade de strings no inversor</span><span class="v vaz">vazia — o app não sabe</span></div>
+        <div class="par"><span class="k">Início da ocorrência</span><span class="v">2026-09-10 07:30:00</span></div>
+        <div class="par"><span class="k">Início do chamado pela Grid Co.</span><span class="v">2026-09-10 14:22:00</span></div>
+        <div class="par novo"><span class="k">Comentários gerais</span><span class="v g" id="f-obs">Ipv10, Ipv11 e Ipv12 com corrente nula em 10/09/2026 07:30</span></div>
+        <div class="par"><span class="k">Causa raiz</span><span class="v vaz">vazia — quem diz é o técnico</span></div>
+        <div class="par"><span class="k">Fim da ocorrência</span><span class="v vaz">vazia — a ocorrência está aberta</span></div>
+        <div class="rod">A OS não tem coluna nesta aba: o vínculo com a Nº 12401 vai para o diário, junto do estado inicial "OS Programada".</div>
+      </div>
+
+      <div class="col">
+        <h4><span class="qbadge" style="width:18px;height:18px;font-size:10px">T</span>Trackers <small>SHEET 123 · TRACKER 1.101</small></h4>
+        <div class="par"><span class="k">Usina</span><span class="v">SPR300</span></div>
+        <div class="par"><span class="k">Nº do SKID</span><span class="v vaz">vazio — só com nome de três partes</span></div>
+        <div class="par"><span class="k">Nº do tracker / Identificação</span><span class="v">1.101</span></div>
+        <div class="par"><span class="k">Status</span><span class="v">Parado</span></div>
+        <div class="par novo"><span class="k">Quantidade de trackers parados</span><span class="v g">1</span></div>
+        <div class="par"><span class="k">Início da ocorrência</span><span class="v">2026-09-10 07:30:00</span></div>
+        <div class="par"><span class="k">Início do chamado pela Grid Co.</span><span class="v">2026-09-10 14:22:00</span></div>
+        <div class="par novo"><span class="k">Comentários gerais</span><span class="v g">Travado em fim de curso — em 10/09/2026 07:30</span></div>
+        <div class="par"><span class="k">Causa raiz</span><span class="v vaz">vazia — quem diz é o técnico</span></div>
+        <div class="rod">O número inteiro vai na identificação, sem interpretar o sufixo. É o que faz a ocorrência achar o próprio ativo na tela de Tickets.</div>
+      </div>
+    </div>
+
+    <div class="lab" style="margin-top:16px">
+      <h3>Como a frase é montada</h3>
+      <p class="hint">Três formatos, na ordem em que são tentados. A data é sempre a do incidente que você escolheu na tela.</p>
+      <ol class="passos">
+        <li><span><b>Achou nomes de string:</b> <code>Ipv10, Ipv11 e Ipv12 com corrente nula em 10/09/2026 07:30</code>. Os nomes saem como foram escritos na observação, sem renomear.</span></li>
+        <li><span><b>Observação livre, sem nomes:</b> o texto vai inteiro, com a data no fim — <code>Travado em fim de curso — em 10/09/2026 07:30</code>.</span></li>
+        <li><span><b>Observação vazia:</b> <code>3 strings sem corrente em 10/09/2026 07:30</code>, ou <code>Tracker parado em 10/09/2026 07:30</code>.</span></li>
+      </ol>
+      <p class="nota" style="margin-top:16px"><b>Vai em Comentários gerais, não em Comentários para os clientes.</b> A outra coluna é a que o cliente lê no relatório, e ela é escrita por gente, não por app. Se você preferir o contrário, é uma linha.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ DECISÕES ══════════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">fechado</span>
+      <h2>As cinco respostas, e o que cada uma virou</h2>
+      <p>O que você decidiu, do jeito que entra no código. Só o item 5 tem uma escolha minha por cima, e ela está dita.</p>
+    </div>
+    <ul class="dec">
+      <li><span class="n">01</span><div>
+        <h3>A régua de contagem</h3>
+        <p class="fala">"vamos testar a palavra isolada mas tem que vir com um número colado ou um número logo após o space"</p>
+        <p>É a régua que já está rodando na página. A palavra só conta quando traz número junto, e tanto faz colado ou com espaço: <code>PV10</code> e <code>PV 10</code> valem o mesmo.</p>
+        <p class="rec">marcador com número, colado ou separado por espaço. Palavra sozinha não conta.</p>
+        <p style="color:var(--muted);font-size:12.5px;margin-top:8px">Mantive as duas saídas de emergência que você não vetou: número antes da palavra ("3 strings sem corrente") e, sem nada reconhecido, o card nasce em 1 marcado como presumido. Diga se prefere sem elas.</p>
+      </div></li>
+      <li><span class="n">02</span><div>
+        <h3>Desmarcar pede confirmação</h3>
+        <p class="fala">"Sim, deve ter uma mensagem de 'você tem certeza'"</p>
+        <p>A pergunta aparece no clique que desmarca, não na hora de criar, e o botão em destaque é o que mantém o ticket.</p>
+        <p class="rec">confirmação ao desmarcar, com o texto dizendo o que se perde.</p>
+      </div></li>
+      <li><span class="n">03</span><div>
+        <h3>Modo agrupado gera igual</h3>
+        <p class="fala">"cada ativo será uma tarefa, isso não impede de reconhecer cada ativo como ticket"</p>
+        <p>Exato. O ticket é por ativo, e o que muda no agrupado é só que os N tickets apontam todos para a mesma OS. O caminho agrupado passa a chamar o mesmo registro do caminho normal.</p>
+        <p class="rec">uma ocorrência por ativo nos dois modos, com o mesmo número de OS no diário.</p>
+      </div></li>
+      <li><span class="n">04</span><div>
+        <h3>Card também no tracker</h3>
+        <p class="fala">"Deixa um pequeno card ao lado também, por padrão é 1, mas o usuário pode editar"</p>
+        <p>Feito na tela 2. Mesmo componente do card de strings, começando em 1 e sem contar nada da observação — quem manda é a pessoa.</p>
+        <p class="rec">card "parados" em cada tracker marcado, padrão 1, editável.</p>
+      </div></li>
+      <li><span class="n">05</span><div>
+        <h3>A observação desce para o ticket</h3>
+        <p class="fala">"a observação da OS ou da tarefa pode entrar na observação do ticket como PVX e PVY com corrente nula em Data da ocorrência"</p>
+        <p>É a seção anterior. Com um ativo, vem da observação da OS; com vários, da observação daquela tarefa, que é o que já existe por linha na tabela.</p>
+        <p class="rec">frase montada com os nomes encontrados e a data do incidente, caindo para o texto livre quando não há nomes.</p>
+        <p class="rec meu">gravar em Comentários gerais, e não em Comentários para os clientes, que é a coluna que o cliente lê.</p>
+      </div></li>
+    </ul>
+    <p class="nota"><b>Depois do seu OK</b> a construção é pequena: a contagem é função pura e testável, o card é um widget na célula que já existe, e o marcador é um parâmetro que atravessa até <code>tickets_nasce</code>. O que dá trabalho de verdade é a validação, que continua sendo criar OS na TESTE - PA e conferir a linha na planilha.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Pré-visual · 10/09/2026 · levantado sobre <code>steps/performance.py</code>, <code>tickets_nasce.py</code> e <code>api.create_performance_os</code>. Nenhum código foi alterado.
+  </div>
+</footer>
+
+<script>
+/* ── a régua, para valer: é este mesmo algoritmo que iria para o Python ──────────────
+   Alternância com "string" ANTES de "str": senão "String 4" casaria "str" e falharia no
+   \s*\d+ que vem depois. E sem fronteira à esquerda, porque o nome real vem grudado
+   num prefixo — em "Ipv10" o marcador é o "pv" no meio da palavra. */
+var RE_TOK = /(?:string|str|pv)\s*[-_.]?\s*(\d+)/gi;
+var RE_ANTES = /(\d+)\s*(?:strings?|str|pv)\b/i;
+
+function contar(txt){
+  txt = String(txt || "");
+  var vistos = [], orig = [], m;
+  RE_TOK.lastIndex = 0;
+  while ((m = RE_TOK.exec(txt)) !== null){
+    var tok = m[0].toLowerCase().replace(/[\s\-_.]/g, "");
+    if (vistos.indexOf(tok) !== -1) continue;
+    vistos.push(tok);
+    // o nome como a pessoa escreveu: o regex casa a partir de "pv", e em "Ipv10" o prefixo
+    // fica de fora. Volta enquanto for letra para o ticket citar "Ipv10", não "pv10".
+    var i = m.index;
+    while (i > 0 && /[A-Za-zÀ-ÿ]/.test(txt.charAt(i - 1))) i--;
+    orig.push(txt.slice(i, m.index + m[0].length));
+  }
+  if (vistos.length) return {n: vistos.length, via: "tokens", toks: vistos, orig: orig};
+  var a = txt.match(RE_ANTES);
+  if (a){ var n = parseInt(a[1], 10); if (n > 0) return {n: n, via: "antes", toks: [a[0].trim()], orig: []}; }
+  return {n: 1, via: "presumido", toks: [], orig: []};
+}
+
+/* a frase que vai para "Comentários gerais" da linha do ticket */
+var DATA_INC = "10/09/2026 07:30";
+function lista(ns){
+  if (ns.length === 1) return ns[0];
+  return ns.slice(0, -1).join(", ") + " e " + ns[ns.length - 1];
+}
+function frase(obs, r, n){
+  obs = String(obs || "").trim();
+  if (r.via === "tokens" && r.orig.length) return lista(r.orig) + " com corrente nula em " + DATA_INC;
+  if (obs) return obs + " — em " + DATA_INC;
+  return n + (n === 1 ? " string sem corrente em " : " strings sem corrente em ") + DATA_INC;
+}
+
+/* ── tela de Strings: observação → card → rodapé ─────────────────────────────── */
+var tbl = document.getElementById("tbl-str");
+
+/* o rótulo de cada card ("strings" ou "parados") é guardado no 1º render e nunca trocado */
+document.querySelectorAll(".strchip").forEach(function(c){
+  c.dataset.un = c.querySelector(".un").textContent.trim();
+});
+
+function pintarChip(chip, r){
+  chip.classList.remove("man", "zero");
+  var un = chip.querySelector(".un");
+  var base = chip.dataset.un || "strings";
+  if (chip.dataset.manual === "1"){ chip.classList.add("man"); un.textContent = base + " · manual"; }
+  else if (r && r.via === "presumido"){ chip.classList.add("zero"); un.textContent = base + " · presumido"; }
+  else { un.textContent = base; }
+}
+
+function recalcLinha(tr){
+  var chip = tr.querySelector(".strchip"); if (!chip) return;
+  // tracker: o número não sai de texto nenhum — nasce 1 e só a pessoa muda
+  if (chip.dataset.fixo === "1"){ pintarChip(chip, null); return; }
+  var obs = tr.querySelector(".obs");
+  var inp = chip.querySelector("input");
+  if (chip.dataset.manual !== "1"){
+    var r = contar(obs ? obs.value : "");
+    inp.value = r.n;
+    pintarChip(chip, r);
+  } else {
+    pintarChip(chip, null);
+  }
+}
+
+/* a ficha da planilha, montada da 1ª linha marcada da tela de Strings */
+function ficha(){
+  var tr = tbl.querySelector("tr.on"); if (!tr) return;
+  var chip = tr.querySelector(".strchip"); if (!chip) return;
+  var obs = tr.querySelector(".obs").value;
+  var n = parseInt(chip.querySelector("input").value, 10) || 1;
+  document.getElementById("f-qtd").textContent = n;
+  document.getElementById("f-obs").textContent = frase(obs, contar(obs), n);
+}
+
+function totais(){
+  var linhas = tbl.querySelectorAll("tr.on");
+  var nOs = 0, nStr = 0;
+  linhas.forEach(function(tr){
+    if (!tr.querySelector(".ck.on")) return;
+    nOs++;
+    var i = tr.querySelector(".strchip input");
+    nStr += i ? (parseInt(i.value, 10) || 0) : 0;
+  });
+  var ligado = document.getElementById("ck-str").classList.contains("on");
+  var res = document.getElementById("res-str");
+  var sub = document.getElementById("sub-str");
+  var marc = document.getElementById("marc-str");
+  res.innerHTML = nOs + " OS · " + (ligado ? "<b>" + nOs + " tickets</b>" : "sem ticket");
+  marc.classList.toggle("off", !ligado);
+  sub.innerHTML = ligado
+    ? ("Acrescenta <b>" + nOs + (nOs === 1 ? " ocorrência</b>" : " ocorrências</b>") +
+       " na aba <b>Strings indisp</b> — uma por inversor, com <b>" + nStr +
+       (nStr === 1 ? " string</b>" : " strings</b>") + " no total, já vinculadas à OS.")
+    : "A OS sai sem ocorrência na planilha. A confirmação vai dizer isso.";
+}
+
+/* Delegação no documento: as duas tabelas e os dois marcadores usam o mesmo handler. */
+document.addEventListener("input", function(e){
+  var tr = e.target.closest("tr"); if (!tr) return;
+  if (e.target.classList.contains("obs")) recalcLinha(tr);
+  var chip = e.target.closest(".strchip");
+  if (chip){ chip.dataset.manual = "1"; pintarChip(chip, null); }
+  totais(); ficha();
+});
+
+document.addEventListener("click", function(e){
+  var chip = e.target.closest(".strchip");
+  if (chip && (e.target.classList.contains("mais") || e.target.classList.contains("menos"))){
+    var inp = chip.querySelector("input");
+    var v = (parseInt(inp.value, 10) || 0) + (e.target.classList.contains("mais") ? 1 : -1);
+    inp.value = Math.max(1, v);           // nunca zero: a ocorrência existe
+    chip.dataset.manual = "1";
+    pintarChip(chip, null);
+    totais(); ficha();
+    return;
+  }
+  var ck = e.target.closest(".ck");
+  if (ck){ ck.classList.toggle("on"); totais(); ficha(); }
+});
+
+/* ── laboratório ─────────────────────────────────────────────────────────────── */
+var lab = document.getElementById("lab");
+function labUpd(){
+  var r = contar(lab.value);
+  document.getElementById("lab-n").textContent = r.n;
+  document.getElementById("lab-u").textContent =
+    (r.n === 1 ? "string" : "strings") +
+    (r.via === "antes" ? " · número antes da palavra" : r.via === "presumido" ? " · presumido" : "");
+  var box = document.getElementById("lab-toks");
+  box.innerHTML = "";
+  if (r.via === "presumido"){
+    box.innerHTML = '<span class="tok pre">nada reconhecido — o card nasce em 1, editável</span>';
+    return;
+  }
+  r.toks.forEach(function(t){
+    var s = document.createElement("span");
+    s.className = "tok" + (r.via === "antes" ? " via" : "");
+    s.textContent = t;
+    box.appendChild(s);
+  });
+}
+lab.addEventListener("input", labUpd);
+labUpd();
+tbl.querySelectorAll("tr.on").forEach(function(tr){ recalcLinha(tr); });
+totais();
+ficha();
+</script>
+</body>
+</html>

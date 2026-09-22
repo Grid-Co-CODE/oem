@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<title>Fila do PCM — proposta de redesenho</title>
+<style>
+  :root{
+    --bg:#090d18; --card:#0F1626; --card2:#121A2B; --input:#161d30;
+    --bd:#2A3550; --bd2:#232c45; --green:#A6E22E; --ink:#0B1020;
+    --tx:#e7e9ef; --mut:#8A93A8; --amb:#eb8b57;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+       font:14px/1.5 "Segoe UI",system-ui,Arial,sans-serif}
+  .wrap{max-width:1560px;margin:0 auto;padding:28px 22px 60px}
+  h1{font-size:19px;font-weight:600;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:13px;margin:0 0 26px}
+
+  /* diagnostico */
+  .diag{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0 0 14px}
+  .d{background:var(--card);border:1px solid var(--bd2);border-radius:12px;padding:14px 16px}
+  .d b{display:block;font-size:26px;font-weight:700;color:var(--amb);line-height:1.15}
+  .d span{color:var(--mut);font-size:12.5px}
+  .nota{color:var(--mut);font-size:12.5px;margin:0 0 30px}
+  .nota b{color:#cfd6e4;font-weight:600}
+
+  .rot{color:var(--green);font-size:11px;font-weight:700;letter-spacing:.9px;
+       text-transform:uppercase;margin:0 0 9px}
+  .rotm{color:var(--mut);font-size:10.5px;font-weight:700;letter-spacing:.9px;
+        text-transform:uppercase}
+
+  /* a tela */
+  .tela{border:1px solid var(--bd);border-radius:14px;overflow:hidden;background:var(--card)}
+  .cab{display:flex;align-items:center;gap:12px;padding:10px 16px;
+       background:#0d1424;border-bottom:1px solid var(--bd2)}
+  .volta{background:var(--green);color:var(--ink);border:none;border-radius:8px;
+         padding:7px 14px;font-weight:700;font-size:13px}
+  .cab h2{font-size:15px;font-weight:600;margin:0}
+  .cab .fim{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .btn2{background:transparent;color:#cdd2e0;border:1px solid var(--bd);
+        border-radius:9px;padding:7px 13px;font-size:13px}
+  .cont{color:var(--mut);font-size:12.5px}
+  .cont b{color:var(--green)}
+
+  .corpo{display:grid;grid-template-columns:300px 1fr;min-height:620px}
+  .lista{border-right:1px solid var(--bd2);background:#0c1220;padding:0 0 10px}
+  .lista .h{padding:10px 14px;color:var(--mut);font-size:10.5px;font-weight:700;
+            letter-spacing:.9px;border-bottom:1px solid var(--bd2)}
+  .cd{padding:11px 14px;border-bottom:1px solid #171f33}
+  .cd.on{background:rgba(166,226,46,.06);border-left:3px solid var(--green);padding-left:11px}
+  .cd .n{color:var(--green);font-size:12px;font-weight:700}
+  .cd .t{font-size:13.5px;font-weight:600;margin:2px 0 3px}
+  .cd .m{color:var(--mut);font-size:11.5px}
+  .pill{display:inline-block;border:1px solid #6b5a2a;color:#e0b640;border-radius:20px;
+        padding:1px 9px;font-size:10.5px;float:right}
+
+  .det{padding:20px 22px;display:flex;flex-direction:column}
+  .tit{font-size:23px;font-weight:600;margin:0 0 3px;letter-spacing:-.2px}
+  .orig{color:var(--mut);font-size:12px;margin:0 0 18px}
+
+  .duas{display:grid;grid-template-columns:minmax(0,42fr) minmax(0,58fr);gap:18px;flex:1}
+  .col{background:var(--card2);border:1px solid var(--bd2);border-radius:12px;padding:16px 17px}
+  .grade{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px;margin:0 0 14px}
+  .grade .v{font-size:13.5px;margin-top:2px}
+  .full{grid-column:1/-1}
+
+  .obshead{display:flex;align-items:center;gap:10px;margin:2px 0 7px}
+  .obshead .rotm{flex:1}
+  .ver{color:var(--green);font-size:12px;border:none;background:transparent;
+       text-decoration:underline dotted;cursor:pointer;padding:0}
+  .obs{background:var(--input);border:1px solid var(--bd);border-radius:10px;
+       padding:11px 13px;max-height:296px;overflow:auto;font-size:13px;line-height:1.55;
+       white-space:pre-wrap;color:#dfe3ee}
+  .obs::-webkit-scrollbar{width:9px}
+  .obs::-webkit-scrollbar-thumb{background:#2c3550;border-radius:5px}
+  .dica{color:var(--mut);font-size:11.5px;margin:7px 0 0}
+
+  .lin{display:grid;grid-template-columns:104px 1fr;gap:9px 12px;align-items:center;margin:0 0 12px}
+  .lin .k{color:#cfd6e4;font-size:12.5px;font-weight:600}
+  .camp{background:var(--input);border:1px solid var(--bd);border-radius:9px;
+        padding:9px 11px;font-size:13px;color:var(--tx)}
+  .camp.ph{color:var(--mut)}
+  .dois{display:grid;grid-template-columns:3fr 2fr;gap:12px;margin:0 0 14px}
+  .chip{display:inline-block;background:rgba(166,226,46,.14);color:var(--green);
+        border-radius:7px;padding:2px 9px;font-size:11px;font-weight:700;margin-left:8px}
+  .hr{height:1px;background:var(--bd2);margin:15px 0}
+
+  .subs .cab2{color:var(--mut);font-size:12.5px;margin:0 0 8px}
+  .subs .cab2 b{color:var(--tx)}
+  .st{display:grid;grid-template-columns:20px 1fr auto auto 18px;gap:10px;align-items:center;
+      padding:8px 2px;border-bottom:1px solid #1b2337;font-size:13px}
+  .st .i{color:var(--green);font-weight:700;font-size:12px}
+  .st .tp{color:var(--mut);font-size:11.5px}
+  .st .ax{color:var(--mut);font-size:11.5px}
+  .st .x{color:#5f6880}
+  .add{color:var(--green);font-size:12.5px;margin:10px 0 0}
+
+  .rodape{display:flex;align-items:center;gap:10px;padding:13px 22px;
+          border-top:1px solid var(--bd2);background:#0d1424}
+  .ok{background:var(--green);color:var(--ink);border:none;border-radius:9px;
+      padding:10px 18px;font-weight:700;font-size:13.5px}
+  .rodape .hint{margin-left:auto;color:var(--mut);font-size:12px}
+
+  .legenda{margin:30px 0 0;padding-left:18px}
+  .legenda li{margin:0 0 9px;color:#cfd6e4}
+  .legenda b{color:var(--green);font-weight:600}
+  @media(max-width:1200px){.duas{grid-template-columns:1fr}.corpo{grid-template-columns:240px 1fr}}
+</style>
+<div class="wrap">
+  <h1>Fila do PCM — proposta de redesenho</h1>
+  <p class="sub">Medido na solicitação 3620 (Santa Maria do Pará 1), com a observação que o fabricante mandou.</p>
+
+  <div class="diag">
+    <div class="d"><b>1&nbsp;413&nbsp;px</b><span>é onde nasce o botão Aprovar, numa janela de 844 px — 570 px de rolagem antes da primeira decisão</span></div>
+    <div class="d"><b>9 de 21</b><span>linhas do relato são linhas EM BRANCO: 43% da altura do campo é espaço vazio</span></div>
+    <div class="d"><b>corta</b><span>o texto pede 404 px e o campo dá 400 — o último parágrafo some sem avisar ninguém</span></div>
+  </div>
+  <p class="nota">A tela é uma coluna só, então o material de <b>leitura</b> — que pode ter 20 linhas de procedimento do fabricante — fica na frente do material de <b>decisão</b>. E metade da largura da janela segue vazia.</p>
+
+  <div class="tela">
+    <div class="cab">
+      <button class="volta">← Voltar</button>
+      <h2>Fila do PCM</h2>
+      <div class="fim">
+        <button class="btn2">Atualizar</button>
+        <span class="cont"><b>76</b> aguardando · <b>2</b> chegaram hoje</span>
+      </div>
+    </div>
+
+    <div class="corpo">
+      <div class="lista">
+        <div class="h">AGUARDANDO APROVAÇÃO</div>
+        <div class="cd"><span class="pill">Aberta</span><div class="n">Nº 3626</div>
+          <div class="t">Araputanga 1</div><div class="m">Estação Meteorológica · João Vieira · há 19 h</div></div>
+        <div class="cd on"><span class="pill">Aberta</span><div class="n">Nº 3620</div>
+          <div class="t">Santa Maria do Pará 1</div><div class="m">Inversor 5.2 Huawei · Laura Aguiar · há 3 dias</div></div>
+        <div class="cd"><span class="pill">Aberta</span><div class="n">Nº 3608</div>
+          <div class="t">Tupi Paulista 1 e 2</div><div class="m">Estrutura Trackers · Singrid Vieira · há 4 dias</div></div>
+        <div class="cd"><span class="pill">Aberta</span><div class="n">Nº 3601</div>
+          <div class="t">Elias Fausto 1</div><div class="m">Preventiva Grupo de Inversores · há 4 dias</div></div>
+      </div>
+
+      <div class="det">
+        <h3 class="tit">Ventoinhas inoperantes — orientação do fabricante</h3>
+        <p class="orig">o supervisor escreveu: <s>Inversor 5.2 com alarme de ventoinha</s> · título reescrito no padrão</p>
+
+        <div class="duas">
+          <div class="col">
+            <div class="rot">O pedido</div>
+            <div class="grade">
+              <div><div class="rotm">Usina</div><div class="v">Santa Maria do Pará 1</div></div>
+              <div><div class="rotm">Solicitante</div><div class="v">Laura Aguiar</div></div>
+              <div class="full"><div class="rotm">Ativo</div><div class="v">Inversor 5.2 Huawei SUN2000-250KTL-H1</div></div>
+            </div>
+            <div class="obshead">
+              <span class="rotm">Observação</span>
+              <button class="ver">ver inteira</button>
+            </div>
+            <div class="obs">O fabricante solicita:
+
+Solicitamos, por gentileza, que realize os seguintes procedimentos:
+
+Conecte apenas uma string ao inversor.
+Atualize o inversor para a versão de firmware SPC130 (arquivo em anexo).
+
+Após a atualização, desligue o inversor completamente e aguarde 10 minutos antes de energizá-lo novamente. Verifique se as ventoinhas retornam à operação normal.
+
+Caso as ventoinhas permaneçam inoperantes, realize um teste cruzado com outro inversor em funcionamento:
+
+Remova a gaveta de ventoinhas do inversor que apresenta a falha e instale-a em um inversor que esteja operando normalmente.
+Em seguida, instale a gaveta de ventoinhas do inversor em funcionamento no inversor que apresenta o problema.
+
+Durante esse procedimento, solicitamos o envio das seguintes evidências:
+
+Foto da etiqueta de número de série dos dois inversores.
+Vídeo mostrando o comportamento das ventoinhas em cada um deles.
+Registro do alarme apresentado após a troca.</div>
+            <p class="dica">Rola aqui dentro e não empurra o resto. Clique no texto para editar.</p>
+          </div>
+
+          <div class="col">
+            <div class="rot">A decisão</div>
+            <div class="lin">
+              <span class="k">Técnico</span><div class="camp">Adriano Silva</div>
+              <span class="k">Data</span><div class="camp">16/09/2026 07:00</div>
+              <span class="k">Etiquetas</span><div class="camp ph">+ adicionar etiqueta</div>
+            </div>
+            <div class="dois">
+              <div><div class="rotm">Tema <span class="chip">sugerido pela descrição</span></div>
+                   <div class="camp" style="margin-top:6px">Inversor — inspeção</div></div>
+              <div><div class="rotm">OS pai (opcional)</div>
+                   <div class="camp ph" style="margin-top:6px">nº da OS pai</div></div>
+            </div>
+            <div class="hr"></div>
+            <div class="subs">
+              <div class="cab2">A OS vai nascer com <b>3 subtarefas</b></div>
+              <div class="st"><span class="i">1</span><span>Conectar apenas uma string e atualizar o firmware SPC130</span><span class="tp">Texto</span><span class="ax">anexo obrigatório</span><span class="x">×</span></div>
+              <div class="st"><span class="i">2</span><span>Teste cruzado da gaveta de ventoinhas</span><span class="tp">Texto</span><span class="ax">anexo obrigatório</span><span class="x">×</span></div>
+              <div class="st"><span class="i">3</span><span>Ficou alguma pendência? Se sim, descreva</span><span class="tp">Texto</span><span class="ax">—</span><span class="x">×</span></div>
+              <div class="add">+ Adicionar subtarefa</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rodape">
+      <button class="ok">✓ Aprovar e gerar OS</button>
+      <button class="btn2">Devolver ao supervisor</button>
+      <button class="btn2">Mudar status…</button>
+      <span class="hint">Aprovar avança para a próxima</span>
+    </div>
+  </div>
+
+  <ul class="legenda">
+    <li><b>Duas colunas.</b> O que se LÊ à esquerda, o que se DECIDE à direita. A largura da janela deixa de ficar vazia, e nenhuma observação, por maior que seja, empurra o tema e as subtarefas para fora da tela.</li>
+    <li><b>A observação rola dentro dela mesma.</b> Altura fixa, barra própria, nunca corta o último parágrafo — e "ver inteira" abre o texto todo para quem precisa ler com calma.</li>
+    <li><b>Linhas em branco comprimidas na exibição.</b> Três seguidas viram uma; o relato da 3620 cai de 21 para 13 linhas sem perder uma palavra. O texto gravado no Fracttal continua igual ao que o supervisor escreveu.</li>
+    <li><b>Rodapé fixo.</b> Aprovar, Devolver e Mudar status ficam sempre no mesmo lugar, não importa o tamanho do pedido — hoje eles nascem a 1&nbsp;413 px do topo.</li>
+    <li><b>Abaixo de 1&nbsp;200 px de janela</b> as duas colunas viram uma só, na ordem pedido → decisão.</li>
+  </ul>
+</div>
+</html>

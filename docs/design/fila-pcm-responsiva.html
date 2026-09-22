@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fila do PCM — largura</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#090d18;--card:#121A2B;--border:#2A3550;--green:#A6E22E;--muted:#8A93A8;--amber:#eb8b57;
+--body:Inter,"Segoe UI",system-ui,sans-serif;--display:"Bricolage Grotesque",Inter,sans-serif;--mono:"JetBrains Mono",monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#EEF1F8;font:15px/1.55 var(--body)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 26px}
+code{font-family:var(--mono);font-size:.9em;background:#1A2337;border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+header{padding:48px 0 6px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(166,226,46,.12)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,4.6vw,46px);line-height:1.05;letter-spacing:-.02em;margin:15px 0 16px;color:#fff}
+.lead{font-size:16.5px;color:#B7BFD1;max-width:780px;margin:0 0 22px}
+.causas{display:grid;gap:10px;margin:0 0 8px}
+.causa{display:grid;grid-template-columns:30px 1fr;gap:14px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:10px;padding:13px 16px;font-size:14px;color:#C5CCDC}
+.causa b{color:#fff;font-weight:600}
+.causa .n{font-family:var(--mono);font-size:12px;color:var(--amber)}
+section{padding:40px 0 0}
+.sec{border-top:1px solid var(--border);padding-top:20px;margin-bottom:18px}
+.sec h2{font-family:var(--display);font-weight:600;font-size:26px;margin:0 0 5px;color:#fff;letter-spacing:-.015em}
+.sec p{margin:0;color:var(--muted);max-width:760px}
+figure{margin:0 0 20px}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:11px;background:#0B1020}
+figcaption{margin-top:8px;font-size:13.5px;color:var(--muted)}
+figcaption b{color:#EEF1F8;font-weight:500}
+.tag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;border:1px solid var(--green);color:var(--green);border-radius:999px;padding:2px 9px;margin-right:8px;vertical-align:1px}
+.tag.m{border-color:var(--muted);color:var(--muted)}
+.nota{border-left:2px solid var(--green);padding:8px 15px;color:#B7BFD1;font-size:14px;margin:18px 0 0}
+.nota b{color:#fff;font-weight:600}
+.nota.alerta{border-color:var(--amber)}
+footer{padding:36px 0 56px;margin-top:40px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="eyebrow">OS Creator · Fila do PCM · para aprovar</div>
+  <h1>A ficha para de comer o texto</h1>
+  <p class="lead">Os dois problemas tinham a mesma origem: eu pendurei texto corrido num componente feito para campo de uma linha, e a lista ao lado tinha largura fixa. Capturas da tela real, nas três larguras.</p>
+  <div class="causas">
+    <div class="causa"><span class="n">1</span><div><b>A observação era travada em 24 pixels de altura.</b> Esse travamento existe para o técnico e a data não "subirem" ao virar campo. Em texto corrido ele mostrava uma fatia da primeira linha e comia o resto. Ao clicar, o editor de 92 pixels era espremido no mesmo 24, e por isso cortava ainda mais.</div></div>
+    <div class="causa"><span class="n">2</span><div><b>A lista da esquerda tinha 460 pixels fixos.</b> Numa janela mais estreita sobrava pouco para a direita, e o que não cabia era cortado na borda em vez de se ajustar. Agora ela cede até 300, que é onde o cartão ainda se lê.</div></div>
+  </div>
+</div></header>
+
+<section><div class="wrap">
+  <div class="sec"><h2>Na sua largura</h2><p>1920 pixels, que é como o app abre, maximizado.</p></div>
+  <figure>
+    <img src="fila-pcm-1920.png" alt="Fila do PCM em 1920 pixels">
+    <figcaption><span class="tag">resolvido</span><b>A observação inteira, em duas linhas</b>, e o solicitante completo. A dica "Aprovar avança para a próxima" saiu da linha dos botões e foi para baixo: ela ocupava espaço na mesma faixa e era o que espremia os três.</figcaption>
+  </figure>
+  <figure>
+    <img src="fila-pcm-aberto.png" alt="O campo de observação aberto para edição">
+    <figcaption><span class="tag">resolvido</span><b>Com o campo aberto para editar.</b> Era aqui que cortava mais. O editor agora tem os 92 pixels de verdade e quebra a linha na largura do painel.</figcaption>
+  </figure>
+</div></section>
+
+<section><div class="wrap">
+  <div class="sec"><h2>E quando a janela encolhe</h2><p>É o que faltava antes. Agora o conteúdo se reorganiza em vez de sumir pela direita.</p></div>
+  <figure>
+    <img src="fila-pcm-1280.png" alt="Fila do PCM em 1280 pixels">
+    <figcaption><span class="tag m">1280</span>A observação passa a três linhas e nada mais muda de lugar.</figcaption>
+  </figure>
+  <figure>
+    <img src="fila-pcm-820.png" alt="Fila do PCM em 820 pixels">
+    <figcaption><span class="tag m">820</span>O título quebra, o nome da usina quebra, o rótulo "Sugerido pelo supervisor" quebra em duas linhas em vez de virar "SUGERIDO PELO SUPERV", e a observação se ajusta. Nada é cortado.</figcaption>
+  </figure>
+  <p class="nota alerta"><b>Onde ainda aperta:</b> abaixo de mais ou menos 800 pixels os três botões de ação disputam a mesma faixa e começam a cortar o rótulo. Como o app abre maximizado, deixei assim. Se você usa a janela pequena com frequência, eu faço eles quebrarem em duas linhas.</p>
+</div></section>
+
+<footer><div class="wrap">
+  14/09/2026 · <code>steps/solic_pcm.py</code> · capturas da tela real, com o tema do app aplicado · nada compilado
+</div></footer>
+</body>
+</html>

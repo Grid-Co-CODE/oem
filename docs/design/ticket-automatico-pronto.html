@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket automático — implementado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B1020; --card:#121A2B; --input:#1A2337; --border:#2A3550;
+  --green:#A6E22E; --green-ink:#0B1020; --text:#EEF1F8; --muted:#8A93A8;
+  --amber:#eb8b57; --red:#e05454; --page:#090d18;
+  --display:"Bricolage Grotesque",Inter,"Segoe UI",system-ui,sans-serif;
+  --body:Inter,"Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:15px/1.55 var(--body);-webkit-font-smoothing:antialiased}
+code{font-family:var(--mono);font-size:.9em;background:var(--input);border:1px solid var(--border);border-radius:6px;padding:1px 6px;white-space:nowrap}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+
+header{padding:56px 0 10px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(166,226,46,.12)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,5.2vw,54px);line-height:1.03;letter-spacing:-.02em;margin:16px 0 18px;color:#fff}
+h1 em{font-style:normal;color:var(--green)}
+.lead{font-size:17px;color:#B7BFD1;max-width:800px;margin:0 0 24px}
+.placar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px}
+.placar div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 15px;min-width:140px}
+.placar b{display:block;font-family:var(--mono);font-size:19px;color:var(--green);font-weight:500;line-height:1.2}
+.placar span{font-size:12px;color:var(--muted)}
+.placar div.alerta b{color:var(--amber)}
+
+section{padding:48px 0 0}
+.sec{display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:baseline;margin-bottom:22px;border-top:1px solid var(--border);padding-top:22px}
+.sec .q{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--green)}
+.sec h2{font-family:var(--display);font-weight:600;font-size:clamp(23px,3vw,30px);letter-spacing:-.015em;margin:0;color:#fff;line-height:1.1}
+.sec p{grid-column:2;margin:6px 0 0;color:var(--muted);max-width:740px}
+@media (max-width:760px){.sec{grid-template-columns:1fr}.sec p{grid-column:1}}
+
+figure{margin:0 0 18px}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg)}
+figcaption{margin-top:9px;font-size:13px;color:var(--muted)}
+figcaption b{color:var(--text);font-weight:500}
+.duas{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:18px}
+.duas figure img{border-radius:10px}
+
+.mud{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.mud li{display:grid;grid-template-columns:230px 1fr;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:13.5px;color:#C5CCDC;align-items:start}
+.mud li .f{font-family:var(--mono);font-size:12px;color:var(--green);overflow-wrap:anywhere}
+.mud li b{color:#fff;font-weight:600}
+@media (max-width:700px){.mud li{grid-template-columns:1fr}}
+
+.nota{border-left:2px solid var(--green);padding:8px 15px;color:#B7BFD1;font-size:14px;margin:20px 0 0}
+.nota b{color:#fff;font-weight:600}
+.nota.alerta{border-color:var(--amber)}
+.check{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:7px}
+.check li{display:grid;grid-template-columns:22px 1fr;gap:10px;font-size:14px;color:#C5CCDC;align-items:start}
+.check li::before{content:"✓";color:var(--green);font-weight:700}
+.check li.nao::before{content:"—";color:var(--amber)}
+.check b{color:#fff;font-weight:500}
+footer{padding:40px 0 60px;margin-top:48px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">OS Creator · Performance · implementado, sem release</div>
+    <h1>As telas com o ticket, <em>rodando</em></h1>
+    <p class="lead">Capturas da tela real do app, não do desenho. O card conta as strings da observação, o marcador nasce ligado e a confirmação do fim conta as ocorrências. Nada foi compilado nem publicado.</p>
+    <div class="placar">
+      <div><b>450</b><span>testes, 0 falhas</span></div>
+      <div><b>31</b><span>testes novos</span></div>
+      <div><b>4</b><span>arquivos alterados</span></div>
+      <div class="alerta"><b>198</b><span>versão ainda publicada</span></div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="sec">
+    <span class="q">tela 1</span>
+    <h2>Recomposição de String</h2>
+    <p>O card fica na coluna imediatamente ao lado do ativo, e só nos dois planos que geram ocorrência. Nos outros a coluna nem existe.</p>
+  </div>
+  <div class="wrap">
+    <figure>
+      <img src="tk-tela-strings.png" alt="Tela de Recomposição de String com o card de quantidade ao lado de cada inversor">
+      <figcaption><b>Contado da observação, em verde.</b> O Inversor 2.18 traz três nomes de string no texto e o card marca 3; o 1.1 traz um e marca 1; o 3.2 tem STR2 e STR7 e marca 2. Editar o número deixa a borda âmbar, e aí o recálculo não mexe mais nele.</figcaption>
+    </figure>
+    <figure>
+      <img src="tk-tela-strings-rodape.png" alt="Rodapé da tela com o marcador Gerar ticket automaticamente já ligado">
+      <figcaption><b>O marcador, no fim, já ligado.</b> A linha embaixo diz exatamente o que vai acontecer e acompanha o que você marcar: três ocorrências na aba Strings indisp, seis strings no total.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <div class="sec">
+    <span class="q">tela 2</span>
+    <h2>Verificação de Tracker Parado</h2>
+    <p>Mesmo card, rótulo trocado, sem ler a observação: nasce em 1 e só muda se a pessoa mudar.</p>
+  </div>
+  <div class="wrap">
+    <figure>
+      <img src="tk-tela-trackers.png" alt="Tela de Verificação de Tracker Parado com o card de trackers parados">
+      <figcaption><b>Um ticket por tracker.</b> A observação de tracker pode até citar uma string, como aconteceu no teste, que o card ignora — contar texto ali só produziria número errado.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section>
+  <div class="sec">
+    <span class="q">as caixas</span>
+    <h2>O que o app passa a dizer</h2>
+    <p>As três capturas abaixo são as caixas de verdade, tiradas chamando os métodos da tela.</p>
+  </div>
+  <div class="wrap">
+    <figure>
+      <img src="tk-caixa-desmarcar.png" alt="Caixa perguntando se quer criar as OS sem registrar a ocorrência">
+      <figcaption><b>Ao desmarcar.</b> A saída segura é a verde e é o padrão: quem clicou por engano volta com um Enter. O botão que abre mão do ticket ficou discreto de propósito.</figcaption>
+    </figure>
+    <div class="duas">
+      <figure>
+        <img src="tk-caixa-resultado.png" alt="Caixa de resultado contando OS e tickets criados">
+        <figcaption><b>Deu certo.</b> As OS e os tickets na mesma frase, com o total de strings. A terceira linha só existe enquanto o corte do sync estiver desligado.</figcaption>
+      </figure>
+      <figure>
+        <img src="tk-caixa-resultado-falha.png" alt="Caixa de resultado avisando que uma ocorrência não foi registrada">
+        <figcaption><b>Deu errado no meio.</b> A OS nunca é derrubada pelo ticket, então a caixa diz quantas linhas ficaram para trás e o motivo aparece em Mostrar detalhes.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec">
+    <span class="q">o que mudou</span>
+    <h2>Quatro arquivos</h2>
+    <p>A régua é função pura e testável; a tela só a chama. Nada de contagem escrita dentro de widget.</p>
+  </div>
+  <div class="wrap">
+    <ul class="mud">
+      <li><span class="f">os_creator/tickets_nasce.py</span><span><b>A régua e a linha.</b> <code>contar_strings</code> e <code>observacao_ticket</code> nascem aqui. A quantidade deixou de ser 1 fixo e a frase da observação passou a ir em Comentários gerais.</span></li>
+      <li><span class="f">os_creator/api.py</span><span><b>Um caminho só para os dois modos.</b> O bloco que criava a ocorrência virou <code>nascer_ticket</code>, e agora a criação agrupada também o chama — antes ela não criava nada.</span></li>
+      <li><span class="f">os_creator/steps/performance.py</span><span><b>O card, o marcador e as frases.</b> Coluna nova ao lado do ativo, caixa pré-marcada com confirmação ao desmarcar, resumo ao vivo e a contagem nas duas telas de resultado.</span></li>
+      <li><span class="f">tests/</span><span><b>31 testes novos.</b> Quinze guardam a régua, dezesseis guardam a tela — inclusive o caso em que a correção à mão não pode ser atropelada pelo recálculo.</span></li>
+    </ul>
+    <p class="nota"><b>Duas coisas que apareceram no caminho e foram corrigidas junto:</b> a pergunta ao desmarcar dizia "estas 3 OS não vai gerar", e a caixa de falha dizia "1 ocorrência não foram registradas". As duas frases agora concordam no singular e no plural.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec">
+    <span class="q">antes de subir</span>
+    <h2>O que foi verificado, e o que não foi</h2>
+    <p>A parte que falta é a que nenhum robô faz.</p>
+  </div>
+  <div class="wrap">
+    <ul class="check">
+      <li><b>A suíte inteira passa</b> — 450 testes, nenhuma falha, com o Python 3.14 que o CI usa.</li>
+      <li><b>O app importa</b> — janela principal, entrada e a tela de Performance carregam.</li>
+      <li><b>As telas foram levantadas de verdade</b> e é delas que saem as capturas acima, com o tema global aplicado.</li>
+      <li><b>A contagem foi conferida</b> contra os dois textos que a plataforma gera no deep link.</li>
+      <li class="nao"><b>Nenhuma OS foi criada no Fracttal.</b> Não rodei a criação ao vivo na TESTE - PA, então a linha na planilha de produção ainda não foi vista com os olhos.</li>
+      <li class="nao"><b>Nada foi compilado nem publicado.</b> A versão no ar continua sendo a 2026.09.08.198.</li>
+    </ul>
+    <p class="nota alerta"><b>A validação ao vivo é o passo que falta.</b> O certo é criar uma OS de Recomposição de String na TESTE - PA, abrir a aba Tickets e conferir a linha: quantidade, nome do inversor e a frase em Comentários gerais. Se quiser, eu faço isso antes de compilar — ou subo a release e a conferência acontece no primeiro uso real.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    10/09/2026 · clone <code>C:\GridcoBuild\oem</code>, árvore parada · o pré-visual que originou isto está em <code>docs/design/ticket-automatico.html</code>
+  </div>
+</footer>
+</body>
+</html>

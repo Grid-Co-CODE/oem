@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acompanhamento de Tickets</title>
+<style>
+/* Paleta da Grid (tema escuro navy do app) + as cores de gráfico VALIDADAS contra a superfície
+   #161d30 com o validate_palette.js (22/09): azul×laranja e azul×crítico passam em todas as
+   verificações. As cores de STATUS do ciclo de vida são as do app — reprovam como conjunto
+   encostado (Aberta×OS criada ΔE 12,3 < 15), por isso aparecem em cartões separados, nunca
+   numa barra empilhada. */
+/* os tokens de base são os do os_web/static/os.css, para o mockup não mentir sobre a tela real */
+:root{
+  color-scheme:dark;
+  --bg:#090d18; --card:#161d30; --card-b:#232a3d; --grid:#232a3d;
+  --txt:#e6e8ef; --txt2:#c3c8d6; --muted:#8a90a2; --green:#a6e22e; --sec:#262b3b; --sec-txt:#cdd2e0;
+  --s1:#3987e5; --s2:#d95926; --crit:#d03b3b; --warn:#fab219; --cinza:#56607a;
+  --aberta:#e05454; --com_os:#eb8b57; --verificando:#4a9eff; --a_fechar:#e0a32e; --encerrada:#3fb27f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.45 'Segoe UI',Arial,sans-serif}
+.wrap{max-width:1280px;margin:0 auto;padding:18px 20px 40px}
+.mock{background:rgba(250,178,25,.10);border:1px solid rgba(250,178,25,.35);color:#f3d99b;border-radius:10px;padding:8px 12px;font-size:12.5px;margin-bottom:14px}
+.topo{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.topo h1{font-size:19px;margin:0;font-weight:600}
+.topo .sub{color:var(--muted);font-size:12.5px}
+.cresce{flex:1}
+.seg{display:inline-flex;border:1px solid var(--card-b);border-radius:10px;overflow:hidden}
+.seg button{background:var(--sec);color:var(--sec-txt);border:0;padding:0 16px;height:36px;font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.seg button.on{background:var(--green);color:#10150a;font-weight:600}
+.grade{display:grid;gap:14px}
+.grade > *{min-width:0}
+.g2{grid-template-columns:1fr 1fr}
+@media (max-width:960px){.g2{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--card-b);border-radius:14px;padding:14px 16px}
+.card h2{font-size:13.5px;margin:0 0 2px;font-weight:600}
+.card .h2s{color:var(--muted);font-size:12px;margin-bottom:10px}
+/* KPI */
+.kpis{display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:14px}
+@media (max-width:960px){.kpis{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.wrap{padding:14px 16px 32px}.kpis{grid-template-columns:1fr}.hero .v{font-size:42px}}
+.rola{overflow-x:auto}
+.hero .v{font-size:52px;font-weight:650;line-height:1.05;letter-spacing:-.5px}
+.hero .l{color:var(--txt2);font-size:13px;margin-top:4px}
+.tile .l{color:var(--muted);font-size:12px}
+.tile .v{font-size:26px;font-weight:600;margin-top:2px}
+.tile .d{color:var(--muted);font-size:12px;margin-top:2px}
+/* alerta */
+.alerta{display:flex;gap:12px;align-items:flex-start;background:rgba(208,59,59,.10);border:1px solid rgba(208,59,59,.40);border-radius:12px;padding:12px 14px}
+.alerta .ic{flex:0 0 22px;height:22px;border-radius:50%;background:var(--crit);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+.alerta b{color:#fff}
+.alerta p{margin:2px 0 0;color:var(--txt2);font-size:12.5px}
+/* ciclo de vida: cartões separados, cor do app no número (a convenção da tela de Tickets) */
+.ciclo{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}
+.ciclo > div{background:var(--bg);border:1px solid var(--card-b);border-radius:10px;padding:9px 10px}
+.ciclo .n{font-size:22px;font-weight:650;line-height:1.1}
+.ciclo .r{color:var(--muted);font-size:11.5px}
+/* legenda */
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--txt2);margin-bottom:6px}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+/* tabela */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;text-align:left;padding:6px 8px;border-bottom:1px solid var(--grid)}
+td{padding:7px 8px;border-bottom:1px solid var(--grid);font-variant-numeric:tabular-nums}
+td.num,th.num{text-align:right}
+.barra{display:flex;align-items:center;gap:8px}
+.barra span.b{display:block;height:10px;border-radius:0 4px 4px 0;background:var(--s1)}
+.barra span.b.cinza{background:var(--cinza)}
+.qual li{margin:6px 0;color:var(--txt2)}
+.qual li b{color:var(--txt)}
+.qual .ic{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--warn);color:#1b1402;font-weight:800;font-size:11px;align-items:center;justify-content:center;margin-right:6px}
+ul.qual{list-style:none;padding:0;margin:0}
+.fase2{border-style:dashed}
+.chip{display:inline-block;border:1px solid var(--card-b);border-radius:999px;padding:2px 9px;font-size:11.5px;margin:2px 4px 2px 0;color:var(--txt2)}
+.ex{background:var(--bg);border:1px solid var(--card-b);border-radius:10px;padding:9px 12px;margin-top:8px;font-size:12.5px}
+.ex .tag{color:#f3d99b;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+svg text{fill:var(--muted);font-size:11px;font-family:inherit}
+svg .lab{fill:var(--txt2);font-size:11.5px}
+/* tooltip */
+#tip{position:fixed;pointer-events:none;background:#0d1322;border:1px solid var(--card-b);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--txt);box-shadow:0 10px 26px rgba(0,0,0,.45);display:none;z-index:9;max-width:260px}
+#tip .t{color:var(--muted);font-size:11px;margin-bottom:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mock"><b>Mockup para aprovação.</b> Os números são reais, lidos da Gridco Performance API em 22/09/2026 às 16:39, e não se atualizam nesta página. A única parte ilustrativa é o quadro "Fase 2", no fim.</div>
+
+  <div class="topo">
+    <div><h1>Acompanhamento de tickets</h1><div class="sub" id="sub">—</div></div>
+    <span class="cresce"></span>
+    <div class="seg" role="group" aria-label="Aba">
+      <button type="button" data-aba="Trackers" class="on">Trackers</button>
+      <button type="button" data-aba="Strings">Strings</button>
+    </div>
+  </div>
+
+  <div class="grade">
+    <div class="kpis">
+      <div class="card hero"><div class="v" id="k_qtd">—</div><div class="l" id="k_qtd_l">—</div></div>
+      <div class="card tile"><div class="l">Abertas há mais de 30 dias</div><div class="v" id="k_30">—</div><div class="d" id="k_30_d">—</div></div>
+      <div class="card tile"><div class="l">Idade mediana das abertas</div><div class="v" id="k_med">—</div><div class="d" id="k_med_d">—</div></div>
+      <div class="card tile"><div class="l">Fechadas nos últimos 30 dias</div><div class="v" id="k_fech">—</div><div class="d">pela data de fim</div></div>
+      <div class="card tile"><div class="l">Abertas sem OS vinculada</div><div class="v" id="k_semos">—</div><div class="d" id="k_semos_d">—</div></div>
+    </div>
+
+    <div class="alerta" id="alerta" hidden>
+      <div class="ic" aria-hidden="true">!</div>
+      <div><b id="alerta_t">—</b><p id="alerta_p">—</p></div>
+    </div>
+
+    <div class="grade g2">
+      <div class="card">
+        <h2>Fluxo semanal — abertas × fechadas</h2>
+        <div class="h2s">ocorrências por semana, pela data de início e pela data de fim · 12 semanas</div>
+        <div class="leg"><span><i style="background:var(--s1)"></i>abertas</span><span><i style="background:var(--s2)"></i>fechadas</span></div>
+        <svg id="g_fluxo" viewBox="0 0 560 230" width="100%" role="img" aria-label="Fluxo semanal"></svg>
+      </div>
+      <div class="card">
+        <h2>Há quanto tempo estão abertas</h2>
+        <div class="h2s" id="env_s">ocorrências abertas por idade</div>
+        <div class="leg"><span><i style="background:var(--s1)"></i>até 30 dias</span><span><i style="background:var(--crit)"></i>acima de 30 dias — o alarme da tela de Tickets</span></div>
+        <svg id="g_idade" viewBox="0 0 560 230" width="100%" role="img" aria-label="Idade das ocorrências abertas"></svg>
+      </div>
+    </div>
+
+    <div class="grade g2">
+      <div class="card">
+        <h2 id="cli_t">Equipamento parado por cliente</h2>
+        <div class="h2s">nas ocorrências abertas · a barra cinza é quem não tem cliente preenchido na planilha</div>
+        <svg id="g_cli" viewBox="0 0 560 230" width="100%" role="img" aria-label="Por cliente"></svg>
+      </div>
+      <div class="card">
+        <h2>Em que pé estão</h2>
+        <div class="h2s">todas as ocorrências da aba, pelo ciclo de vida</div>
+        <div class="ciclo" id="ciclo"></div>
+        <h2 style="margin-top:16px">Qualidade do dado</h2>
+        <div class="h2s">o que impede o painel de contar certo — e se resolve na planilha</div>
+        <ul class="qual" id="qual"></ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="top_t">As 10 usinas com mais equipamento parado</h2>
+      <div class="h2s">o drill-down da tela de Tickets começa por estas</div>
+      <div class="rola"><table><thead><tr><th>#</th><th>Usina</th><th>Cliente</th><th id="top_q">Parados</th><th class="num">Abertas</th></tr></thead><tbody id="top"></tbody></table></div>
+    </div>
+
+    <div class="card fase2">
+      <h2>Fase 2 — planilha × tempo real <span class="chip">o seu item 10</span></h2>
+      <div class="h2s">o que falta para o painel sugerir o que fechar sozinho</div>
+      <p style="margin:0 0 6px;color:var(--txt2);font-size:13px">Para cada usina, o número de parados na planilha é comparado com o que a plataforma vê parado <b>agora</b>. Quando a planilha diz 6 e o tempo real diz 4, o painel mostra quais 2 voltaram e desde quando — e oferece fechar essas ocorrências com o Fim já preenchido. O cruzamento já foi feito uma vez, em 06/09, com as regras de casamento medidas; a fase 2 é transformá-lo em tela.</p>
+      <div>
+        <span class="chip">NORMALIZADO → sugerir fechar</span><span class="chip">AINDA PARADO</span><span class="chip">SEM COMUNICAÇÃO</span><span class="chip">USINA SEM LEITURA</span><span class="chip">PARADO SEM TICKET → sugerir abrir</span>
+      </div>
+      <div class="ex"><div class="tag">exemplo ilustrativo — o caso que você descreveu</div>
+        <b>Araputanga</b> · planilha: 6 parados · tempo real: 4 parados → <b>2 normalizaram</b> (voltaram a acompanhar o alvo às 07:40 de 19/09) · <u>fechar as 2 com Fim 19/09 07:40</u></div>
+    </div>
+  </div>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const DADOS = {"Trackers": {"abertas": 627, "qtd": 1146, "total": 1460, "sem_os": 627, "mais_30": 282, "mediana_dias": 97, "fechadas_30d": 312, "sem_cliente": 258, "sem_inicio": 224, "estados": {"aberta": 627, "com_os": 0, "verificando": 0, "a_fechar": 0, "encerrada": 833}, "faixas": {"0-7": 2, "8-30": 119, "31-90": 70, "91-180": 162, "181-365": 23, ">365": 27}, "clientes": [["(sem cliente)", 258, 398], ["Thopen", 168, 273], ["Athon", 123, 263], ["GreenYellow", 2, 91], ["Axis", 20, 65], ["Ultragaz", 40, 40], ["2C", 15, 15], ["SEMP", 1, 1]], "top": [["MAB200", "Athon", 159, 19], ["Barretos", "(sem cliente)", 125, 125], ["Macaiba 1", "GreenYellow", 91, 2], ["Macaíba", "(sem cliente)", 90, 1], ["Fernandópolis", "Thopen", 78, 2], ["PEIII", "Axis", 58, 13], ["Santa Bárbara I", "(sem cliente)", 58, 7], ["TIM100", "Athon", 50, 50], ["Boa Esperança do Sul 1 e 2", "Thopen", 46, 17], ["PRM100", "(sem cliente)", 45, 45]], "semanas": [{"ate": "07/07", "abertas": 27, "fechadas": 21}, {"ate": "14/07", "abertas": 18, "fechadas": 11}, {"ate": "21/07", "abertas": 26, "fechadas": 24}, {"ate": "28/07", "abertas": 104, "fechadas": 107}, {"ate": "04/08", "abertas": 53, "fechadas": 42}, {"ate": "11/08", "abertas": 52, "fechadas": 42}, {"ate": "18/08", "abertas": 164, "fechadas": 154}, {"ate": "25/08", "abertas": 117, "fechadas": 137}, {"ate": "01/09", "abertas": 137, "fechadas": 109}, {"ate": "08/09", "abertas": 134, "fechadas": 156}, {"ate": "15/09", "abertas": 96, "fechadas": 0}, {"ate": "22/09", "abertas": 2, "fechadas": 0}]}, "Strings": {"abertas": 82, "qtd": 637, "total": 309, "sem_os": 82, "mais_30": 10, "mediana_dias": 28.0, "fechadas_30d": 8, "sem_cliente": 23, "sem_inicio": 0, "estados": {"aberta": 82, "com_os": 0, "verificando": 0, "a_fechar": 0, "encerrada": 227}, "faixas": {"0-7": 3, "8-30": 69, "31-90": 5, "91-180": 4, "181-365": 1, ">365": 0}, "clientes": [["Renogrid", 40, 285], ["Thopen", 6, 214], ["GreenYellow", 6, 72], ["(sem cliente)", 23, 44], ["Axis", 3, 17], ["Athon", 4, 5]], "top": [["Crateus", "Renogrid", 285, 40], ["Brodowski", "Thopen", 209, 1], ["Castelo do Piauí", "GreenYellow", 72, 6], ["ALT100", "(sem cliente)", 26, 13], ["Petrolina 2", "Axis", 17, 3], ["BES100", "(sem cliente)", 9, 1], ["Santarem 1 e 2", "Thopen", 3, 3], ["Santarém 1", "(sem cliente)", 3, 3], ["CNN100", "(sem cliente)", 2, 2], ["MAB100", "Athon", 2, 1]], "semanas": [{"ate": "07/07", "abertas": 6, "fechadas": 7}, {"ate": "14/07", "abertas": 7, "fechadas": 8}, {"ate": "21/07", "abertas": 4, "fechadas": 5}, {"ate": "28/07", "abertas": 8, "fechadas": 2}, {"ate": "04/08", "abertas": 19, "fechadas": 15}, {"ate": "11/08", "abertas": 21, "fechadas": 21}, {"ate": "18/08", "abertas": 29, "fechadas": 38}, {"ate": "25/08", "abertas": 46, "fechadas": 4}, {"ate": "01/09", "abertas": 22, "fechadas": 4}, {"ate": "08/09", "abertas": 4, "fechadas": 3}, {"ate": "15/09", "abertas": 6, "fechadas": 0}, {"ate": "22/09", "abertas": 3, "fechadas": 0}]}};
+(function () {
+  "use strict";
+  var aba = "Trackers", tip = document.getElementById("tip");
+  var ROT = {Trackers: "trackers parados", Strings: "strings zeradas"};
+  var ESTADOS = [["aberta", "Aberta"], ["com_os", "OS criada"], ["verificando", "Em verificação"], ["a_fechar", "A fechar"], ["encerrada", "Encerrada"]];
+  var GRAFIAS = {Trackers: "“Macaiba 1” (GreenYellow) e “Macaíba” (sem cliente) parecem a mesma usina — 91 e 90 trackers parados",
+                 Strings: "“Santarem 1 e 2” (Thopen) e “Santarém 1” (sem cliente) parecem a mesma usina"};
+  var fmt = function (n) { return (n == null ? "—" : Number(n).toLocaleString("pt-BR")); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); };
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, at, pai) { var e = document.createElementNS(NS, tag); for (var k in at) e.setAttribute(k, at[k]); if (pai) pai.appendChild(e); return e; }
+  function limpa(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+  function mostraTip(ev, html) { tip.innerHTML = html; tip.style.display = "block"; tip.style.left = Math.min(ev.clientX + 14, innerWidth - 270) + "px"; tip.style.top = (ev.clientY + 14) + "px"; }
+  function escondeTip() { tip.style.display = "none"; }
+  function passo(max) { var bruto = max / 4, p = Math.pow(10, Math.floor(Math.log10(bruto || 1))); return [1, 2, 2.5, 5, 10].map(function (m) { return m * p; }).find(function (s) { return s >= bruto; }) || p; }
+
+  // ── fluxo semanal: DUAS linhas no MESMO eixo (mesma unidade) — nunca eixo duplo ──
+  function fluxo(s) {
+    var svg = document.getElementById("g_fluxo"); limpa(svg);
+    var W = 560, H = 230, L = 38, R = 86, T = 12, B = 30, sem = s.semanas;
+    var max = Math.max.apply(null, sem.map(function (x) { return Math.max(x.abertas, x.fechadas); })) || 1;
+    var st = passo(max), topo = Math.ceil(max / st) * st;
+    var x = function (i) { return L + i * (W - L - R) / (sem.length - 1); }, y = function (v) { return T + (H - T - B) * (1 - v / topo); };
+    for (var g = 0; g <= topo; g += st) {
+      el("line", {x1: L, x2: W - R, y1: y(g), y2: y(g), stroke: "var(--grid)", "stroke-width": 1}, svg);
+      el("text", {x: L - 6, y: y(g) + 4, "text-anchor": "end"}, svg).textContent = fmt(g);
+    }
+    // um rótulo a cada duas semanas, ancorado na MAIS RECENTE (é a que a pessoa procura)
+    sem.forEach(function (w, i) { if ((sem.length - 1 - i) % 2 === 0) el("text", {x: x(i), y: H - 10, "text-anchor": "middle"}, svg).textContent = w.ate; });
+    [["abertas", "var(--s1)"], ["fechadas", "var(--s2)"]].forEach(function (par) {
+      var d = sem.map(function (w, i) { return (i ? "L" : "M") + x(i) + "," + y(w[par[0]]); }).join(" ");
+      el("path", {d: d, fill: "none", stroke: par[1], "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}, svg);
+      var u = sem[sem.length - 1];
+      el("circle", {cx: x(sem.length - 1), cy: y(u[par[0]]), r: 4, fill: par[1], stroke: "var(--card)", "stroke-width": 2}, svg);
+    });
+    // rótulo seletivo: só o fim de cada série, e a anotação do que importa
+    // Quando as duas pontas encostam (22/09: 2 e 0), os rótulos empilham ACIMA da linha de base —
+    // abaixo dela invadiriam o rótulo da data no eixo
+    var u = sem[sem.length - 1], ya = y(u.abertas), yf = y(u.fechadas), la = ya + 4, lf = yf + 4;
+    if (Math.abs(ya - yf) < 14) {
+      var cima = Math.min(Math.min(ya, yf) - 2, H - B - 21);
+      if (u.abertas >= u.fechadas) { la = cima; lf = cima + 16; } else { lf = cima; la = cima + 16; }
+    }
+    el("text", {x: W - R + 8, y: la, "class": "lab"}, svg).textContent = fmt(u.abertas) + " abertas";
+    el("text", {x: W - R + 8, y: lf, "class": "lab"}, svg).textContent = fmt(u.fechadas) + " fechadas";
+    // crosshair + tooltip
+    var cruz = el("line", {x1: 0, x2: 0, y1: T, y2: H - B, stroke: "var(--txt2)", "stroke-width": 1, opacity: 0}, svg);
+    var alvo = el("rect", {x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent"}, svg);
+    alvo.addEventListener("mousemove", function (ev) {
+      var r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+      var i = Math.max(0, Math.min(sem.length - 1, Math.round((px - L) / ((W - L - R) / (sem.length - 1)))));
+      cruz.setAttribute("x1", x(i)); cruz.setAttribute("x2", x(i)); cruz.setAttribute("opacity", .5);
+      mostraTip(ev, '<div class="t">semana até ' + sem[i].ate + "</div>" + fmt(sem[i].abertas) + " abertas · " + fmt(sem[i].fechadas) + " fechadas");
+    });
+    alvo.addEventListener("mouseleave", function () { cruz.setAttribute("opacity", 0); escondeTip(); });
+  }
+
+  // ── idade: faixas ORDENADAS; a cor diz só se passou do alarme de 30 dias ──
+  function idade(s) {
+    var svg = document.getElementById("g_idade"); limpa(svg);
+    var W = 560, H = 230, L = 38, R = 12, T = 18, B = 30, fx = Object.keys(s.faixas);
+    var max = Math.max.apply(null, fx.map(function (k) { return s.faixas[k]; })) || 1, st = passo(max), topo = Math.ceil(max / st) * st;
+    var y = function (v) { return T + (H - T - B) * (1 - v / topo); }, banda = (W - L - R) / fx.length, larg = Math.min(24, banda * .5);
+    for (var g = 0; g <= topo; g += st) {
+      el("line", {x1: L, x2: W - R, y1: y(g), y2: y(g), stroke: "var(--grid)", "stroke-width": 1}, svg);
+      el("text", {x: L - 6, y: y(g) + 4, "text-anchor": "end"}, svg).textContent = fmt(g);
+    }
+    fx.forEach(function (k, i) {
+      var v = s.faixas[k], cx = L + banda * i + banda / 2, x0 = cx - larg / 2, y0 = y(v), h = (H - B) - y0;
+      var cor = (k === "0-7" || k === "8-30") ? "var(--s1)" : "var(--crit)";
+      if (h > 0) el("path", {d: "M" + x0 + "," + (H - B) + " V" + (y0 + 4) + " Q" + x0 + "," + y0 + " " + (x0 + 4) + "," + y0 + " H" + (x0 + larg - 4) + " Q" + (x0 + larg) + "," + y0 + " " + (x0 + larg) + "," + (y0 + 4) + " V" + (H - B) + " Z", fill: cor}, svg);
+      el("text", {x: cx, y: y0 - 5, "text-anchor": "middle", "class": "lab"}, svg).textContent = fmt(v);
+      el("text", {x: cx, y: H - 10, "text-anchor": "middle"}, svg).textContent = k + " d";
+      var hit = el("rect", {x: L + banda * i, y: T, width: banda, height: H - T - B, fill: "transparent"}, svg);
+      hit.addEventListener("mousemove", function (ev) { mostraTip(ev, '<div class="t">abertas há ' + k + " dias</div>" + fmt(v) + " ocorrência(s)"); });
+      hit.addEventListener("mouseleave", escondeTip);
+    });
+  }
+
+  // ── por cliente: UMA série, uma cor; "(sem cliente)" em cinza com o motivo ──
+  function clientes(s) {
+    var svg = document.getElementById("g_cli"); limpa(svg);
+    var lst = s.clientes.slice(0, 8), W = 560, L = 118, R = 70, T = 6, linha = 26, H = T + lst.length * linha + 6;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    var max = Math.max.apply(null, lst.map(function (c) { return c[2]; })) || 1, esc_ = function (v) { return (W - L - R) * v / max; };
+    lst.forEach(function (c, i) {
+      var y0 = T + i * linha, alt = 14, w = Math.max(2, esc_(c[2])), sem = c[0] === "(sem cliente)";
+      el("text", {x: L - 8, y: y0 + alt - 2, "text-anchor": "end", "class": "lab"}, svg).textContent = c[0];
+      el("path", {d: "M" + L + "," + y0 + " H" + (L + w - 4) + " Q" + (L + w) + "," + y0 + " " + (L + w) + "," + (y0 + 4) + " V" + (y0 + alt - 4) + " Q" + (L + w) + "," + (y0 + alt) + " " + (L + w - 4) + "," + (y0 + alt) + " H" + L + " Z", fill: sem ? "var(--cinza)" : "var(--s1)"}, svg);
+      el("text", {x: L + w + 6, y: y0 + alt - 2, "class": "lab"}, svg).textContent = fmt(c[2]);
+      var hit = el("rect", {x: 0, y: y0 - 5, width: W, height: linha, fill: "transparent"}, svg);
+      hit.addEventListener("mousemove", function (ev) { mostraTip(ev, '<div class="t">' + esc(c[0]) + "</div>" + fmt(c[2]) + " " + ROT[aba] + " em " + fmt(c[1]) + " ocorrência(s) aberta(s)" + (sem ? "<br>cliente não preenchido na planilha" : "")); });
+      hit.addEventListener("mouseleave", escondeTip);
+    });
+  }
+
+  function pintar() {
+    var s = DADOS[aba];
+    document.getElementById("sub").textContent = fmt(s.total) + " ocorrências na aba " + aba + " · " + fmt(s.abertas) + " abertas";
+    document.getElementById("k_qtd").textContent = fmt(s.qtd);
+    // "segundo a planilha", não "agora": quem diz o que está parado AGORA é o tempo real (fase 2)
+    document.getElementById("k_qtd_l").textContent = ROT[aba] + " segundo a planilha, em " + fmt(s.abertas) + " ocorrências abertas";
+    document.getElementById("k_30").textContent = fmt(s.mais_30);
+    document.getElementById("k_30_d").textContent = Math.round(100 * s.mais_30 / (s.abertas || 1)) + "% das abertas";
+    document.getElementById("k_med").textContent = s.mediana_dias == null ? "—" : fmt(Math.round(s.mediana_dias)) + " dias";
+    document.getElementById("k_med_d").textContent = s.sem_inicio ? fmt(s.sem_inicio) + " sem data de início ficam fora" : "todas com data de início";
+    document.getElementById("k_fech").textContent = fmt(s.fechadas_30d);
+    document.getElementById("k_semos").textContent = fmt(s.sem_os);
+    document.getElementById("k_semos_d").textContent = Math.round(100 * s.sem_os / (s.abertas || 1)) + "% das abertas";
+    // o alerta: semanas seguidas sem fechamento no fim da série. A comparação é com a MÉDIA das 4
+    // semanas anteriores ao buraco, não com a última (uma semana fraca faria o buraco parecer normal)
+    var sem = s.semanas, n = 0; for (var i = sem.length - 1; i >= 0 && !sem[i].fechadas; i--) n++;
+    var media = function (campo, ate) { var v = sem.slice(Math.max(0, ate - 4), ate); return v.length ? v.reduce(function (a, w) { return a + w[campo]; }, 0) / v.length : 0; };
+    var al = document.getElementById("alerta");
+    if (n >= 2) {
+      var ult = sem[sem.length - 1 - n], antes = media("fechadas", sem.length - n);
+      var u = sem[sem.length - 1], mAb = media("abertas", sem.length - 1);
+      al.hidden = false;
+      document.getElementById("alerta_t").textContent = "Nenhuma ocorrência fechada há " + n + " semanas" + (ult ? " — a última semana com fechamento terminou em " + ult.ate : "");
+      document.getElementById("alerta_p").textContent = "Nas 4 semanas anteriores fechavam-se em média " + fmt(Math.round(antes)) + " por semana."
+        + (mAb && u.abertas < mAb * .1 ? " E na última semana só entraram " + fmt(u.abertas) + " (a média era " + fmt(Math.round(mAb)) + "): a planilha pode ter parado de ser alimentada." : "")
+        + " Provável causa: o Excel da equipe só chega ao banco quando alguém roda o sync do tickets, e a última subida conhecida (14/09) levou um arquivo salvo em 09/09 — o que se fechou no Excel depois disso não está aqui. Fechar pela tela de Tickets grava direto no banco.";
+    } else al.hidden = true;
+    document.getElementById("ciclo").innerHTML = ESTADOS.map(function (e) {
+      return '<div><div class="n" style="color:var(--' + e[0] + ')">' + fmt(s.estados[e[0]]) + '</div><div class="r">' + e[1] + "</div></div>";
+    }).join("");
+    document.getElementById("qual").innerHTML = [
+      (s.sem_os === s.abertas ? "<b>Nenhuma</b> das " + fmt(s.abertas) + " abertas" : "<b>" + fmt(s.sem_os) + " de " + fmt(s.abertas) + "</b> abertas sem") + " tem OS vinculada — o número da OS mora só no diário; a tela de Tickets já permite vincular",
+      "<b>" + fmt(s.sem_cliente) + "</b> abertas sem cliente em lugar nenhum da planilha",
+      s.sem_inicio ? "<b>" + fmt(s.sem_inicio) + "</b> abertas sem data de início — a idade delas não é calculável" : null,
+      GRAFIAS[aba]
+    ].filter(Boolean).map(function (t) { return '<li><span class="ic" aria-hidden="true">!</span>' + t + "</li>"; }).join("");
+    document.getElementById("cli_t").textContent = (aba === "Trackers" ? "Trackers parados" : "Strings zeradas") + " por cliente";
+    document.getElementById("top_q").textContent = aba === "Trackers" ? "Trackers parados" : "Strings zeradas";
+    var maxTop = Math.max.apply(null, s.top.map(function (t) { return t[2]; })) || 1;
+    document.getElementById("top").innerHTML = s.top.map(function (t, i) {
+      return "<tr><td>" + (i + 1) + "</td><td>" + esc(t[0]) + "</td><td>" + esc(t[1]) + '</td><td><div class="barra"><span class="b' + (t[1] === "(sem cliente)" ? " cinza" : "") + '" style="width:' + Math.max(3, 150 * t[2] / maxTop) + 'px"></span>' + fmt(t[2]) + '</div></td><td class="num">' + fmt(t[3]) + "</td></tr>";
+    }).join("");
+    fluxo(s); idade(s); clientes(s);
+  }
+  document.querySelectorAll(".seg button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".seg button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      aba = b.dataset.aba; pintar();
+    });
+  });
+  pintar();
+})();
+</script>
+</body>
+</html>

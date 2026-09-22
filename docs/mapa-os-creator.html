@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa do OS Creator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Paleta = steps/ui.py do próprio app. A página sobre o app tem a cara do app. */
+:root{
+  --bg:#0B1020; --card:#121A2B; --input:#1A2337; --border:#2A3550;
+  --green:#A6E22E; --green-ink:#0B1020; --text:#EEF1F8; --white:#FFFFFF; --muted:#8A93A8;
+  --blue:#4a9eff; --amber:#eb8b57; --red:#e05454; --ok:#3fb27f;
+  --display:"Bricolage Grotesque",Inter,"Segoe UI",system-ui,sans-serif;
+  --body:Inter,"Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",Consolas,"Cascadia Mono",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--body);-webkit-font-smoothing:antialiased}
+a{color:var(--green);text-decoration:none}
+a:hover{text-decoration:underline}
+code,.mono{font-family:var(--mono);font-size:.92em}
+code{background:var(--input);border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:var(--text);white-space:nowrap}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
+
+/* ── cabeçalho ─────────────────────────────────────────────── */
+header.hero{padding:64px 0 36px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(166,226,46,.12)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(38px,6vw,64px);line-height:1;letter-spacing:-.02em;margin:18px 0 20px;color:var(--white)}
+h1 em{font-style:normal;color:var(--green)}
+.lead{font-size:18px;line-height:1.55;color:#B7BFD1;max-width:760px;margin:0 0 28px}
+.status{display:flex;flex-wrap:wrap;gap:8px 0;font-family:var(--mono);font-size:12.5px;color:var(--muted);align-items:center}
+.status b{color:var(--text);font-weight:500}
+.status .sep{margin:0 12px;color:var(--border)}
+
+/* ── navegação fixa ─────────────────────────────────────────── */
+nav.toc{position:sticky;top:0;z-index:5;background:rgba(11,16,32,.92);backdrop-filter:blur(8px);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+nav.toc .wrap{display:flex;gap:4px;overflow-x:auto;padding-top:8px;padding-bottom:8px;scrollbar-width:none}
+nav.toc a{font-family:var(--mono);font-size:12px;color:var(--muted);padding:6px 10px;border-radius:6px;white-space:nowrap}
+nav.toc a:hover{color:var(--text);background:var(--card);text-decoration:none}
+
+/* ── seções ────────────────────────────────────────────────── */
+section{padding:60px 0 8px}
+.sec-head{display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:baseline;margin-bottom:26px;border-top:1px solid var(--border);padding-top:22px}
+.sec-head .q{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--green)}
+.sec-head h2{font-family:var(--display);font-weight:600;font-size:clamp(24px,3vw,32px);letter-spacing:-.015em;line-height:1.1;margin:0;color:var(--white)}
+.sec-head p{grid-column:2;margin:6px 0 0;color:var(--muted);max-width:720px}
+@media (max-width:720px){.sec-head{grid-template-columns:1fr}.sec-head p{grid-column:1}}
+
+.grid{display:grid;gap:14px}
+.g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 18px 16px;transition:border-color .16s ease,transform .16s ease}
+.card:hover{border-color:#3a4a6e}
+.card h3{font-family:var(--display);font-weight:600;font-size:17px;margin:0 0 6px;color:var(--white);letter-spacing:-.01em}
+.card p{margin:0 0 8px;color:#C5CCDC;font-size:14px}
+.card p:last-child{margin-bottom:0}
+.card .path{font-family:var(--mono);font-size:12px;color:var(--muted);word-break:break-all}
+.card .why{color:var(--muted);font-size:13px}
+.note{border-left:2px solid var(--green);padding:6px 14px;color:#B7BFD1;font-size:14px;margin:18px 0 0}
+
+/* ── chips ─────────────────────────────────────────────────── */
+.chip{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);vertical-align:middle;white-space:nowrap}
+.chip.um{border-color:var(--green);color:var(--green)}
+.chip.duas{border-color:var(--blue);color:var(--blue)}
+.chip.ler{border-color:#4a5573;color:#AEB6C8}
+.chip.area{border-color:var(--amber);color:var(--amber)}
+.chip.dec{border-color:var(--amber);color:var(--amber)}
+.chip.vivo{border-color:var(--red);color:var(--red)}
+.chip.teste{border-color:var(--blue);color:var(--blue)}
+.chip.quando{border-color:#4a5573;color:#AEB6C8}
+
+/* ── a janela: abas + launcher (espelho do app) ────────────── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.tabs span{font-size:14px;color:var(--muted);padding:10px 16px;display:inline-flex;gap:8px;align-items:center}
+.tabs span.sel{color:var(--green);border-bottom:2px solid var(--green);margin-bottom:-1px}
+.tabs svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.launch{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.lc{position:relative;background:var(--card);border:1px solid var(--border);border-bottom:2px solid #8fce3f;border-radius:12px;padding:18px 18px 16px;transition:transform .18s cubic-bezier(.2,.7,.2,1),border-color .18s}
+.lc:hover{transform:translateY(-6px);border-color:#8fce3f}
+.lc .ico{width:40px;height:40px;border-radius:10px;background:var(--input);display:grid;place-items:center;margin-bottom:12px}
+.lc .ico svg{width:22px;height:22px;stroke:#8fce3f;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.lc h3{font-family:var(--display);font-weight:600;font-size:18px;margin:0 0 4px;color:var(--white)}
+.lc .sub{color:var(--muted);font-size:13px;margin:0 0 12px;min-height:38px}
+.lc .cria{font-size:13.5px;color:#C5CCDC;margin:0 0 10px}
+.lc .path{font-family:var(--mono);font-size:11.5px;color:var(--muted);word-break:break-all}
+.lc .arrow{position:absolute;right:16px;bottom:14px;color:#8fce3f;font-family:var(--mono);font-size:14px}
+.lc .tag{position:absolute;right:16px;top:16px}
+.outras{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;margin-top:18px}
+
+/* ── camadas ───────────────────────────────────────────────── */
+.camadas{display:grid;grid-template-columns:minmax(0,3fr) minmax(280px,1.15fr);gap:14px}
+@media (max-width:860px){.camadas{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:10px}
+.band{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:grid;grid-template-columns:170px 1fr;gap:16px}
+@media (max-width:640px){.band{grid-template-columns:1fr}}
+.band .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--green)}
+.band .k small{display:block;letter-spacing:0;text-transform:none;color:var(--muted);font-size:12px;margin-top:6px;line-height:1.5}
+.band .v{font-size:14px;color:#C5CCDC;margin:0}
+.band .v b{color:var(--text);font-weight:500}
+.band.out{border-style:dashed;background:transparent}
+.seta{text-align:center;color:var(--muted);font-family:var(--mono);font-size:13px;line-height:1;margin:-4px 0}
+.side{display:flex;flex-direction:column;gap:10px}
+.side .card h3{font-size:14px;font-family:var(--mono);font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--green)}
+.side ul{margin:0;padding-left:16px;color:#C5CCDC;font-size:13.5px}
+.side li{margin:3px 0}
+
+/* ── SVG ───────────────────────────────────────────────────── */
+.fig{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 18px 10px;overflow-x:auto}
+.fig svg{display:block;width:100%;height:auto;min-width:720px}
+.fig text{font-family:var(--body);font-size:13px;fill:var(--text)}
+.fig text.m{font-family:var(--mono);font-size:11.5px;fill:var(--muted)}
+.fig text.m.g{fill:var(--green)}
+.fig text.m.b{fill:var(--blue)}
+.fig text.m.a{fill:var(--amber)}
+.fig text.t{font-family:var(--display);font-weight:600;font-size:15px;fill:#fff}
+.fig .box{fill:var(--input);stroke:var(--border);stroke-width:1}
+.fig .rail{fill:none;stroke-width:3;stroke-linecap:round}
+.fig .rail.g{stroke:var(--green)}
+.fig .rail.b{stroke:var(--blue)}
+.fig .st{fill:var(--bg);stroke-width:3}
+.fig .st.g{stroke:var(--green)}
+.fig .st.b{stroke:var(--blue)}
+.fig .rider{fill:var(--bg);stroke:var(--border)}
+.fig .rider text,.fig text.r{font-size:11.5px;fill:#C5CCDC}
+.fig .call{fill:rgba(235,139,87,.06);stroke:var(--amber);stroke-dasharray:4 4}
+.fig .leader{stroke:var(--amber);stroke-dasharray:3 4;fill:none}
+.fig .arr{fill:none;stroke:#6C7796;stroke-width:1.6}
+.fig .arr.d{stroke-dasharray:5 5}
+.fig .badge{fill:var(--green)}
+.fig text.bt{font-family:var(--mono);font-size:11px;font-weight:500;fill:var(--green-ink)}
+.legend{margin:16px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:8px 22px}
+.legend li{display:grid;grid-template-columns:24px 1fr;gap:10px;font-size:13.5px;color:#C5CCDC;align-items:start}
+.legend li i{font-style:normal;font-family:var(--mono);font-size:11px;background:var(--green);color:var(--green-ink);border-radius:50%;width:20px;height:20px;display:grid;place-items:center;margin-top:2px}
+.legend b{color:var(--text);font-weight:500}
+.draw .rail{stroke-dasharray:1400;stroke-dashoffset:1400}
+.draw.on .rail{animation:draw 1.5s cubic-bezier(.3,.6,.2,1) forwards}
+.draw.on .rail.b{animation-delay:.25s}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+/* ── release ───────────────────────────────────────────────── */
+.pipe{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;counter-reset:passo}
+.pipe .card code{white-space:normal;overflow-wrap:anywhere}
+.pipe .card{counter-increment:passo;position:relative;padding-top:38px}
+.pipe .card::before{content:counter(passo,decimal-leading-zero);position:absolute;top:12px;left:16px;font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:.08em}
+.pipe .card h3{font-size:15px}
+.pipe .card p{font-size:13px}
+.regras{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.regras span{font-size:13px;color:#C5CCDC;background:var(--input);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+.regras span::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:8px;vertical-align:2px}
+.regua{margin-top:18px;background:linear-gradient(90deg,rgba(166,226,46,.08),transparent 60%);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:12px;padding:16px 18px}
+.regua h3{font-family:var(--display);font-size:17px;margin:0 0 8px;color:var(--white)}
+.regua ol{margin:0;padding-left:20px;color:#C5CCDC;font-size:14px}
+.regua li{margin:3px 0}
+
+/* ── pendências / armadilhas ───────────────────────────────── */
+.pend{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.pend li{display:grid;grid-template-columns:118px 1fr;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:14px;color:#C5CCDC;align-items:start}
+.pend li b{color:var(--text);font-weight:500}
+@media (max-width:640px){.pend li{grid-template-columns:1fr}}
+.arm{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px}
+.arm .card ul{margin:0;padding-left:16px;color:#C5CCDC;font-size:13.5px}
+.arm .card li{margin:5px 0}
+.arm .card li b{color:var(--text);font-weight:500}
+
+footer{padding:48px 0 64px;color:var(--muted);font-size:13px;border-top:1px solid var(--border);margin-top:60px}
+footer .wrap{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:720px){footer .wrap{grid-template-columns:1fr}}
+footer ul{margin:6px 0 0;padding-left:16px}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .draw .rail{stroke-dasharray:none;stroke-dashoffset:0}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Grid Co · OS Creator · mapa do sistema</div>
+    <h1>Criar OS — <em>Fracttal</em>, visto por dentro</h1>
+    <p class="lead">O app de desktop que abre e acompanha Ordens de Serviço no Fracttal: onde o código mora, o que cada tela faz, por qual caminho a OS nasce e onde ele encosta na Plataforma de Performance. Levantado em 10/09/2026 sobre o clone <code>C:\GridcoBuild\oem</code>.</p>
+    <div class="status">
+      <span>publicada <b>v2026.09.08.198</b></span><span class="sep">·</span>
+      <span><b>2</b> commits ainda sem release</span><span class="sep">·</span>
+      <span><b>419</b> testes, 0 falhas</span><span class="sep">·</span>
+      <span>árvore limpa na <b>main</b></span><span class="sep">·</span>
+      <span><b>119</b> commits em 11 dias desde a migração</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Seções">
+  <div class="wrap">
+    <a href="#onde">Onde mora</a>
+    <a href="#janela">A janela</a>
+    <a href="#camadas">Camadas</a>
+    <a href="#caminhos">Dois caminhos</a>
+    <a href="#plataforma">Plataforma</a>
+    <a href="#release">Release</a>
+    <a href="#pendencias">Pendências</a>
+    <a href="#armadilhas">Armadilhas</a>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════ ONDE MORA ═══════════════════════════ -->
+<section id="onde">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">onde</span>
+      <h2>Três lugares, um deles fora do git</h2>
+      <p>Desde 28/08/2026 o código não vive mais no repositório da plataforma. Ele foi para a organização, os instaladores para um repositório público, e a máquina de build guarda o script que costura tudo.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card">
+        <h3>Código-fonte</h3>
+        <p class="path">github.com/Grid-Co-CODE/oem &nbsp;·&nbsp; privado</p>
+        <p class="path">clone: C:\GridcoBuild\oem</p>
+        <p>Migrado de <code>Levi-6242/PerformancePainel</code> com <code>git filter-repo</code>, levando <code>os_creator/</code> e o pacote <code>chamado_garantia/</code>, que só ele usa.</p>
+        <p class="why">Fora do OneDrive de propósito: o sync trava arquivos do <code>_internal</code> e corrompe o PyInstaller.</p>
+      </div>
+      <div class="card">
+        <h3>Instaladores</h3>
+        <p class="path">github.com/Grid-Co-CODE/oem-release &nbsp;·&nbsp; público</p>
+        <p>O app lê <code>versao.json</code> daqui ao abrir, sem credencial. Público porque asset de repositório privado exigiria login em cada máquina.</p>
+        <p class="why">O canal antigo <code>Levi-6242/os-creator-releases</code> ainda recebe cópia de cada versão: o endereço fica gravado dentro do <code>.exe</code>, e quem está na v166 ou antes só enxerga o antigo.</p>
+      </div>
+      <div class="card">
+        <h3>Máquina de build</h3>
+        <p class="path">C:\GridcoBuild\ &nbsp;·&nbsp; release.py, setup.iss, versao.json, dist/, build/, installer/</p>
+        <p>O <code>release.py</code> não está em nenhum repositório. É ele que publica nos dois canais e no SharePoint. Se a máquina for reinstalada sem saber disso, as versões antigas param de atualizar em silêncio.</p>
+        <p class="why">Estado compartilhado entre builds: uma release por vez, e a árvore congelada enquanto compila.</p>
+      </div>
+    </div>
+    <p class="note">O que sobrou em <code>os_creator/</code> do repositório da plataforma é resto de build (<code>build/</code>, <code>dist/</code>, <code>assets_cache.json</code>) e credencial ignorada pelo git. Serve de backup até o clone novo estar provado; depois pode ser apagado. O <code>MOVIDO.md</code> de lá explica.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ A JANELA ═══════════════════════════ -->
+<section id="janela">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">o que se vê</span>
+      <h2>Três abas e um lançador de cards</h2>
+      <p>A aba Criar OS abre numa grade de cards que troca o conteúdo da própria aba, sem janela nova. A grade abaixo espelha a do app, na ordem em que aparece. A etiqueta de cada card diz por qual caminho a OS nasce.</p>
+    </div>
+
+    <div class="tabs" aria-hidden="true">
+      <span class="sel"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Criar OS</span>
+      <span><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Solicitação / PCM</span>
+      <span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Históricos de OS</span>
+    </div>
+
+    <div class="launch">
+      <div class="lc">
+        <span class="chip ler tag">leitura</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></div>
+        <h3>Ativos</h3>
+        <p class="sub">Todo o catálogo do Fracttal — busca, histórico e atalhos</p>
+        <p class="cria">18 mil ativos em 405 usinas, filtro todo local, hierarquia reconstruída pelo <code>id_parent</code>. "Criar OS" é atalho para Performance ou Inspeção; do ativo se decide a OS.</p>
+        <p class="path">steps/ativos.py</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip um tag">1 chamada</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg></div>
+        <h3>Performance</h3>
+        <p class="sub">Inversores, Strings, Trackers e ETM</p>
+        <p class="cria">N OS, uma por ativo, a partir de 4 planos: Geração e ETM, Inspeção Geral do Inversor, Recomposição de String, Verificação de Tracker Parado. Título <code>[Ativo] - plano</code>. Dá acesso à aba Tickets e ao kanban "Quem está com o quê".</p>
+        <p class="path">steps/performance.py · perf_kanban.py · perf_execucao.py · tickets.py</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip duas tag">2 fases</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/></svg></div>
+        <h3>COS</h3>
+        <p class="sub">Ocorrência de desligamento, religamento e inspeção</p>
+        <p class="cria">Categoria A proteção atuou (chips ANSI, 86 bloqueia religamento remoto), B inversor desligado, C falha de comunicação. Dois tipos de OS: Religamento da UFV e Inspeção e Normalização.</p>
+        <p class="path">steps/varias_os.py · cos_spec.py</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip duas tag">2 fases</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+        <h3>PCM</h3>
+        <p class="sub">OS planejada por família de plano, vários ativos</p>
+        <p class="cria">Uma OS com vários ativos como tarefas, cada um com o plano da família escolhida (MPM, MPA, MPS, MPQ, MPW, MPT, Handover). Ativo sem plano na família fica vermelho e não entra.</p>
+        <p class="path">steps/pcm.py</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip duas tag">2 fases</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 14v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="13" width="4" height="6" rx="1"/><rect x="17" y="13" width="4" height="6" rx="1"/><path d="M19 19a3 3 0 0 1-3 3h-3"/></svg></div>
+        <h3>Chamados</h3>
+        <p class="sub">Nova OS ligada a uma OS pai, com a etiqueta CHAMADOS</p>
+        <p class="cria">OS filha da OS onde o problema foi tratado, campos por fabricante (11 com processo escrito). O board Acompanhar lê o status pelas subtarefas, que a equipe edita no Fracttal web.</p>
+        <p class="path">steps/chamados.py · abrir_chamado.py · chamado_spec.py</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip um tag">1 chamada</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m21 21-5.2-5.2M8 10.5l1.8 1.8L13 9"/></svg></div>
+        <h3>Inspeção de chamados</h3>
+        <p class="sub">OS de teste que fundamenta o chamado — subtarefas por ativo e marca</p>
+        <p class="cria">Tipo Inspeção, etiqueta Aguardando Garantia, subtarefas no padrão que o fabricante exige. A marca vem do texto do ativo (94% dos inversores); com OS pai, a data do incidente é herdada.</p>
+        <p class="path">steps/insp_chamado.py · chamado_insp_spec.py → chamado_garantia/</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip duas tag">2 fases</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h6"/></svg></div>
+        <h3>Tradicional</h3>
+        <p class="sub">Criar OS do zero, passo a passo</p>
+        <p class="cria">Cliente → usina → tipo → ativos marcados; depois descrição, tipo de tarefa, classificações, criticidade, subtarefas, etiqueta, OS pai e responsável. Cada ativo vira uma OS. "Já foi realizada?" cria a OS concluída.</p>
+        <p class="path">steps/step1.py · step2.py · step3.py · tipo_tarefa.py · finalizar.py</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip duas tag">2 fases</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></div>
+        <h3>Clonar OS</h3>
+        <p class="sub">Duplicar uma OS existente pelo número</p>
+        <p class="cria">Lê a OS de referência, deixa editar ativo, descrição, datas e subtarefas de cada tarefa, e sai uma OS nova. Classificações resolvidas por nome, porque o RPC devolve <code>NULL</code> ao ler.</p>
+        <p class="path">steps/clonar.py · subtarefas_edit.py</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="lc">
+        <span class="chip area tag">área por fork</span>
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 21V10M8 21h8"/><circle cx="12" cy="7" r="3"/><path d="M5 7a7 7 0 0 1 2-4.9M19 7a7 7 0 0 0-2-4.9"/></svg></div>
+        <h3>Engenharia</h3>
+        <p class="sub">OS de ETM e as análises da Engenharia</p>
+        <p class="cria">Registrada por descritor (<code>CHAVE</code>, <code>TITULO</code>, <code>ICONE</code>, <code>abrir()</code>), mantida por PR vindo de fork. O CI segura a pasta, a cor por nome e os testes. A tela ainda é moldura vazia.</p>
+        <p class="path">steps/engenharia/__init__.py · tela.py · CLAUDE.md</p>
+        <span class="arrow">→</span>
+      </div>
+    </div>
+
+    <div class="outras">
+      <div class="card">
+        <h3>Aba Solicitação / PCM</h3>
+        <p>O fluxo inteiro da solicitação num lugar só, decisão de 02/09: <b>Painel</b> (kanban Pendentes · Em processo · Concluídas) · <b>Nova solicitação</b> (escolher o tema dá título no padrão, classificação e subtarefas) · <b>Fila do PCM</b> (senha por sessão; aprovar cria a OS com o tema) · <b>Histórico</b> · <b>Temas</b>.</p>
+        <p class="why">O que ela conserta, medido em 2.500 solicitações: 62 reabertas sem OS com mediana de 86 dias paradas, OS nascendo sem checklist, conversão feita à mão no Fracttal web.</p>
+        <p class="path">steps/solic_pcm.py (1.834 linhas) · solicitacao.py · historico_solic.py · temas.py · solic_spec.py · pcm_acesso.py</p>
+      </div>
+      <div class="card">
+        <h3>Aba Históricos de OS</h3>
+        <p>Histórico Geral (por criador) e Atribuídas a mim, filtros de data, status, etiqueta e busca ampla, exportar CSV, atualização a cada 10 min. O clique no número abre o <b>card da OS</b>: título, notas, subtarefas com resposta, fotos e anexos do S3, fluxo OS pai → filhas, etiquetas, cronômetro de execução, botões Abrir chamado, Clonar, Concluir e Cancelar.</p>
+        <p class="why">A aba "Sugestões de OS" existe no código e está escondida a pedido do Levi.</p>
+        <p class="path">steps/historico.py · os_detalhe.py · os_fluxo.py · galeria.py · documentos.py · cancelar_os.py</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ CAMADAS ═══════════════════════════ -->
+<section id="camadas">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">como é feito</span>
+      <h2>Tela, thread, cliente, mundo</h2>
+      <p>Toda chamada de rede desce por esta pilha. Nenhuma tela fala com o Fracttal direto, e nenhuma regra de negócio mora dentro de um widget.</p>
+    </div>
+    <div class="camadas">
+      <div class="stack">
+        <div class="band">
+          <div class="k">Telas<small>steps/ · 47 arquivos<br>um QWidget por fluxo</small></div>
+          <p class="v">Cores só por nome de <b>steps/ui.py</b> (<code>BG</code>, <code>CARD</code>, <code>INPUT</code>, <code>BORDER</code>, <code>GREEN</code>, <code>GREEN_INK</code>, <code>TEXT</code>, <code>MUTED</code>). Componentes: <code>Card</code>, <code>campo</code>, <code>Linha</code>, <code>Segmentado</code>, <code>ToggleSwitch</code>. <code>searchcombo</code> torna todo combo pesquisável; <code>nowheel</code> impede a roda do mouse de trocar combo ou data sem querer. Quem monta a navegação é o <code>app.py</code>; tela com Voltar próprio marca <code>_selfnav</code>.</p>
+        </div>
+        <div class="seta">↓</div>
+        <div class="band">
+          <div class="k">Threads<small>workers.py</small></div>
+          <p class="v"><b>ApiWorker(fn, *args)</b> roda a chamada fora da interface e segura a própria referência no conjunto <code>_ALIVE</code> até o <code>finished</code>: sem isso o Python coleta a QThread no meio e o app morre sem traceback. <b>@slot_seguro</b> engole a exceção do slot e grava o rastro em <code>%TEMP%\criaros_erros.log</code>. <b>auth_bus</b> avisa a janela quando a sessão do Fracttal morre, para pedir login em vez de deixar a tela vazia.</p>
+        </div>
+        <div class="seta">↓</div>
+        <div class="band">
+          <div class="k">Cliente<small>api.py · 5.581 linhas<br>tickets_*.py</small></div>
+          <p class="v">Tudo que fala com o Fracttal. Login por <code>rpc/login_new</code> (MD5 duplo com o e-mail como sal), JWT no cofre do Windows ou em <code>fracttal_login.txt</code>, chamadas por <code>rpc/proxy</code>. Leituras: catálogo (16 mil ativos em ~7 s, cache de 24 h), pessoal, etiquetas, OS, fotos do S3, execução de tarefa. Criação pelos dois caminhos da seção seguinte. <b>tickets_api</b> lê o banco da Gridco aberto; <b>tickets_escrita</b> grava pelo relay da plataforma; <b>tickets_diario</b> repõe edições que o sync da planilha desfez; <b>tickets_calc</b> calcula a indisponibilidade na janela solar 06h–18h.</p>
+        </div>
+        <div class="seta">↓</div>
+        <div class="band out">
+          <div class="k">Fora<small>quatro serviços</small></div>
+          <p class="v"><b>Fracttal</b> (RPC com o JWT da pessoa; o REST OAuth só sobrevive para paginar o catálogo) · <b>Gridco Performance API</b> (o banco dos tickets e a URL do túnel) · <b>Plataforma de Performance</b> (deep link para cá, relay para lá) · <b>GitHub Releases</b> (o updater).</p>
+        </div>
+      </div>
+      <div class="side">
+        <div class="card">
+          <h3>Specs puras</h3>
+          <p class="why">Sem Qt e sem rede. É onde a regra de negócio mora, e por isso é o que se testa sem abrir o app.</p>
+          <ul>
+            <li><code>cos_spec.py</code> — proteções ANSI, categorias A/B/C, texto da observação</li>
+            <li><code>perf_spec.py</code> — prioridade da Performance no bloco <code>[PERFORMANCE]</code> da observação, estado e dias parados</li>
+            <li><code>chamado_spec.py</code> — 11 fabricantes, canal, campos comuns e por marca, 9 etapas</li>
+            <li><code>solic_spec.py</code> — temas de solicitação e as subtarefas medidas em 414 OS</li>
+            <li><code>tickets_spec.py</code> — as duas abas do banco (123 Trackers, 128 Strings) e o ciclo de vida</li>
+            <li><code>chamado_garantia/</code> — na raiz; compartilhado com o app de campo</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Estado na máquina</h3>
+          <ul>
+            <li><code>%APPDATA%\CriarOS-Fracttal\</code> — <code>assets_cache.json</code> (24 h), <code>gridco_sql_token.txt</code> (só no instalador interno), listas de chamados, notas da Performance</li>
+            <li>JWT do Fracttal no Windows Credential Manager (<code>keyring</code>) ou em arquivo ignorado pelo git</li>
+            <li><code>HKCU\Software\Classes\gridos</code> — o app registra o protocolo a cada boot, sem admin</li>
+            <li><code>%TEMP%\criaros_erros.log</code> — primeiro lugar a olhar quando "não aconteceu nada"</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ DOIS CAMINHOS ═══════════════════════════ -->
+<section id="caminhos">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">por onde a OS nasce</span>
+      <h2>Dois trilhos até o Fracttal, e não se misturam</h2>
+      <p>É a distinção que mais importa para quem mexe em criação de OS. O mesmo <code>tasks_noscheduled_react_insert</code> serve aos dois, mas o que sobrevive à viagem é diferente.</p>
+    </div>
+    <div class="fig draw" id="rails">
+      <svg viewBox="0 0 1000 420" role="img" aria-label="Diagrama dos dois caminhos de criação de OS">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6C7796"/></marker>
+        </defs>
+
+        <!-- início e fim -->
+        <rect class="box" x="16" y="176" width="124" height="68" rx="10"/>
+        <text class="t" x="78" y="205" text-anchor="middle">Tela do app</text>
+        <text class="m" x="78" y="226" text-anchor="middle">chama api.py</text>
+
+        <rect class="box" x="860" y="176" width="124" height="68" rx="10"/>
+        <text class="t" x="922" y="205" text-anchor="middle">OS numerada</text>
+        <text class="m" x="922" y="226" text-anchor="middle">no Fracttal</text>
+
+        <!-- trilho A: 1 chamada -->
+        <text class="m g" x="260" y="56">1 CHAMADA — já nasce numerada</text>
+        <path class="rail g" d="M140,196 C200,196 200,110 260,110 L800,110 C840,110 840,196 860,196"/>
+        <circle class="st g" cx="330" cy="110" r="7"/>
+        <text class="m" x="330" y="92" text-anchor="middle">create_planned_os(to_work_order=True)</text>
+        <circle class="st g" cx="600" cy="110" r="7"/>
+        <text class="m" x="600" y="92" text-anchor="middle">tasks.tasks_noscheduled_react_insert</text>
+        <g class="rider">
+          <rect x="300" y="134" width="96" height="22" rx="11"/><text x="348" y="149" text-anchor="middle">Performance</text>
+          <rect x="406" y="134" width="44" height="22" rx="11"/><text x="428" y="149" text-anchor="middle">ETM</text>
+          <rect x="460" y="134" width="160" height="22" rx="11"/><text x="540" y="149" text-anchor="middle">Inspeção de chamados</text>
+        </g>
+        <text class="m" x="300" y="172">leva: plano do ativo, subtarefas do plano, responsável, id_parent</text>
+
+        <!-- trilho B: 2 fases -->
+        <path class="rail b" d="M140,224 C200,224 200,310 260,310 L800,310 C840,310 840,224 860,224"/>
+        <text class="m b" x="260" y="392">2 FASES — tarefa pendente primeiro, depois vira OS</text>
+        <circle class="st b" cx="310" cy="310" r="7"/>
+        <text class="m" x="310" y="338" text-anchor="middle">create_os_rpc(to_work_order=False)</text>
+        <circle class="st b" cx="520" cy="310" r="7"/>
+        <text class="m" x="520" y="338" text-anchor="middle">tasks_todo_list_kanban</text>
+        <circle class="st b" cx="730" cy="310" r="7"/>
+        <text class="m" x="730" y="338" text-anchor="middle">work_order_insert</text>
+        <text class="m" x="730" y="354" text-anchor="middle">+ id_parent, note, responsável; etiquetas na fase 3</text>
+        <g class="rider">
+          <rect x="270" y="268" width="92" height="22" rx="11"/><text x="316" y="283" text-anchor="middle">Tradicional</text>
+          <rect x="370" y="268" width="44" height="22" rx="11"/><text x="392" y="283" text-anchor="middle">COS</text>
+          <rect x="422" y="268" width="44" height="22" rx="11"/><text x="444" y="283" text-anchor="middle">PCM</text>
+          <rect x="474" y="268" width="82" height="22" rx="11"/><text x="515" y="283" text-anchor="middle">Chamados</text>
+          <rect x="564" y="268" width="84" height="22" rx="11"/><text x="606" y="283" text-anchor="middle">Clonar OS</text>
+          <rect x="656" y="268" width="150" height="22" rx="11"/><text x="731" y="283" text-anchor="middle">Solicitação aprovada</text>
+        </g>
+
+        <!-- o aviso -->
+        <path class="leader" d="M520,303 L520,250"/>
+        <rect class="call" x="380" y="186" width="310" height="64" rx="10"/>
+        <text class="m a" x="394" y="207">NÃO SOBREVIVE À CONVERSÃO kanban → OS</text>
+        <text class="r" x="394" y="225">id_parent, initial_date e final_date se perdem.</text>
+        <text class="r" x="394" y="241">Mande no work_order_insert, que aceita id_parent e note.</text>
+      </svg>
+    </div>
+    <ul class="legend" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+      <li><i>·</i><span><b>Sobrevive</b> à conversão: <code>task_note</code>, <code>description</code>, <code>id_task_type</code>, <code>id_task_type_2</code>, <code>id_priorities</code>, <code>id_item</code>, <code>id_task_type_main</code>.</span></li>
+      <li><i>·</i><span><b>Ignorado calado</b> pelo Fracttal: <code>date_maintenance</code> (usa <code>initial_date</code>), o <code>description</code> da OS no insert, <code>id_parent_wo</code> no update.</span></li>
+      <li><i>·</i><span><code>note</code> é a observação <b>da OS</b>; <code>task_note</code> é a <b>da tarefa</b>. Campos diferentes, e é o que permite uma observação geral e uma por ativo.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ PLATAFORMA ═══════════════════════════ -->
+<section id="plataforma">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">onde encosta</span>
+      <h2>O acoplamento com a plataforma é HTTP, nunca import</h2>
+      <p>Dois repositórios, duas pontas de cada ligação. Mudar o formato de uma delas exige duas alterações coordenadas, e nada avisa quando uma esquece da outra.</p>
+    </div>
+    <div class="fig">
+      <svg viewBox="0 0 1000 480" role="img" aria-label="Diagrama do acoplamento entre plataforma, OS Creator, Fracttal e banco">
+        <defs>
+          <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6C7796"/></marker>
+        </defs>
+        <!-- caixas -->
+        <rect class="box" x="30" y="40" width="270" height="110" rx="12"/>
+        <text class="t" x="50" y="70">Plataforma de Performance</text>
+        <text class="m" x="50" y="92">Flask :5050 · uso interno</text>
+        <text class="m" x="50" y="110">atrás de um túnel do Cloudflare</text>
+        <text class="m" x="50" y="128">URL nova a cada subida</text>
+
+        <rect class="box" x="365" y="190" width="270" height="110" rx="12" style="stroke:#8fce3f"/>
+        <text class="t" x="385" y="220">OS Creator</text>
+        <text class="m" x="385" y="242">desktop PyQt6, instalado por pessoa</text>
+        <text class="m" x="385" y="260">login no Fracttal, conta da pessoa</text>
+        <text class="m" x="385" y="278">sem segredo da empresa embutido</text>
+
+        <rect class="box" x="700" y="40" width="270" height="110" rx="12"/>
+        <text class="t" x="720" y="70">Fracttal</text>
+        <text class="m" x="720" y="92">app.fracttal.com · conta 4987</text>
+        <text class="m" x="720" y="110">RPC com JWT de sessão (rpc/proxy)</text>
+        <text class="m" x="720" y="128">uma sessão viva por conta</text>
+
+        <rect class="box" x="700" y="340" width="270" height="110" rx="12"/>
+        <text class="t" x="720" y="370">Gridco Performance API</text>
+        <text class="m" x="720" y="392">app.gridco.com.br/db_performace</text>
+        <text class="m" x="720" y="410">tickets_performance: 123 · 128 · 387</text>
+        <text class="m" x="720" y="428">os_creator/plataforma: tunnel_url</text>
+
+        <!-- setas -->
+        <path class="arr" d="M300,108 C348,108 330,205 365,205" marker-end="url(#ah2)"/>
+        <circle class="badge" cx="333" cy="148" r="11"/><text class="bt" x="333" y="152" text-anchor="middle">1</text>
+
+        <path class="arr d" d="M228,150 C228,186 400,176 452,190" marker-end="url(#ah2)"/>
+        <circle class="badge" cx="322" cy="181" r="11"/><text class="bt" x="322" y="185" text-anchor="middle">7</text>
+
+        <path class="arr" d="M365,262 C250,262 172,228 165,152" marker-end="url(#ah2)"/>
+        <circle class="badge" cx="246" cy="250" r="11"/><text class="bt" x="246" y="254" text-anchor="middle">2</text>
+
+        <path class="arr" d="M300,80 L698,80" marker-end="url(#ah2)"/>
+        <circle class="badge" cx="500" cy="80" r="11"/><text class="bt" x="500" y="84" text-anchor="middle">3</text>
+
+        <path class="arr" d="M120,150 L120,395 L698,395" marker-end="url(#ah2)"/>
+        <circle class="badge" cx="380" cy="395" r="11"/><text class="bt" x="380" y="399" text-anchor="middle">4</text>
+
+        <path class="arr" d="M635,218 C690,218 735,190 796,152" marker-end="url(#ah2)"/>
+        <circle class="badge" cx="712" cy="200" r="11"/><text class="bt" x="712" y="204" text-anchor="middle">5</text>
+
+        <path class="arr" d="M635,272 C690,272 735,305 796,338" marker-end="url(#ah2)"/>
+        <circle class="badge" cx="712" cy="292" r="11"/><text class="bt" x="712" y="296" text-anchor="middle">6</text>
+      </svg>
+    </div>
+    <ul class="legend">
+      <li><i>1</i><span><b>Deep link</b> <code>gridos://performance?usina&amp;ativo&amp;obs&amp;template&amp;os_pai&amp;resp</code>. O Windows abre o app pelo registro; se já está aberto, o link cai na janela existente (instância única por <code>QLocalServer</code>). Quem manda: <code>plataforma/templates/index.html</code>. Quem recebe: <code>main.py</code> → <code>abrir_sugestao_performance</code>.</span></li>
+      <li><i>2</i><span><b>Relay de escrita dos tickets</b>, desde 07/09: <code>PUT/POST/DELETE /api/tickets/&lt;sheet&gt;/rows[/n]</code> com o header <code>X-Fracttal-JWT</code>. Só as abas 123, 128, 387 e 374. A plataforma carimba o nome de quem gravou e loga em <code>plataforma/logs/tickets_relay.log</code>. Escrita direta só com <code>OSC_ESCRITA_DIRETA=1</code>, modo de desenvolvimento.</span></li>
+      <li><i>3</i><span>A plataforma <b>confere o JWT</b> numa chamada ao <code>personnel.personnel_list</code>; identidade em cache por 10 min pelo hash do token, que nunca é logado nem guardado.</span></li>
+      <li><i>4</i><span>A plataforma <b>grava com o token dela</b> (o <code>tokens.txt</code> da raiz) e <b>publica a URL do túnel</b> em <code>os_creator/plataforma</code> a cada subida. Não no <code>plataforma_estado</code>: aquele workbook é substituído inteiro pelo backup.</span></li>
+      <li><i>5</i><span>Tudo que o app faz no <b>Fracttal</b>: login, catálogo, criar e ler OS, fotos e anexos do S3, cronômetro da tarefa. Sempre RPC com o JWT da pessoa; o REST OAuth não cria OS.</span></li>
+      <li><i>6</i><span><b>Leitura aberta</b> do banco pelo <code>tickets_api</code>, paginada, e leitura de <code>tunnel_url</code> para achar a plataforma (cache de 5 min, relê uma vez se a ligação falhar). Gravar exige plataforma e túnel no ar; ler, não.</span></li>
+      <li><i>7</i><span>Rota <code>api_os_creator_fractall_usinas</code>: a plataforma entrega usina, ativo, assunto e tipo prontos para o app pré-preencher a OS sugerida.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ RELEASE ═══════════════════════════ -->
+<section id="release">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">como sai</span>
+      <h2>Do <code>versao.py</code> ao instalador em sete passos</h2>
+      <p>Um comando na máquina de build faz tudo. Leva cerca de 7 minutos e roda em segundo plano. A numeração aqui é sequência real: cada passo depende do anterior.</p>
+    </div>
+    <div class="pipe">
+      <div class="card"><h3>Conferir o canal</h3><p><code>release.py &lt;versão&gt; notas.txt</code>. Antes de qualquer coisa, <code>conferir_canal()</code> aborta se o <code>RELEASE_REPO</code> do updater não estiver na lista <code>REPOS</code>: um <code>.exe</code> apontando para repositório sem release nunca mais atualiza.</p></div>
+      <div class="card"><h3>Bump</h3><p><code>versao.py</code>, <code>setup.iss</code> (AppVersion e VersionInfoVersion) e um <code>versao.json</code> por canal, cada um apontando para o asset do próprio repositório. Lê tudo antes de escrever: o <code>open("w")</code> na mesma linha já zerou o arquivo uma vez.</p></div>
+      <div class="card"><h3>PyInstaller onedir</h3><p>Pelo <code>.spec</code> versionado, com <code>pathex</code> da raiz e <code>hiddenimports</code> do WebEngine e do <code>chamado_garantia</code>. Pasta de ~535 MB por causa do Chromium do login SSO.</p></div>
+      <div class="card"><h3>Instalador público</h3><p>Inno Setup sem credencial nenhuma. A saída do ISCC é lida: se aparecer <code>gridco_sql_token</code>, aborta, porque o asset de release é download aberto e token publicado não se despublica.</p></div>
+      <div class="card"><h3>Instalador interno</h3><p>Segundo ISCC com <code>/DARQ_TOKEN</code>: leva o token do banco para <code>%APPDATA%</code> com <code>onlyifdoesntexist</code>. Este vai para o SharePoint, não para o GitHub.</p></div>
+      <div class="card"><h3>Publicar</h3><p><code>gh release create</code> nos dois repositórios, asset renomeado sem espaço (o GitHub troca espaço por ponto na URL) mais o <code>versao.json</code> do canal. Depois, avisar a versão e o link.</p></div>
+      <div class="card"><h3>No app</h3><p>1,5 s depois de abrir, o updater lê o <code>versao.json</code>; se há versão nova, mostra os tópicos, baixa e roda <code>/VERYSILENT</code>. Também é oferecido quando a janela principal não consegue nascer, para ninguém ficar preso numa versão quebrada.</p></div>
+    </div>
+    <div class="regras">
+      <span>Release só quando o Levi mandar; acumular o lote</span>
+      <span>Árvore de <code>C:\GridcoBuild\oem</code> congelada enquanto compila</span>
+      <span>Uma release por vez: o estado de build é compartilhado</span>
+      <span>Abrir o <code>.exe</code> buildado, a janela principal, antes de publicar</span>
+      <span>Avisar quando subir: versão e link, em mensagem própria</span>
+    </div>
+    <div class="regua">
+      <h3>A régua que importa antes de dar por pronto</h3>
+      <ol>
+        <li>Criar uma OS de verdade no cliente <b>TESTE - PA</b>, numa das 16 usinas dele.</li>
+        <li>Abrir a OS no Fracttal web e conferir <b>campo a campo</b>: título, ativo, responsável, classificações, etiquetas, data do evento, data programada, observação da OS e de cada tarefa, OS pai.</li>
+        <li>Confirmar que o número mostrado no app é o mesmo que abriu no Fracttal.</li>
+        <li>Cancelar a OS de teste. Se não deu para validar ao vivo, dizer isso em vez de afirmar que funciona.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ PENDÊNCIAS ═══════════════════════════ -->
+<section id="pendencias">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">o que falta</span>
+      <h2>Pendências vivas em 10/09/2026</h2>
+      <p>O que está aberto no código, nas notas de release e nas decisões registradas. A etiqueta diz de que tipo de coisa cada uma depende.</p>
+    </div>
+    <ul class="pend">
+      <li><span class="chip vivo">em produção</span><span><b>Tickets: o corte do sync está desligado desde 08/09.</b> O Excel da equipe volta a mandar; ticket criado ou usina corrigida pelo app vale até o próximo sync, e a tela avisa isso ao salvar. O diário (aba 387) repõe campos editados, não ocorrência apagada. Levi: "ainda não tenho confiança para migrar 100%".</span></li>
+      <li><span class="chip quando">sem release</span><span><b>Dois commits em Tickets aguardam a próxima versão:</b> o aviso do sync de volta e o casamento do tracker pelo nome inteiro, sem interpretar o sufixo.</span></li>
+      <li><span class="chip dec">decisão</span><span><b>Temas do PCM: onde salvar.</b> Hoje são código em <code>solic_spec.py</code>. Virando dado editável precisam de casa: arquivo local, banco da Gridco ou Fracttal. Recomendado o banco, com o código atual como valor inicial.</span></li>
+      <li><span class="chip quando">quando der</span><span><b>Aposentar o canal antigo.</b> Quando ninguém estiver abaixo da v167, apagar a segunda entrada de <code>REPOS</code> no <code>release.py</code> e o repositório <code>Levi-6242/os-creator-releases</code>.</span></li>
+      <li><span class="chip teste">confirmado</span><span><b>Anexo no S3 não funciona ao vivo.</b> <code>attach_imagem_os</code> responde ok e o arquivo não volta em nenhuma listagem. Por isso a observação da conclusão da Performance fica em JSON local, por analista.</span></li>
+      <li><span class="chip dec">com a área</span><span><b>Chamados:</b> editar a subtarefa pelo card (hoje só no Fracttal web), filtro por status no board, e a ronda de chamados: a dor da Singrid é cobrança, não abertura. Os 55 chamados do modelo antigo não têm as subtarefas novas.</span></li>
+      <li><span class="chip quando">aguardando</span><span><b>Área Engenharia:</b> moldura pronta, tela vazia. Depende do convite <code>read</code> no <code>oem</code> pelo admin da organização e do primeiro fluxo de OS de ETM.</span></li>
+      <li><span class="chip teste">teste ao vivo</span><span><b>Solicitação:</b> várias usinas por cliente (retrabalho de tela) e anexar imagem na solicitação (o REST devolveu 401 em <code>work_requests</code>; nunca validado).</span></li>
+      <li><span class="chip dec">adiado</span><span><b>Ticket para Engenharia no Planner</b>, adiado desde 04/07. Duas arquiteturas mapeadas (Power Automate ou Graph com login Microsoft); a decisão trava no "Criado por".</span></li>
+      <li><span class="chip quando">design</span><span><b>Fontes Inter e JetBrains Mono em <code>assets/fonts/</code>:</b> item 16 do checklist de design, o único que nunca fechou. O app segue em Segoe UI.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ ARMADILHAS ═══════════════════════════ -->
+<section id="armadilhas">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="q">onde dói</span>
+      <h2>Armadilhas que já custaram tempo</h2>
+      <p>Nenhuma está documentada pelo fornecedor. Cada uma foi aprendida na marra e está nos <code>CLAUDE.md</code> do repositório.</p>
+    </div>
+    <div class="arm">
+      <div class="card">
+        <h3>API do Fracttal</h3>
+        <ul>
+          <li><b><code>success: false</code> chega com HTTP 200.</b> Nunca confie no status; leia o corpo.</li>
+          <li><b>Filtro desconhecido devolve o banco inteiro</b> em silêncio: 26.868 registros no REST, 10.272 no RPC. Confira sempre o <code>total</code>.</li>
+          <li><b>Paginação corta em ~100 itens.</b> Sempre pagine.</li>
+          <li><b>OAuth/REST não cria OS</b> (401). Criação é só pelo RPC, com a sessão da pessoa.</li>
+          <li><b>Sessão única por conta:</b> logar no navegador mata a sessão do app, que passa a receber <code>USER_NOT_LOGIN</code> com HTTP 200 e exp ainda no futuro.</li>
+          <li><b>Testar login com hash errado bloqueia a conta</b> por uns 30 min. Confirmar o hash offline antes.</li>
+          <li><b>Data de fim de tarefa não é retroativa:</b> o servidor carimba a hora da chamada. Por isso o campo saiu da tela de conclusão.</li>
+          <li><b>Ao clonar, as classificações voltam <code>NULL</code>.</b> Resolver os ids pelo nome.</li>
+          <li><b><code>work_order_labels_sync</code> substitui</b> o conjunto de etiquetas apesar do <code>append: true</code>. Ler as atuais antes de tirar uma.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>PyQt6, build e máquina</h3>
+        <ul>
+          <li><b>QThread sem referência viva mata o processo</b>, sem traceback. Use <code>ApiWorker</code>; nunca thread solta.</li>
+          <li><b>Exceção em slot encerra o app.</b> Slot <code>@slot_seguro</code> ligado a <code>clicked</code> precisa aceitar <code>*_</code>, senão o clique falha em silêncio.</li>
+          <li><b>Dois dicionários de ícone</b> (<code>app._ICO</code> e <code>ui._LUCIDE</code>). Nome de um usado no outro dá <code>KeyError</code> no <code>__init__</code>: o app não abre, e app que não abre não atualiza (v135).</li>
+          <li><b>Metade da tela faltando</b> = exceção engolida no meio de um método <code>@slot_seguro</code>. O log em <code>%TEMP%</code> responde na primeira olhada.</li>
+          <li><b><code>QLabel</code> herda de <code>QFrame</code>:</b> borda do card vaza para todo filho. <code>setCellWidget</code> removido continua visível até <code>setParent(None)</code>.</li>
+          <li><b><code>%APPDATA%</code> visto por um agente MSIX não é o do app.</b> O token "existia" para os scripts e o app dizia <code>SemCredencial</code> por uma semana. Listar a pasta por tarefa agendada.</li>
+          <li><b><code>sys.path.append</code>, nunca <code>insert(0)</code>:</b> a raiz do repositório-pai tinha outro <code>app.py</code>, e o boot da plataforma chegou a rodar dentro do OS Creator.</li>
+          <li><b>Buildar fora do OneDrive</b>, e não editar durante o build: o PyInstaller relê arquivo no meio e empacota estado intermediário (v173). Testes e <code>py_compile</code> não pegam.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <b style="color:var(--text);font-weight:500">Fontes consultadas</b>
+      <ul>
+        <li><code>os_creator/CLAUDE.md</code>, <code>steps/CLAUDE.md</code>, <code>steps/engenharia/CLAUDE.md</code></li>
+        <li><code>docs/</code> do <code>oem</code>: ambiente compartilhado, onboarding, tickets, planos</li>
+        <li><code>C:\GridcoBuild\release.py</code>, <code>setup.iss</code>, <code>versao.json</code></li>
+        <li><code>git log</code> do <code>oem</code>, suíte de testes rodada em 10/09/2026</li>
+        <li><code>plataforma/tickets_relay.py</code> e <code>plataforma/app.py</code> do repositório-pai</li>
+      </ul>
+    </div>
+    <div>
+      <b style="color:var(--text);font-weight:500">Como ler os números</b>
+      <ul>
+        <li>Versão publicada: <code>versao.py</code> e <code>versao.json</code> em 10/09/2026.</li>
+        <li>419 testes: <code>py -3.14 -m pytest -q</code> da raiz do <code>oem</code>, 0 falhas.</li>
+        <li>Commits sem release: <code>git log 62b2a99..HEAD</code>.</li>
+        <li>Linhas por arquivo: <code>wc -l</code> na data do levantamento.</li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Desenha os trilhos quando a figura entra na tela. Sem observer a animação rodaria no load,
+// fora da vista, e ninguém a veria.
+(function(){
+  var el=document.getElementById('rails'); if(!el) return;
+  if(!('IntersectionObserver' in window)){el.classList.add('on');return;}
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){el.classList.add('on');io.disconnect();}});},{threshold:.35});
+  io.observe(el);
+})();
+</script>
+</body>
+</html>
