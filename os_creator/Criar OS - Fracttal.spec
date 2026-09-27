@@ -14,14 +14,21 @@ a = Analysis(
     ['main.py'],
     pathex=[_RAIZ],
     binaries=[],
-    datas=[('assets', 'assets'), ('assets_cache.json', '.')],
+    # SEM o assets_cache.json desde a v208 (27/09/2026). Ele ia em texto puro para o instalador
+    # PÚBLICO do oem-release: o catálogo inteiro do Fracttal, com cliente, usina e endereço. E não
+    # servia para nada — o arquivo do build era de 21/06 e o cache vale 24 h (api.ASSETS_TTL), então
+    # a primeira execução já baixava tudo ao vivo pela sessão da pessoa. Antes de pôr arquivo aqui,
+    # pergunte: isto pode ir para um repositório público?
+    datas=[('assets', 'assets')],
     # O kanban de Performance é importado DENTRO de funções (import tardio, para não pesar a
     # abertura da aba). O PyInstaller normalmente acha isso, mas depois do sumiço da folha de
-    # estilo na v92 estes ficam cravados — custa nada e fecha a porta.
+    # estilo na v92 estes ficam cravados — custa nada e fecha a porta. O `modelos_banco` também:
+    # a abertura do app o importa tarde, protegido, e sem ele os temas do banco sumiriam calados.
     hiddenimports=['PyQt6.QtWebEngineWidgets', 'PyQt6.QtWebEngineCore',
                    'steps.perf_kanban', 'steps.perf_nova', 'perf_spec', 'perf_equipe', 'perf_notas',
                    'chamado_pecas', 'chamado_fontes', 'chamado_tokens',
-                   'chamado_garantia', 'chamado_garantia.regras', 'chamado_garantia.spec'],
+                   'chamado_garantia', 'chamado_garantia.regras', 'chamado_garantia.spec',
+                   'modelos_banco', 'chamado_modelos_store', 'gridco_abas'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
