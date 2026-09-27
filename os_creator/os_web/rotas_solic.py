@@ -24,6 +24,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request, url_fo
 
 import api
 import solic_spec as sp
+import temas_store as ts
 
 from . import solic_web as sw
 from . import tradicional_web as trad
@@ -32,6 +33,16 @@ from .rotas import _conta, exige_sessao
 bp = Blueprint("os_web_solic", __name__, url_prefix="/os")
 
 LIMITE = 400            # o mesmo do painel do app (steps/solic_pcm.py: list_minhas_solicitacoes("TODOS", 400))
+
+
+@bp.before_request
+def _temas_em_dia():
+    """Os temas que o PCM salva na tela de Temas do app valem para a Solicitação deste servidor: relê o banco quando a
+    última leitura passou do TTL (o store nunca levanta — sem banco, fica o que já estava, e o código por baixo).
+
+    Até 27/09/2026 a web lia só o `solic_spec`: tema novo não aparecia, e na aprovação um tema que só o banco tinha
+    "não existia" — a OS nascia com as 3 subtarefas da base, sem erro nenhum."""
+    ts.garantir()
 
 
 def _rows(busca: str = "") -> dict:

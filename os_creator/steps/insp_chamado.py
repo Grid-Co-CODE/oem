@@ -373,6 +373,23 @@ class InspChamadoTab(QWidget):
                               "escolha a marca correta ou fale com a Singrid." % sugerida)
         self._preview()
 
+    def recarregar_modelos(self):
+        """Os modelos da inspeção mudaram em memória DEPOIS de a tela montar — o banco respondeu na
+        abertura do app (`modelos_banco.py`) com a tela já aberta. Refaz a lista de marcas do tipo e
+        a prévia: fornecedor novo aparece, arquivado sai, e a prévia passa a ser a do banco — é ela
+        que diz o que a OS vai levar.
+
+        A marca que a pessoa já escolheu fica, se continuar valendo. O `_fill_marcas` sozinho
+        voltaria para a sugerida pelo cadastro do ativo, desfazendo a escolha sem avisar."""
+        marca = self._sel(self.cb_marca, SEM_MARCA)
+        self._fill_marcas()
+        i = self.cb_marca.findText(marca) if marca else -1
+        if i > 0 and i != self.cb_marca.currentIndex():
+            self.cb_marca.blockSignals(True)
+            self.cb_marca.setCurrentIndex(i)
+            self.cb_marca.blockSignals(False)
+            self._preview()
+
     def _marca_pelos_irmaos(self, a, marcas):
         """Marca inferida dos ATIVOS IRMÃOS da mesma usina, quando o próprio não a diz.
 

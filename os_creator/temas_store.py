@@ -27,6 +27,8 @@ tela funciona igual — só não salva. Sem isso, uma queda da API deixaria o PC
 para escolher, que é pior do que temas desatualizados.
 """
 import json
+import threading
+import time
 
 import requests
 
@@ -37,9 +39,13 @@ WORKBOOK = "os_creator"
 ABA = "temas"
 ABA_ID_PADRAO = 415        # atalho: evita uma requisição por leitura; confirmado na criação
 TIMEOUT = 20
+TTL = 300                  # s: de quanto em quanto o os_web relê (o tema salvo no app chega assim)
+TTL_ERRO = 60              # s: banco fora → tenta de novo depois disto, sem segurar cada requisição
 
 _cache = None              # [{chave, ...}] da última leitura bem-sucedida
 _aba_id = None
+_estado = {"proxima": 0.0, "erro": ""}      # do `garantir`: quando reler, e o que deu errado na última
+_trava = threading.Lock()
 
 
 def _tok():
@@ -113,18 +119,28 @@ def _de_linha(l):
     return d
 
 
+def do_banco(buscar=None) -> list:
+    """Os temas do banco e SÓ do banco: levanta se a API não responder, devolve [] se a aba estiver vazia.
+
+    Existe para quem precisa saber se o que veio é do banco ou da semente — a abertura do app de mesa
+    (`modelos_banco.py`). Reaplicar a semente por cima do código não é neutro: ela não guarda o `obrig` das
+    subtarefas, e a opcional da Vegetação viraria obrigatória por causa de uma queda de rede."""
+    itens = [x for x in (_de_linha(l) for l in _linhas(buscar)) if x]
+    itens.sort(key=lambda x: (x.get("arquivado", False), x.get("nome") or x["chave"]))
+    return itens
+
+
 def carregar(buscar=None, forcar=False) -> list:
     """Os temas do banco. Cai na semente do código se a API não responder."""
     global _cache
     if _cache is not None and not forcar and buscar is None:
         return _cache
     try:
-        itens = [x for x in (_de_linha(l) for l in _linhas(buscar)) if x]
+        itens = do_banco(buscar)
     except Exception:
         return _cache if _cache is not None else da_semente()
     if not itens:
         return _cache if _cache is not None else da_semente()
-    itens.sort(key=lambda x: (x.get("arquivado", False), x.get("nome") or x["chave"]))
     if buscar is None:
         _cache = itens
     return itens
@@ -155,7 +171,9 @@ def aplicar_no_spec(itens=None):
 
     É o que faz o resto do app não precisar saber que os temas mudaram de casa: `sp.TEMAS` e
     `sp.POR_TEMA` continuam sendo a fonte para a Solicitação, a Fila e o `titulo()`. Chamado
-    uma vez na abertura do app.
+    na abertura do app (`modelos_banco.py`, com a leitura fora da thread da interface) e depois
+    de salvar na tela de Temas. Até 27/09/2026 este parágrafo dizia "na abertura" e ninguém
+    chamava: as outras máquinas ficavam com os temas do código até alguém salvar nelas.
 
     Tema ARQUIVADO some de `TEMAS` (ninguém mais pode escolhê-lo) mas o histórico não quebra:
     quem já foi criado com ele guarda o texto na própria OS."""
@@ -176,11 +194,42 @@ def aplicar_no_spec(itens=None):
                             anexo=bool(x.get("anexo"))) for x in t.get("subtarefas", [])]
     if not novos:
         return False
-    sp.TEMAS.clear()
-    sp.TEMAS.update(novos)
-    sp.POR_TEMA.clear()
+    # SEM ESVAZIAR NO MEIO, e nesta ordem. O os_web lê de várias threads, e quem lê pega a chave
+    # em `TEMAS` para depois ir ao `POR_TEMA`. O `clear()` + `update()` de antes deixava um
+    # instante com a lista vazia — página sem tema nenhum, ou "tema desconhecido" no meio de uma
+    # aprovação. Entrando as subtarefas antes do tema, e saindo o tema antes das subtarefas, toda
+    # chave visível em `TEMAS` tem as suas.
     sp.POR_TEMA.update(passos)
+    sp.TEMAS.update(novos)
+    for ch in [ch for ch in sp.TEMAS if ch not in novos]:
+        del sp.TEMAS[ch]
+    for ch in [ch for ch in sp.POR_TEMA if ch not in passos]:
+        del sp.POR_TEMA[ch]
     return True
+
+
+def garantir():
+    """Para o os_web, que não tem "abertura": relê os temas do banco quando a última leitura passou
+    do TTL e aplica. Nunca levanta. Banco fora ou aba vazia = fica o que já estava, sem reaplicar a
+    semente (ver `do_banco`).
+
+    O mesmo desenho do `chamado_modelos_store.garantir`: a janela seguinte é marcada ANTES de ler,
+    então quem chega com uma leitura em curso segue com os temas já aplicados em vez de esperar.
+    Banco fora custa uma espera por janela de `TTL_ERRO`, não uma por requisição."""
+    agora = time.time()
+    if agora < _estado["proxima"]:
+        return
+    with _trava:
+        if agora < _estado["proxima"]:
+            return
+        _estado["proxima"] = agora + TTL
+    try:
+        itens = do_banco()
+        if itens:
+            aplicar_no_spec(itens)
+        _estado["erro"] = ""
+    except Exception as e:                  # noqa: BLE001 — banco fora: segue o que já estava
+        _estado.update(proxima=time.time() + TTL_ERRO, erro=str(e)[:200])
 
 
 def etiquetas_efetivas(t) -> list:

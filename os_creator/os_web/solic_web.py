@@ -3,7 +3,8 @@
 
 O motor continua sendo o mesmo do desktop (`api.create_solicitacao`, `api.list_minhas_solicitacoes`,
 `api.aprovar_solicitacao`, `api.mudar_status_solicitacao`) e os temas continuam vindo do
-`solic_spec`, que já é puro. O que este módulo tem é o pedaço de decisão que hoje vive dentro do
+`solic_spec`, que já é puro — com os do BANCO por cima desde 27/09/2026: o `rotas_solic` chama o
+`temas_store.garantir()` antes de cada rota. O que este módulo tem é o pedaço de decisão que hoje vive dentro do
 `steps/solic_pcm.py` — um arquivo Qt de 2.474 linhas que um servidor web não pode importar sem
 carregar o PyQt6 inteiro.
 

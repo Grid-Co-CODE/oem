@@ -1244,9 +1244,7 @@ class _Fila(QWidget):
         # mesma busca dos demais selects: a lista de temas é editável e só cresce
         self.cb_tema = QComboBox(); tornar_pesquisavel(self.cb_tema)
         self.cb_tema.setObjectName("cbTema")
-        self.cb_tema.addItem("— sem tema —", "")
-        for chave, nome in sp.temas():
-            self.cb_tema.addItem(nome, chave)
+        self._encher_temas()
         # `lambda *_`, e NÃO `connect(self._pintar_subs)`: currentIndexChanged manda o ÍNDICE,
         # que caía no parâmetro `do_bloco` e virava `set_itens(2)` — "int object is not
         # iterable". Exceção dentro de slot do PyQt6 ABORTA o processo (0xC0000409), então
@@ -1666,6 +1664,36 @@ class _Fila(QWidget):
         # o nome sugerido aparece mesmo sem casar na lista: some-lo faria parecer que o
         # supervisor nao sugeriu ninguem, quando ele sugeriu alguem que nao esta cadastrado
         self.ed_tecnico.lbl.setText(nome or "—")
+
+    def _encher_temas(self):
+        self.cb_tema.clear()
+        self.cb_tema.addItem("— sem tema —", "")
+        for chave, nome in sp.temas():
+            self.cb_tema.addItem(nome, chave)
+
+    def recarregar_temas(self):
+        """Remonta o combo com o `sp.TEMAS` de AGORA — ele nasce no __init__, com os temas do código,
+        antes de o banco responder na abertura (`modelos_banco.py`) e antes de qualquer salvamento
+        na tela de Temas.
+
+        A escolha do PCM fica. A exceção é o "sem tema" POR FALTA DE OPÇÃO: a solicitação aberta
+        traz um tema que o combo antigo não tinha (salvo no banco por outra máquina), e o
+        `_selecionar` caiu em "sem tema" por não achá-lo. Esse volta para o tema da solicitação. Se
+        o tema JÁ estava na lista, o "sem tema" foi o PCM que escolheu — e fica."""
+        antes = self.cb_tema.currentData() or ""
+        alvo = antes
+        if not antes and self._sel:
+            do_bloco = (sp.parse(self._sel.get("observacao")) or {}).get("tema") or ""
+            if do_bloco and self.cb_tema.findData(do_bloco) < 0:
+                alvo = do_bloco
+        self.cb_tema.blockSignals(True)
+        self._encher_temas()
+        self.cb_tema.setCurrentIndex(max(self.cb_tema.findData(alvo), 0))
+        self.cb_tema.blockSignals(False)
+        if (self.cb_tema.currentData() or "") != antes:
+            # o mesmo caminho de quando o PCM troca o tema à mão: título (se não for dele),
+            # classificação vazia e etiquetas do tema; o que ele pôs à mão fica
+            self._pintar_subs()
 
     def _pintar_subs(self, do_bloco=None):
         """Carrega a lista no editor. `do_bloco` tem PRECEDENCIA sobre o tema: se o supervisor
@@ -2367,7 +2395,13 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
         for b, k in zip(self._btns,
                         (self.NOVA, self.PAINEL, self.FILA, self.HIST, self.TEMAS)):
             b.setChecked(k == i)
+        # O combo de temas nasce no __init__. Remontar ao ENTRAR é o que faz o tema salvo na tela
+        # de Temas desta máquina aparecer aqui sem fechar o app — o `_salvou` de lá só aplica em
+        # memória. A lista é curta: custa nada, e nenhuma outra tela precisa lembrar de avisar.
+        if i == self.NOVA:
+            self.nova.recarregar_temas()
         if i == self.FILA:
+            self.fila.recarregar_temas()      # antes do set_itens: a seleção já acha o tema no combo novo
             # reaproveita a lista de pessoas que o formulário já buscou — uma chamada em vez de duas
             pessoas = self._pessoas()
             self.fila.set_responsaveis(pessoas)
@@ -2468,6 +2502,11 @@ QPushButton#btnLink:hover { color:#b4ec42; text-decoration:underline; }
         if hasattr(self.nova, "carregar_inicial"):
             self.nova.carregar_inicial()
         self.painel.carregar()
+
+    def recarregar_temas(self):
+        """Os temas mudaram em memória (o banco respondeu na abertura): os dois combos desta aba."""
+        self.nova.recarregar_temas()
+        self.fila.recarregar_temas()
 
     def abrir_nova(self):
         """Deep link do detalhe da OS: 'Criar Solicitação deste ativo' cai aqui."""

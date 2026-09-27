@@ -63,3 +63,20 @@ def _chamados_sem_banco(monkeypatch):
     cms.aplicar({})
     cms._estado.update(banco=None, lido=0.0, proxima=0.0, erro="")
     cos._estado.update(lista=None, lido=0.0)
+
+
+@pytest.fixture(autouse=True)
+def _temas_sem_banco(monkeypatch):
+    """O `temas_store` também vai ao banco, e desde 27/09/2026 a Solicitação do os_web relê os temas antes de cada rota
+    (`temas_store.garantir`). Nenhum teste vai: a aba fica VAZIA, o que deixa valendo os temas do código. Quem testa o
+    banco troca o `_linhas` no próprio teste — e a busca injetada (`carregar(buscar=...)`) segue funcionando."""
+    try:
+        import temas_store as ts
+    except Exception:                                    # noqa: BLE001 — ambiente sem o módulo: nada a proteger
+        yield
+        return
+    monkeypatch.setattr(ts, "_linhas", lambda buscar=None: buscar() if buscar else [])
+    monkeypatch.setattr(ts, "_cache", None)
+    ts._estado.update(proxima=0.0, erro="")
+    yield
+    ts._estado.update(proxima=0.0, erro="")

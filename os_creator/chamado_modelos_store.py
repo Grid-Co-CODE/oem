@@ -22,6 +22,10 @@ supervisor e a do técnico pedindo coisas diferentes ao mesmo fabricante").
 COMO VALE NO PROCESSO: `aplicar()` reescreve, EM MEMÓRIA e NO LUGAR, as estruturas do `chamado_garantia.spec` (e o
 `chamado_spec.CANAL`). No lugar, e não trocando o objeto, porque o `chamado_insp_spec` fez
 `from chamado_garantia.spec import BASE, POR_TIPO, …` — nomes presos ao objeto de origem. Nada no disco muda.
+
+QUEM APLICA: o os_web chama `garantir()` antes de cada rota da Inspeção (TTL de 5 min). O app de mesa lê UMA vez, na
+abertura (`modelos_banco.py`: `carregar` no worker, `aplicar` na thread da interface) — o que se salva aqui chega nele
+na próxima vez que ele abrir.
 """
 import copy
 import datetime as dt

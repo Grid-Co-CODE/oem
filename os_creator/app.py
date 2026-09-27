@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSt
                              QGridLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
                              QCheckBox)
 import api
-from workers import ApiWorker, auth_bus
+from workers import ApiWorker, auth_bus, registrar_erro, slot_seguro
 from steps.step1 import Step1
 from steps.step2 import Step2
 from steps.step3 import Step3
@@ -381,6 +381,7 @@ class MainWindow(QMainWindow):
         self._go(0)
         self._carregar_ativos()
         self._carregar_labels()
+        self._carregar_modelos_do_banco()                  # temas e modelos de chamado que o PCM salvou
         QTimer.singleShot(240, self._animar_entrada)      # entrada suave dos cards ao abrir o app
 
     # ── navegação / overlay ──
@@ -823,6 +824,36 @@ class MainWindow(QMainWindow):
         w.erro.connect(_err)
         w.finished.connect(lambda: self._workers.remove(w) if w in self._workers else None)
         w.start()
+
+    # ── temas e modelos de chamado do banco (background; ver modelos_banco.py) ──
+    def _carregar_modelos_do_banco(self):
+        """Lê as duas abas fora da thread da interface e aplica quando o banco responder. O que falhar — o banco, ou o
+        próprio import — deixa o app como ele abria até 27/09: com o que está no código.
+
+        Import TARDIO e protegido: o `chamado_modelos_store` puxa o pacote `chamado_garantia` da raiz e está em obra
+        pelo lado web. Um erro dele no topo deste arquivo não abriria a janela — e sem janela nem o atualizador
+        roda (a v135)."""
+        try:
+            import modelos_banco
+        except Exception:                                # noqa: BLE001
+            registrar_erro()
+            return
+        self._wmod = ApiWorker(modelos_banco.ler)
+        self._wmod.ok.connect(self._aplicar_modelos)
+        self._wmod.erro.connect(lambda *_: None)          # `ler` não levanta; isto é só o cinto
+        self._wmod.start()
+
+    @slot_seguro
+    def _aplicar_modelos(self, lido):
+        """Na thread da interface: aplica e remonta o que já tinha nascido com o código."""
+        import modelos_banco
+        feito = modelos_banco.aplicar(lido)
+        if feito["temas"]:
+            self.solpcm.recarregar_temas()                # o formulário e a Fila montam o combo no __init__
+        if feito["chamado"]:
+            insp = getattr(self, "_modo_inner", {}).get("insp")
+            if insp is not None:                          # aberta antes da resposta; aberta depois, já lê o aplicado
+                insp.recarregar_modelos()
 
     # ── catálogo de etiquetas (background; alimenta o Step 2) ──
     def _carregar_labels(self):

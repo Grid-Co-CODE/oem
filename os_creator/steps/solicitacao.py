@@ -72,9 +72,7 @@ class SolicitacaoTab(QWidget):
         # de imitar a aparência, os campos passam a usar o MESMO mecanismo — e ganham o filtro
         # por digitação, que faz falta agora que a lista de temas é editável e cresce.
         self.cb_tema = QComboBox(); tornar_pesquisavel(self.cb_tema)
-        self.cb_tema.addItem("— sem tema —", "")
-        for chave, nome in sp.temas():
-            self.cb_tema.addItem(nome, chave)
+        self._encher_temas()
         self.cb_tema.currentIndexChanged.connect(self._on_tema)
 
         self.desc = QTextEdit()
@@ -407,6 +405,32 @@ class SolicitacaoTab(QWidget):
         self._sync_tema()
         self._sync_titulo()
         self._sugerir_classificacao()
+
+    def _encher_temas(self):
+        self.cb_tema.clear()
+        self.cb_tema.addItem("— sem tema —", "")
+        for chave, nome in sp.temas():
+            self.cb_tema.addItem(nome, chave)
+
+    def recarregar_temas(self):
+        """Remonta o combo com o `sp.TEMAS` de AGORA.
+
+        O combo nasce no __init__, junto com a janela — antes de o banco responder na abertura
+        (`modelos_banco.py`) e antes de qualquer salvamento na tela de Temas. Sem remontar, tema
+        novo, nome novo e tema arquivado só apareciam depois de fechar e abrir o app.
+
+        Com os sinais CALADOS: solto, o `clear()` dispararia `_on_tema`, e as subtarefas que o
+        supervisor já editou dariam lugar às do tema. A escolha dele fica — a não ser que o tema
+        tenha sido arquivado, e aí a tela inteira passa a dizer "sem tema", em vez de mostrar o
+        roteiro de um tema que ninguém pode mais escolher."""
+        antes = self.cb_tema.currentData() or ""
+        self.cb_tema.blockSignals(True)
+        self._encher_temas()
+        self.cb_tema.setCurrentIndex(max(self.cb_tema.findData(antes), 0))
+        self.cb_tema.blockSignals(False)
+        if (self.cb_tema.currentData() or "") != antes:
+            self._on_tema()
+        self.v_tema.atualizar()         # o rótulo escuta o sinal que acabou de ser calado
 
     def _atualizar_valores(self):
         """Reavisa os rótulos depois de a tela mexer nos combos por código.
