@@ -33,9 +33,12 @@
 <div class="os-sep"></div>
 {% if conta %}
 <nav class="os-tabs">
-  {# `aba_nav` existe para a tela que usa `aba` para outra coisa (Tickets: Trackers/Strings) #}
+  {# `aba_nav` existe para a tela que usa `aba` para outra coisa (Tickets: Trackers/Strings). A aba "Solicitação / PCM"
+     saiu em 27/09 (a nova solicitação mora na tela inicial; a fila e o histórico, no setor PCM): as telas dela acendem
+     o Início. #}
+  {% set aba_on = aba_nav|default(aba) %}{% if aba_on == 'solic' %}{% set aba_on = 'criar' %}{% endif %}
   {% for t in abas %}
-  <a class="os-tab {% if (aba_nav|default(aba)) == t.chave %}on{% endif %}" href="{{ t.href }}"{% if t.chave == 'hist' %} data-carga{% endif %}>{% if t.icone %}{{ icone(t.icone, '#c9cfe0', 18) }}{% endif %}<span>{{ t.titulo }}</span></a>
+  <a class="os-tab {% if aba_on == t.chave %}on{% endif %}" href="{{ t.href }}"{% if t.chave == 'hist' %} data-carga{% endif %}>{% if t.icone %}{{ icone(t.icone, '#c9cfe0', 18) }}{% endif %}<span>{{ t.titulo }}</span></a>
   {% endfor %}
   <button type="button" class="os-recolher" id="b_topo" title="Recolher / mostrar o topo" aria-label="Recolher ou mostrar o topo">{{ icone('chevup', '#c9cfe0', 18) }}</button>
 </nav>

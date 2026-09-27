@@ -1,18 +1,65 @@
 {% extends "base.html" %}
-{% block titulo %}Criar OS{% endblock %}
+{% block titulo %}Início{% endblock %}
+{% block body_class %}os-form hub-pg{% endblock %}
+{% block head %}<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/os/static/inicio.css">{% endblock %}
 {% block conteudo %}
-{# o lançador da aba Criar OS (MainWindow._build_launcher): nove cards, três por linha, na ordem do app #}
-<section class="os-launcher">
-  {% for c in cards %}
-  <a class="os-card" href="{{ c.href }}" data-chave="{{ c.chave }}">
-    <div class="os-card-topo">
-      <span class="os-tile">{{ icone(c.icone, '#8fce3f', 24) }}</span>
-      {% if c.chave == 'perf' and selo %}<span class="os-selo" title="Clique para ir à Alocação de análises">{{ selo }}</span>{% endif %}
+{# A tela inicial (Levi, 27/09/2026): consultar → os setores → as solicitações, cada degrau com um peso. Os dados moram
+   no lancador.py; aqui só o desenho. Cartão com pílulas-link dentro: o link do cartão é o título, esticado por cima
+   (::after), porque <a> dentro de <a> não existe. #}
+<section class="hub" id="inicio">
+  <div class="ola">
+    <div><h1>{{ ola }}</h1><p>Consulte, crie pelo setor ou peça ao PCM.</p></div>
+    <form class="busca-f" method="get" action="/os/buscar" role="search">
+      <label class="busca">{{ icone('search', '#94a3b8', 20) }}<input name="q" type="search" placeholder="Buscar ativo, usina ou nº da OS"
+        aria-label="Buscar ativo, usina ou número da OS" autocomplete="off" required><kbd>Enter</kbd></label>
+      <div class="dica-b">número abre a OS · texto procura no catálogo de ativos</div>
+    </form>
+  </div>
+
+  <div class="consulta">
+    {% for c in consulta %}
+    <div class="grande" data-chave="{{ c.chave }}">
+      <span class="ic">{{ icone(c.icone, '#b8e84a', 26) }}</span>
+      <div class="gm">
+        <h3><a href="{{ c.href }}"{% if c.chave == 'hist' %} data-carga{% endif %}>{{ c.titulo }}</a></h3>
+        <p>{{ c.sub }}</p>
+        <div class="pills">{% if c.chave == 'ativos' %}{% for p in pilulas_ativos %}<span class="pill">{{ p }}</span>{% endfor %}{% endif %}{% for p in c.portas or [] %}<a class="pill" href="{{ p.href }}"{% if c.chave == 'hist' %} data-carga{% endif %}>{{ p.rotulo }}</a>{% endfor %}</div>
+      </div>
+      <span class="seta">{{ icone('arrow', '#b8e84a', 20) }}</span>
     </div>
-    <div class="os-card-titulo">{{ c.titulo }}</div>
-    <div class="os-card-sub">{{ c.sub }}</div>
-    <div class="os-card-seta">{{ icone('arrow', '#8fce3f', 20) }}</div>
-  </a>
-  {% endfor %}
+    {% endfor %}
+  </div>
+
+  <section class="sec" aria-labelledby="h_setores">
+    <div class="sec-h"><h2 id="h_setores">Setores</h2><span>crie a OS pelo caminho de cada área</span><i></i></div>
+    <div class="setores">
+      {% for s in setores %}
+      <div class="setor{% if s.fora %} fora{% endif %}" data-chave="{{ s.chave }}">
+        <div class="l1"><span class="ic">{{ icone(s.icone, '#94a3b8' if s.fora else '#b8e84a', 21) }}</span>
+          {% if s.chave == 'perf' and selo %}<span class="tag g" title="as análises de Performance no seu nome">{{ selo }}</span>
+          {% elif s.fora %}<span class="tag m" title="esta parte ainda só existe no OS Creator instalado">no app de mesa</span>
+          {% elif s.etiqueta %}<span class="tag m">{{ s.etiqueta }}</span>{% endif %}</div>
+        <h3><a href="{{ s.href }}">{{ s.titulo }}</a></h3>
+        <p>{{ s.sub }}</p>
+        {% if s.portas %}<div class="portas">{% for p in s.portas %}{% if p.href and not s.fora %}<a href="{{ p.href }}">{{ p.rotulo }}</a>{% else %}<span{% if p.fora %} title="ainda só no app de mesa"{% endif %}>{{ p.rotulo }}</span>{% endif %}{% endfor %}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <a class="trad" href="{{ tradicional.href }}" data-chave="{{ tradicional.chave }}">{{ icone(tradicional.icone, '#b8e84a', 20) }}
+      <div><b>{{ tradicional.titulo }}</b> <span>&nbsp;· {{ tradicional.rotulo }} — {{ tradicional.sub }}</span></div>
+      <span class="seta">{{ icone('arrow', '#b8e84a', 20) }}</span></a>
+  </section>
+
+  <section class="sec" aria-labelledby="h_solic">
+    <div class="sec-h"><h2 id="h_solic">Solicitações</h2><span>peça uma OS ao PCM ou duplique uma que já existe</span><i></i></div>
+    <div class="dupla">
+      {% for c in solicitacoes %}
+      <a class="linha" href="{{ c.href }}" data-chave="{{ c.chave }}"><span class="ic">{{ icone(c.icone, '#b8e84a', 21) }}</span>
+        <div><b>{{ c.titulo }}</b><span>{{ c.sub }}</span></div><span class="seta">{{ icone('arrow', '#b8e84a', 20) }}</span></a>
+      {% endfor %}
+    </div>
+  </section>
 </section>
 {% endblock %}

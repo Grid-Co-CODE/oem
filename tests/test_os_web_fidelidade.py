@@ -46,7 +46,7 @@ def test_titulos_literais_etm_e_usina_iguais_aos_do_app():
     assert perf_web.CARTEIRA_EQUIP == frozenset(e.value for e in conj.elts)
 
 
-def test_cards_do_lancador_iguais_aos_do_app():
+def _cards_do_app():
     tree = _modulo("app.py")
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_build_launcher")
     cards = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Assign)
@@ -55,18 +55,25 @@ def test_cards_do_lancador_iguais_aos_do_app():
     # as AREAS entram depois dos cards do app (steps/engenharia e Qt-free e pode ser importado)
     from steps import engenharia
     do_app.append((engenharia.ICONE, engenharia.TITULO, engenharia.DESCRICAO))
-    # A UNICA divergencia da grade (Levi, 27/09/2026): os cards "Chamados" e "Inspecao de chamados" do app viram UM
-    # card de Chamados na web, no lugar do primeiro, com as duas portas dentro. O app segue com os dois — se ele mudar,
-    # este teste acusa, porque os titulos juntados tem de continuar existindo la.
-    titulos_app = [t for _i, t, _s in do_app]
-    assert all(t in titulos_app for t in lancador.CARDS_JUNTADOS), "o app mudou os cards de chamados"
-    esperado = []
-    for ico, tit, sub in do_app:
-        if tit == lancador.CARDS_JUNTADOS[0]:
-            esperado.append((ico, tit, lancador.SUB_CHAMADOS))
-        elif tit not in lancador.CARDS_JUNTADOS:
-            esperado.append((ico, tit, sub))
-    assert [(c["icone"], c["titulo"], c["sub"]) for c in lancador.CARDS] == esperado
+    return do_app
+
+
+def test_todo_card_do_app_tem_porta_na_web():
+    """Ate 27/09/2026 a tela inicial da web era a grade do app, card a card. Nesse dia o Levi pediu outra estrutura
+    ("parece que todo campo carrega o mesmo peso"): consultar, setores e solicitacoes. O que continua valendo: TODO card
+    do app de mesa tem porta na web (`lancador.DO_APP`), com o MESMO icone. Card novo no app sem porta aqui acusa."""
+    do_app = _cards_do_app()
+    portas = {c["chave"]: c for c in lancador.CARDS}
+    for ico, tit, _sub in do_app:
+        assert tit in lancador.DO_APP, "card do app sem porta na web: %r" % tit
+        chave = lancador.DO_APP[tit]
+        assert chave in portas, (tit, chave)
+        if tit == "Inspeção de chamados":            # e uma porta DENTRO do setor Chamados, com o icone do app
+            dentro = [p for p in lancador.PORTAS_SETOR["chamados"]["portas"] if p["titulo"] == tit]
+            assert dentro and dentro[0]["icone"] == ico, tit
+        else:
+            assert portas[chave]["icone"] == ico, (tit, portas[chave]["icone"], ico)
+    assert set(lancador.DO_APP) == {t for _i, t, _s in do_app}, "a web aponta para um card que o app nao tem mais"
 
 
 def test_icones_do_lancador_existem_como_svg():
@@ -75,5 +82,6 @@ def test_icones_do_lancador_existem_como_svg():
     from steps import engenharia
     ico.update(engenharia.ICONES)
     for c in lancador.CARDS:
-        assert lancador.svg(c["icone"]) == ico[c["icone"]], c["icone"]
+        if c["icone"] in ico:                        # "history" e "clipboard" sao das ABAS do app; o resto, dos cards
+            assert lancador.svg(c["icone"]) == ico[c["icone"]], c["icone"]
     assert lancador.svg("arrow") == ico["arrow"]

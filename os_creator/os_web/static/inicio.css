@@ -1,0 +1,132 @@
+/* os_creator/os_web/static/inicio.css — a tela inicial e as páginas de setor (PCM, Chamados), 27/09/2026.
+   O Levi: "parece que todo campo carrega o mesmo peso" — eram nove cards iguais. Aqui o peso desce em degraus: a busca e
+   os dois grandes de CONSULTA (Ativos, Histórico), os SETORES em cartões médios com as partes de dentro em pílulas, o
+   "Criar OS do zero" numa faixa tracejada (o caminho sem setor) e as SOLICITAÇÕES em linhas baixas. O visual é o escuro
+   aprovado no Acompanhamento de chamados (os mesmos tokens do chamados.css: navy, verde Grid, Inter, sem lilás). */
+:root{--bg:#090d18;--sf:#161d30;--sf2:#1c2640;--ln:rgba(255,255,255,.07);--ln2:rgba(255,255,255,.13);
+  --tx:#e9eef6;--mu:#94a3b8;--fa:#64748b;--gr:#a3d900;--gr-t:#b8e84a;--gr-tint:rgba(163,217,0,.12);--gr-bd:rgba(163,217,0,.5);
+  --font:'Inter','Segoe UI',Arial,sans-serif}
+body.os-form.hub-pg{background:var(--bg);color:var(--tx);font-family:var(--font)}
+body.hub-pg :focus-visible{outline:2px solid var(--gr);outline-offset:2px}
+.hub{max-width:1480px;margin:0 auto;padding:26px 32px 64px}
+.hub *{box-sizing:border-box}
+.hub .ic{display:grid;place-items:center;flex:none;background:var(--gr-tint)}
+.hub .seta{flex:none;display:inline-flex}
+.pill{font:500 11.5px/1.5 var(--font);color:var(--tx);padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.05);
+  border:1px solid var(--ln);white-space:nowrap;text-decoration:none}
+a.pill{position:relative;z-index:1}
+a.pill:hover{border-color:var(--gr);color:#fff}
+.tag{font:700 10px/1.4 var(--font);letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.tag.g{background:var(--gr-tint);color:var(--gr-t)}
+.tag.m{background:rgba(255,255,255,.06);color:var(--mu)}
+
+/* o topo: a saudação e a busca (nº abre a OS; texto vai ao catálogo de ativos) */
+.ola{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;flex-wrap:wrap}
+.ola h1{margin:0;font:700 27px/1.2 var(--font);letter-spacing:-.02em;color:#fff}
+.ola p{margin:6px 0 0;font-size:14px;color:var(--mu)}
+.busca-f{flex:0 1 640px;min-width:min(100%,320px);margin:0}
+.busca{display:flex;align-items:center;gap:12px;height:52px;padding:0 10px 0 16px;background:var(--sf);border:1px solid var(--ln2);
+  border-radius:14px;cursor:text}
+.busca:focus-within{border-color:var(--gr);box-shadow:0 0 0 3px var(--gr-tint)}
+/* (0,2,2) para vencer o `body.os-form input` (0,1,2) do os.css, que dá caixa, 40 px e fundo a todo campo */
+body.hub-pg .busca input{flex:1;min-width:0;height:auto;padding:0;background:none;border:0;border-radius:0;outline:none;
+  color:#fff;font:400 14.5px var(--font)}
+body.hub-pg .busca input::placeholder{color:var(--fa)}
+body.hub-pg .busca input::-webkit-search-cancel-button{filter:invert(.6)}
+.busca kbd{font:600 11px var(--font);color:var(--mu);border:1px solid var(--ln2);border-radius:7px;padding:4px 8px}
+.dica-b{margin:8px 2px 0;font-size:12px;color:var(--fa);text-align:right}
+
+/* consultar: os dois grandes. O link é o título, esticado sobre o cartão; as pílulas-link ficam por cima dele */
+.consulta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:22px}
+.grande{position:relative;display:flex;align-items:center;gap:20px;padding:24px 26px;background:var(--sf);border:1px solid var(--ln);
+  border-radius:18px;transition:border-color .15s ease,background .15s ease}
+.grande:hover,.grande:focus-within{border-color:var(--gr-bd);background:var(--sf2)}
+.grande .ic{width:56px;height:56px;border-radius:16px}
+.grande .gm{min-width:0}
+.grande h3{margin:0 0 6px;font:700 20px var(--font);letter-spacing:-.01em;color:#fff}
+.grande h3 a{color:inherit;text-decoration:none}
+.grande h3 a::after{content:"";position:absolute;inset:0;border-radius:18px}
+.grande h3 a:focus-visible{outline:none}
+.grande p{margin:0;font-size:13.5px;line-height:1.5;color:var(--mu)}
+.grande .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.grande .pills:empty{display:none}
+.grande .seta{margin-left:auto}
+
+/* os títulos de seção: rótulo pequeno + frase + fio até a margem */
+.sec{margin-top:36px}
+.sec-h{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.sec-h h2{margin:0;font:600 11.5px var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--mu)}
+.sec-h span{font-size:12.5px;color:var(--fa)}
+.sec-h i{flex:1;height:1px;background:var(--ln)}
+
+/* os setores */
+.setores{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.setor{position:relative;display:flex;flex-direction:column;gap:10px;min-height:214px;padding:18px 18px 16px;background:var(--sf);
+  border:1px solid var(--ln);border-radius:16px;transition:border-color .15s ease}
+.setor:hover,.setor:focus-within{border-color:var(--gr-bd)}
+.setor .l1{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.setor .ic{width:42px;height:42px;border-radius:12px}
+.setor h3{margin:4px 0 0;font:700 16.5px var(--font);color:#fff}
+.setor h3 a{color:inherit;text-decoration:none}
+.setor h3 a::after{content:"";position:absolute;inset:0;border-radius:16px}
+.setor h3 a:focus-visible{outline:none}
+.setor p{margin:0;font-size:12.5px;line-height:1.5;color:var(--mu)}
+.portas{margin-top:auto;display:flex;flex-wrap:wrap;gap:6px;padding-top:12px;border-top:1px solid var(--ln)}
+.portas a,.portas span{position:relative;z-index:1;font:500 11.5px/1.5 var(--font);color:var(--tx);text-decoration:none;
+  padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid var(--ln)}
+.portas a:hover{border-color:var(--gr);color:#fff}
+.portas span{color:var(--fa);z-index:0}
+.setor.fora .ic{background:rgba(255,255,255,.05)}
+.setor.fora h3,.setor.fora p{opacity:.72}
+.trad{margin-top:14px;display:flex;align-items:center;gap:14px;padding:13px 18px;border:1px dashed var(--ln2);border-radius:14px;
+  color:inherit;text-decoration:none;transition:border-color .15s ease,background .15s ease}
+.trad:hover,.trad:focus-visible{border-color:var(--gr);background:rgba(163,217,0,.04)}
+.trad b{font:600 14px var(--font);color:#fff}
+.trad span{font-size:12.5px;color:var(--mu)}
+.trad .seta{margin-left:auto}
+
+/* as solicitações */
+.dupla{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.linha{display:flex;align-items:center;gap:16px;padding:16px 20px;background:var(--sf);border:1px solid var(--ln);border-radius:14px;
+  color:inherit;text-decoration:none;transition:border-color .15s ease}
+.linha:hover,.linha:focus-visible{border-color:var(--gr-bd)}
+.linha .ic{width:42px;height:42px;border-radius:12px}
+.linha b{display:block;margin-bottom:3px;font:700 15px var(--font);color:#fff}
+.linha span{font-size:12.5px;color:var(--mu)}
+.linha .seta{margin-left:auto}
+
+/* ── a página do setor ── */
+.migalha{display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:12.5px;color:var(--fa)}
+.migalha a{color:var(--mu);text-decoration:none}
+.migalha a:hover{color:#fff}
+.migalha b{font-weight:500;color:#fff}
+.st-h{display:flex;align-items:center;gap:18px;padding:4px 0 18px;border-bottom:1px solid var(--ln)}
+.st-h .ic{width:52px;height:52px;border-radius:15px}
+.st-h h1{margin:0;font:700 24px var(--font);letter-spacing:-.01em;color:#fff}
+.st-h p{margin:4px 0 0;max-width:980px;font-size:13.5px;line-height:1.5;color:var(--mu)}
+.portas3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:22px}
+.porta{display:flex;flex-direction:column;gap:12px;min-height:260px;padding:22px;background:var(--sf);border:1px solid var(--ln);
+  border-radius:18px;color:inherit;text-decoration:none;transition:border-color .15s ease,background .15s ease}
+a.porta:hover,a.porta:focus-visible{border-color:var(--gr-bd);background:var(--sf2)}
+.porta .n{font:700 12px var(--font);letter-spacing:.08em;color:var(--gr-t)}
+.porta .ic{width:48px;height:48px;border-radius:14px}
+.porta h3{margin:0;font:700 19px var(--font);color:#fff}
+.porta p{margin:0;font-size:13px;line-height:1.55;color:var(--mu)}
+.porta .chips{display:flex;flex-wrap:wrap;gap:6px}
+.porta .rod{margin-top:auto;display:flex;align-items:center;gap:10px;padding-top:14px;border-top:1px solid var(--ln);font-size:12.5px;
+  color:var(--mu)}
+.porta .rod .seta{margin-left:auto}
+.porta.fora{border-style:dashed}
+.porta.fora .ic{background:rgba(255,255,255,.05)}
+.porta.fora .n{color:var(--fa)}
+
+@media (max-width:1280px){.setores{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1000px){.portas3{grid-template-columns:minmax(0,1fr)}.porta{min-height:0}}
+@media (max-width:900px){.consulta{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:860px){.setores{grid-template-columns:repeat(2,minmax(0,1fr))}.dupla{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){.hub{padding:16px 14px 44px}.ola h1{font-size:22px}.busca-f{flex:1 1 100%}.dica-b{text-align:left}
+  .grande{padding:18px;gap:14px}.grande .ic{width:44px;height:44px}.grande .seta{display:none}
+  .setores{grid-template-columns:minmax(0,1fr)}.setor{min-height:0}.trad{flex-wrap:wrap}.trad .seta{display:none}
+  body.hub-pg .os-n2,body.hub-pg .os-cargo,body.hub-pg .os-nome,body.hub-pg .os-sair{display:none}
+  body.hub-pg .os-header{padding:10px 16px}body.hub-pg .os-tabs{overflow-x:auto}body.hub-pg .os-tab{white-space:nowrap;padding:10px 12px}}
+@media (prefers-reduced-motion:reduce){.grande,.setor,.trad,.linha,.porta{transition-duration:.06s}}

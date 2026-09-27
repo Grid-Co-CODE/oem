@@ -38,7 +38,8 @@ def _cat() -> list:
 @bp.route("/chamados")
 @exige_sessao
 def chamados():
-    return render_template("chamados.html", conta=_conta(), aba="criar")
+    from .rotas import render_setor                         # o molde das páginas de setor (27/09), o mesmo do PCM
+    return render_setor("chamados")
 
 
 @bp.route("/chamados/inspecao")

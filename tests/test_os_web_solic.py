@@ -218,5 +218,10 @@ def test_aba_solic_e_o_card_pcm_sao_telas_DIFERENTES():
     trocaria uma pela outra sem ninguem perceber."""
     hrefs = {c["chave"]: c["href"] for c in lancador.CARDS + lancador.ABAS}
     assert hrefs["solic"] == "/os/solicitacao"
-    assert hrefs["pcm"] == "/os/em-breve/pcm"
+    # desde 27/09 o PCM e um SETOR que junta as duas coisas, cada uma na sua porta: a clonagem de planos (a PcmTab,
+    # que espera /os/pcm — tests/test_os_web_pcm.py) e a fila + o historico das solicitacoes
+    assert hrefs["pcm"] == "/os/setor/pcm"
+    planos, fila, hist = lancador.PORTAS_SETOR["pcm"]["portas"]
+    assert planos["em_breve"] == "/os/pcm" and "href" not in planos
+    assert (fila["href"], hist["href"]) == ("/os/solicitacao/fila", "/os/solicitacao/historico")
     assert hrefs["ativos"] == "/os/ativos"

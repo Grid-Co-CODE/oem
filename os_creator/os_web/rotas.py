@@ -6,9 +6,10 @@ import functools
 import os
 import threading
 import time
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
-from flask import (Blueprint, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for)
+from flask import (Blueprint, abort, current_app, jsonify, redirect, render_template, request, send_from_directory, session,
+                   url_for)
 
 import api
 
@@ -209,7 +210,42 @@ def assets(nome):
     return send_from_directory(_ASSETS, nome, max_age=86400)
 
 
-# ── a tela inicial: as abas e o lançador ─────────────────────────────────────
+# ── a tela inicial: consultar, os setores e as solicitações (Levi, 27/09/2026) ────────────────────────────
+_BRT = dt.timezone(dt.timedelta(hours=-3))
+
+
+def _rota_existe(rota: str) -> bool:
+    """A tela já nasceu na web? É o que acende a porta que esperava por ela (`lancador.portas_vivas`)."""
+    return any(r.rule == rota for r in current_app.url_map.iter_rules())
+
+
+def _info_catalogo() -> dict:
+    """De quando é o catálogo local e quantos ativos ele tem pela MESMA régua da tela de Ativos (só ativo com código):
+    o arquivo tem registro sem código, e a tela inicial dizia 21.639 enquanto a de Ativos dizia 21.635 (27/09).
+    Catálogo vencido (`_read_asset_cache` → None) fica com a conta do arquivo e a marca de desatualizado."""
+    info = dict(api.assets_cache_info())
+    ativos = api._read_asset_cache()
+    if ativos is not None:
+        info["n"] = sum(1 for a in ativos if isinstance(a, dict) and a.get("code"))
+    return info
+
+
+def _pilulas_ativos(agora) -> list:
+    """'21.635 ativos' e de quando é o catálogo — do arquivo local, com memória de 5 min: ler os 21 mil ativos do disco a
+    cada abertura da tela inicial custaria mais do que a própria tela."""
+    info = _memo(("ativos_info",), 300, _info_catalogo)
+    n = int(info.get("n") or 0)
+    if not n:
+        return []
+    out = [f"{n:,} ativos".replace(",", ".")]
+    ts = float(info.get("ts") or 0)
+    if ts:
+        quando = dt.datetime.fromtimestamp(ts, _BRT)
+        dia = "hoje" if quando.date() == agora.date() else quando.strftime("%d/%m")
+        out.append("catálogo de %s, %s%s" % (dia, quando.strftime("%H:%M"), " · desatualizado" if info.get("expirado") else ""))
+    return out
+
+
 @bp.route("/")
 @exige_sessao
 def home():
@@ -222,7 +258,49 @@ def home():
         selo = ""                                       # o selo é informativo, nunca derruba a tela
     except Exception:                                   # noqa: BLE001
         selo = ""
-    return render_template("home.html", conta=conta, aba="criar", cards=lancador.CARDS, selo=selo)
+    agora = dt.datetime.now(_BRT)
+    try:
+        pilulas = _pilulas_ativos(agora)
+    except Exception:                                   # noqa: BLE001 — informativo, como o selo
+        pilulas = []
+    nome = ((conta or {}).get("nome") or "").split()
+    ola = lancador.saudacao(agora.hour) + (", " + nome[0] if nome else "")
+    setores = [dict(s, portas=lancador.portas_vivas(s.get("portas"), _rota_existe))
+               for s in lancador.portas_vivas(lancador.SETORES, _rota_existe)]
+    return render_template("home.html", conta=conta, aba="criar", selo=selo, ola=ola, consulta=lancador.CONSULTA,
+                           pilulas_ativos=pilulas, setores=setores, tradicional=lancador.TRADICIONAL,
+                           solicitacoes=lancador.SOLICITACOES)
+
+
+@bp.route("/buscar")
+@exige_sessao
+def buscar():
+    """A busca da tela inicial: um NÚMERO abre a OS (o mesmo "Buscar OS" do Histórico); TEXTO procura no catálogo de
+    ativos, com o campo da tela de Ativos já preenchido."""
+    q = " ".join((request.args.get("q") or "").split())
+    if not q:
+        return redirect(url_for("os_web.home"))
+    num = q.lstrip("#").strip()
+    if num.isdigit():
+        return redirect(url_for("os_web.os_detalhe_por_folio", folio=int(num)))
+    return redirect("/os/ativos?" + urlencode({"busca": q}))
+
+
+def render_setor(chave: str):
+    """A página de um setor: as partes dele, cada uma uma porta (o molde nasceu no Chamados, 27/09)."""
+    s = lancador.PORTAS_SETOR.get(chave)
+    if not s:
+        abort(404)
+    return render_template("setor.html", conta=_conta(), aba="criar", chave=chave, s=s,
+                           portas=lancador.portas_vivas(s["portas"], _rota_existe))
+
+
+@bp.route("/setor/<chave>")
+@exige_sessao
+def setor(chave):
+    if chave == "chamados":                             # o de Chamados já morava em /os/chamados
+        return redirect(url_for("os_web_chamados.chamados"))
+    return render_setor(chave)
 
 
 @bp.route("/em-breve/<chave>")

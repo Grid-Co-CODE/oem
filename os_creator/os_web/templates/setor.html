@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}{{ s.titulo }}{% endblock %}
+{% block body_class %}os-form hub-pg{% endblock %}
+{% block head %}<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/os/static/inicio.css">{% endblock %}
+{% block conteudo %}
+{# A página de um setor (27/09/2026): as partes dele lado a lado, numeradas. O PCM separado como o Levi pediu —
+   "clonagem de Handover, MPS, MPA etc. - fila de PCM - histórico de solicitações" — e o Chamados no mesmo molde. A parte
+   que ainda não nasceu na web fica tracejada e sem link, dizendo onde ela mora hoje (lancador.portas_vivas). #}
+<section class="hub" id="setor" data-setor="{{ chave }}">
+  <nav class="migalha" aria-label="Você está em"><a href="/os/">Início</a><span>/</span><span>Setores</span><span>/</span><b>{{ s.titulo }}</b></nav>
+  <div class="st-h"><span class="ic">{{ icone(s.icone, '#b8e84a', 26) }}</span><div><h1>{{ s.titulo }}</h1><p>{{ s.sub }}</p></div></div>
+  <div class="portas3">
+    {% for p in portas %}
+    {% if p.href and not p.fora %}<a class="porta" href="{{ p.href }}">{% else %}<div class="porta fora">{% endif %}
+      <span class="n">{{ loop.index }}</span>
+      <span class="ic">{{ icone(p.icone, '#94a3b8' if p.fora else '#b8e84a', 24) }}</span>
+      <h3>{{ p.titulo }}</h3>
+      <p>{{ p.sub }}</p>
+      {% if p.chips %}<div class="chips">{% for c in p.chips %}<span class="pill">{{ c }}</span>{% endfor %}</div>{% endif %}
+      <div class="rod">{% if p.fora %}<span class="tag m">no app de mesa</span><span>chega à web numa próxima fase</span>{% else %}<span>{{ p.rodape }}</span><span class="seta">{{ icone('arrow', '#b8e84a', 20) }}</span>{% endif %}</div>
+    {% if p.href and not p.fora %}</a>{% else %}</div>{% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

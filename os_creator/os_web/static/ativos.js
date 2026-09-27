@@ -144,5 +144,8 @@
     b.disabled = false; b.textContent = 'Atualizar';
   });
 
+  // a busca da tela inicial chega pela URL (/os/ativos?busca=…, Levi 27/09): o campo já nasce preenchido e o filtro vale
+  // quando o catálogo chegar — o `aplica` lê o campo
+  try { const b = new URLSearchParams(location.search).get('busca'); if (b) $('busca').value = b; } catch (e) { /* sem busca */ }
   carregar();
 })();

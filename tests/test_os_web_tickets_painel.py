@@ -256,8 +256,8 @@ def test_o_menu_do_topo_nao_quebra_nem_no_painel_nem_na_lista(cli):
     for url in ("/os/tickets", "/os/tickets/painel"):
         h = cli.get(url).get_data(as_text=True)
         nav = re.search(r'<nav class="os-tabs">(.*?)</nav>', h, re.S).group(1)
-        assert "Criar OS" in nav and 'href=""' not in nav, url
-        assert re.search(r'class="os-tab on" href="/os/"', nav), url    # "Criar OS" aceso
+        assert "Início" in nav and 'href=""' not in nav, url
+        assert re.search(r'class="os-tab on" href="/os/"', nav), url    # o Início aceso (era "Criar OS" até 27/09)
 
 
 def test_a_lista_tem_o_botao_do_painel(cli):
