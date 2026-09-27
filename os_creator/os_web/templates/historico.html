@@ -4,10 +4,13 @@
 {# HistoricoOS (steps/historico.py) na web, com os mesmos filtros e a mesma divisão de trabalho: Visão, Criado por, Etiqueta,
    Status e Período re-buscam no servidor (o formulário); Cliente, Usina, Tipo de ativo, Tipo de tarefa e a busca são locais
    (JS sobre a lista carregada, como o `_aplica` do app). O nº abre o card do detalhe; "Buscar OS pelo nº" abre direto,
-   ignorando filtros e período. O tipo de tarefa chega depois por /historico/meta e preenche coluna e filtro. #}
+   ignorando filtros e período. O tipo de tarefa já vem na lista (27/09: antes a tela buscava de novo, em lotes de 60,
+   o que o servidor já tinha). Os rótulos ficam FORA dos cards, numa grade de 4 colunas, e a busca por texto fica colada
+   na tabela (Levi, 27/09). #}
 {% macro multi(nome, rotulo, todos, opcoes, marcados, local, extra) -%}
-<details class="os-multi" data-nome="{{ nome }}"{% if local %} data-local="1"{% endif %}>
-  <summary><span class="os-lbl">{{ rotulo }}</span><span class="os-multi-txt" data-todos="{{ todos }}">{{ todos }}</span></summary>
+<span class="hf-lbl">{{ rotulo }}</span>
+<details class="os-multi hf-multi" data-nome="{{ nome }}"{% if local %} data-local="1"{% endif %}>
+  <summary><span class="os-multi-txt" data-todos="{{ todos }}">{{ todos }}</span></summary>
   <div class="os-multi-lista">
     {% for o in opcoes %}<label{% if extra and extra.get(o) is not none %} data-cliente="{{ extra.get(o) }}"{% endif %}><input type="checkbox"{% if not local %} name="{{ nome }}"{% endif %} value="{{ o }}"{% if o in marcados %} checked{% endif %}> {{ o }}</label>{% endfor %}
   </div>
@@ -17,44 +20,54 @@
 <section class="os-pagina">
   <form id="f_hist" method="get" action="/os/historico" autocomplete="off">
     <input type="hidden" name="modo" value="{{ modo }}">
+    {# o ↻, o F5 e a atualização de 10 em 10 min passam por cima da memória da visão (rotas._memo) #}
+    <input type="hidden" name="atualizar" id="atualizar" value="">
     <div class="os-hist-topo">
       <div class="os-seg" role="group" aria-label="Visão">
         <button type="button" data-modo="criadas" class="{% if modo == 'criadas' %}on{% endif %}">Histórico Geral</button>
         <button type="button" data-modo="atribuidas" class="{% if modo == 'atribuidas' %}on{% endif %}">Atribuídas a mim</button>
         <button type="button" data-modo="cos" class="{% if modo == 'cos' %}on{% endif %}" title="Corretivas, emergenciais e religamentos — com programação, equipe e gatilho, como no Power BI">Visão COS</button>
       </div>
-      <label class="os-busca-os" title="Digite o número da OS e tecle Enter — abre a OS direto, mesmo fora do período e dos filtros">{{ icone('search', '#A6E22E', 15) }}<input type="text" id="busca_os" placeholder="Buscar OS pelo nº — direto, ignora filtros" inputmode="numeric"></label>
+      <label class="os-busca-os hf-busca-os" title="Buscar OS pelo nº: digite o número e tecle Enter — abre a OS direto, mesmo fora do período e dos filtros">{{ icone('search', '#A6E22E', 15) }}<input type="text" id="busca_os" placeholder="Buscar OS" inputmode="numeric" aria-label="Buscar OS pelo número"></label>
       {# a partir daqui tudo vai para a DIREITA: é o `row.addStretch(1)` do app, que separa o que
          BUSCA (esquerda) do que age sobre o que já está na tela (direita). Sem ele os oito
          controles ficavam encostados num canto só. #}
       <div class="os-hist-dir">
         <span class="os-hist-auto" id="lbl_auto" title="Com a aba aberta, o histórico se atualiza sozinho a cada 10 minutos.">&#8635; Atualiza a cada 10 min</span>
-        <label class="os-hist-buscar"><span class="os-lbl">Buscar</span><input type="search" name="busca" id="busca_no" value="{{ busca }}" placeholder="nº, ativo, descrição, status…" title="Filtra as OS do período por nº, cliente, usina, ativo, descrição, status, tipo de tarefa e etiqueta  [Ctrl+F]"></label>
         <button type="button" class="os-btn secondary" id="b_export" title="Exporta as OS exibidas p/ CSV (abre no Excel).  [Ctrl+E]">Exportar</button>
         <button type="button" class="os-btn secondary" id="b_limpar" title="Limpa Cliente/Usina/Status/Tipos, a busca e a Etiqueta">Limpar filtros</button>
-        <button type="submit" class="os-btn secondary os-btn-ico" title="Atualizar  [F5]">&#8635;</button>
+        <button type="submit" class="os-btn secondary os-btn-ico" id="b_atualizar" title="Atualizar  [F5] — busca de novo no Fracttal">&#8635;</button>
       </div>
     </div>
-    <div class="os-hist-grid">
+    {# 4 colunas iguais × 2 linhas, rótulo FORA de todos os controles e a mesma altura em todos (Levi, 27/09). Em
+       "Atribuídas a mim" o Criado por não se aplica — fica no lugar, apagado, para a grade não abrir um buraco. #}
+    <div class="hf-grade">
       {% if modo != 'atribuidas' %}
-      <label class="os-cell"><span class="os-lbl">Criado por</span>
+      <label class="hf-cel"><span class="hf-lbl">Criado por</span>
         <select name="pessoa"><option value="TODOS" {% if pessoa_sel == 'TODOS' %}selected{% endif %}>Todos os usuários</option>
           {% for p in pessoas %}<option value="{{ p.id_account }}" {% if pessoa_sel == p.id_account|string %}selected{% endif %}>{{ p.nome }}</option>{% endfor %}</select></label>
-      {% else %}<div class="os-cell"></div>{% endif %}
-      <label class="os-cell"><span class="os-lbl">Etiqueta</span>
+      {% else %}
+      <label class="hf-cel"><span class="hf-lbl">Criado por</span><select disabled><option>Não se aplica nesta visão</option></select></label>
+      {% endif %}
+      <label class="hf-cel"><span class="hf-lbl">Etiqueta</span>
         <select name="etiqueta"><option value="">Todas as etiquetas</option>
           {% for l in labels %}<option value="{{ l.id }}" {% if etiqueta_sel == l.id|string %}selected{% endif %}>{{ l.description }}</option>{% endfor %}</select></label>
-      <div class="os-cell">{{ multi('status', 'Status', 'Todos os status', status_opts, status_sel, False, None) }}</div>
-      <div class="os-cell">{{ multi('cliente', 'Cliente', 'Todos os clientes', clientes, [], True, None) }}</div>
-      <div class="os-cell">{{ multi('usina', 'Usina', 'Todas as usinas', usinas, [], True, usina_cli) }}</div>
-      <div class="os-cell">{{ multi('tipo', 'Tipo de ativo', 'Todos os tipos', tipos_ativo, [], True, None) }}</div>
-      <div class="os-cell">{{ multi('tarefa', 'Tipo de tarefa', 'Todos os tipos de tarefa', tipos_tarefa, tarefa_sel, True, None) }}</div>
-      <div class="os-cell os-cell-2"><span class="os-lbl">Período</span>
-        <div class="os-periodo"><input type="date" name="de" value="{{ de }}"><span>até</span><input type="date" name="ate" value="{{ ate }}"></div></div>
+      <div class="hf-cel">{{ multi('status', 'Status', 'Todos os status', status_opts, status_sel, False, None) }}</div>
+      <div class="hf-cel"><span class="hf-lbl">Período</span>
+        <div class="hf-periodo"><input type="date" name="de" value="{{ de }}" aria-label="De"><span>até</span><input type="date" name="ate" value="{{ ate }}" aria-label="Até"></div></div>
+      <div class="hf-cel">{{ multi('cliente', 'Cliente', 'Todos os clientes', clientes, [], True, None) }}</div>
+      <div class="hf-cel">{{ multi('usina', 'Usina', 'Todas as usinas', usinas, [], True, usina_cli) }}</div>
+      <div class="hf-cel">{{ multi('tipo', 'Tipo de ativo', 'Todos os tipos', tipos_ativo, [], True, None) }}</div>
+      <div class="hf-cel">{{ multi('tarefa', 'Tipo de tarefa', 'Todos os tipos de tarefa', tipos_tarefa, tarefa_sel, True, None) }}</div>
     </div>
   </form>
   {% if erro %}<p class="os-erro">⚠ {{ erro }}</p>{% endif %}
-  <div class="os-hist-hint" id="hint">{{ linhas|length }} OS no período {{ fmt(de + 'T03:00:00', False) }} a {{ fmt(ate + 'T03:00:00', False) }}.</div>
+  {% if cortadas %}<p class="hf-teto">O período tem {{ total_srv }} OS e a tela carrega até {{ teto }}: as {{ cortadas }} mais antigas ficaram de fora. Diminua o período para ver todas.</p>{% endif %}
+  <div class="hf-tabela">
+    <div class="hf-barra">
+      <label class="hf-filtro">{{ icone('search', '#8A93A8', 15) }}<input type="search" name="busca" form="f_hist" id="busca_no" value="{{ busca }}" placeholder="Filtrar por nº, cliente, usina, ativo, descrição, status…" title="Filtra as OS carregadas por nº, cliente, usina, ativo, descrição, status, tipo de tarefa e etiqueta  [Ctrl+F]"></label>
+      <span class="hf-hint" id="hint">{{ linhas|length }} OS no período {{ fmt(de + 'T03:00:00', False) }} a {{ fmt(ate + 'T03:00:00', False) }}.</span>
+    </div>
   <div class="os-tbl-wrap">
     <table class="os-tbl os-hist" id="tab_hist">
       <thead><tr>{% for rot, chave in cols %}<th class="k-{{ chave }}">{{ rot }}</th>{% endfor %}</tr></thead>
@@ -66,6 +79,7 @@
         {% elif chave == 'status' %}<td class="k-status">{% if l.status %}<span class="os-status" {% if l._status_cor %}style="color:{{ l._status_cor }};background:{{ l._status_cor }}29;border-color:{{ l._status_cor }}6b"{% endif %}>{{ l.status }}</span>{% endif %}</td>
         {% elif chave == 'etiqueta' %}<td class="k-etiqueta">{{ l._etiqueta }}</td>
         {% elif chave == 'descricao' %}<td class="c-desc k-descricao">{{ l.descricao }}</td>
+        {% elif chave == 'ativo' %}<td class="k-ativo" data-k="ativo" title="{{ l.ativo }}" data-csv="{{ l.ativo }}">{{ l._ativo_curto or l.ativo or '—' }}</td>
         {% elif chave in datas %}<td class="c-data k-{{ chave }}" data-k="{{ chave }}">{{ fmt(l[chave]) if l.get(chave) else '—' }}</td>
         {% else %}<td class="k-{{ chave }}" data-k="{{ chave }}">{{ l.get(chave) or '—' }}</td>{% endif %}
         {% endfor %}
@@ -75,6 +89,7 @@
       {% endfor %}
       </tbody>
     </table>
+  </div>
   </div>
 </section>
 
@@ -88,6 +103,10 @@
 {% endblock %}
 
 {% block scripts %}
+{# as ações do card sobreposto (Concluir, Cancelar, trocar responsável, etiquetas, notas, Fluxo, anexos) moram no
+   os_acoes.js, por delegação no document — faltava só ele estar NESTA página (Levi, 27/09: "o concluir, clonar e cancelar
+   OS têm que funcionar também") #}
+<script src="/os/static/os_acoes.js"></script>
 <script>
 (function () {
   // ── card do detalhe (o nº abre sobreposto; "Buscar OS pelo nº" tambem) ──
@@ -105,10 +124,21 @@
     var sep = url.indexOf("?") >= 0 ? "&" : "?";
     fetch(url + sep + "parcial=1", {headers: {"X-Requested-With": "fetch"}, credentials: "same-origin"})
       .then(function (r) { return r.text(); })
-      .then(function (h) { corpo.innerHTML = h; corpo.scrollTop = 0; anexos(corpo); })
+      .then(function (h) {
+        corpo.innerHTML = h; corpo.scrollTop = 0;
+        var det = corpo.querySelector(".det");
+        if (window.OsAcoes && det) window.OsAcoes.contagem(det); else anexos(corpo);
+      })
       .catch(function () { corpo.innerHTML = '<p class="os-erro" style="padding:24px">Não consegui carregar a OS aqui. <a class="os-link" href="' + url + '">Abrir a página</a></p>'; });
   }
-  function fechar() { modal.hidden = true; corpo.innerHTML = ""; document.body.classList.remove("os-modal-aberto"); }
+  // uma ação que mudou a OS (concluir, cancelar, responsável, etiquetas, nota) deixa a linha da tabela velha: ao fechar
+  // o card, a lista vem de novo do Fracttal
+  var mudou = false;
+  document.addEventListener("os:alterada", function () { mudou = true; });
+  function fechar() {
+    modal.hidden = true; corpo.innerHTML = ""; document.body.classList.remove("os-modal-aberto");
+    if (mudou) { mudou = false; enviar(true); }
+  }
   document.querySelectorAll("a.os-folio").forEach(function (a) {
     a.addEventListener("click", function (e) { e.preventDefault(); abrir(a.getAttribute("href")); });
   });
@@ -117,11 +147,40 @@
 
   // ── visoes (botoes, como no app) ──
   var form = document.getElementById("f_hist");
+  // TODA busca nova passa por aqui: marca o token do círculo de carga e manda. `forcar` = passa por cima da memória
+  // da visão (o ↻, o F5, a atualização de 10 min e a volta de uma ação no card).
+  function enviar(forcar) {
+    document.getElementById("atualizar").value = forcar ? "1" : "";
+    var t = window.OsCarga ? window.OsCarga.token() : "";
+    var p = form.querySelector("input[name=p]");
+    if (t) {
+      if (!p) { p = document.createElement("input"); p.type = "hidden"; p.name = "p"; form.appendChild(p); }
+      p.value = t; window.OsCarga.mostrar(t);
+    }
+    form.submit();
+  }
+  form.addEventListener("submit", function (e) { e.preventDefault(); enviar(document.getElementById("atualizar").value === "1"); });
   document.querySelectorAll(".os-seg [data-modo]").forEach(function (b) {
     b.addEventListener("click", function () {
       form.querySelector("input[name=modo]").value = b.getAttribute("data-modo");
       form.querySelectorAll("input[name=status]:checked").forEach(function (c) { c.checked = false; });   // troca de visao zera filtros locais
-      form.submit();
+      enviar(false);                                                                     // a visão já vista volta da memória
+    });
+  });
+  // Criado por, Etiqueta e Período valem NO SERVIDOR: mudou, busca na hora (Levi, 27/09: "ao mudar o criado por tem que
+  // atualizar a tabela imediatamente"; "o filtro de etiquetas não funciona" — ele só valia no próximo ↻)
+  ["pessoa", "etiqueta"].forEach(function (n) {
+    var s = form.querySelector("select[name=" + n + "]");
+    if (s) s.addEventListener("change", function () { enviar(false); });
+  });
+  var tPer;
+  form.querySelectorAll("input[name=de], input[name=ate]").forEach(function (i) {
+    i.addEventListener("change", function () {
+      clearTimeout(tPer);
+      tPer = setTimeout(function () {                       // espera a data terminar de ser digitada
+        var de = form.querySelector("input[name=de]").value, ate = form.querySelector("input[name=ate]").value;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(de) && /^\d{4}-\d{2}-\d{2}$/.test(ate) && de <= ate) enviar(false);
+      }, 700);
     });
   });
 
@@ -204,7 +263,7 @@
     if (!temTarefa) cab.push("Tipo de tarefa");                    // esperada na planilha mesmo fora da visao
     var txt = cab.join(";") + "\r\n";
     vis.forEach(function (tr) {
-      var cs = Array.prototype.slice.call(tr.cells).map(function (td) { return csvCampo(td.textContent); });
+      var cs = Array.prototype.slice.call(tr.cells).map(function (td) { return csvCampo(td.dataset.csv || td.textContent); });
       if (!temTarefa) cs.push(csvCampo(tr.dataset.tarefa || ""));
       txt += cs.join(";") + "\r\n";
     });
@@ -217,15 +276,17 @@
   });
   document.addEventListener("keydown", function (e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "e") { e.preventDefault(); document.getElementById("b_export").click(); }
-    if (e.key === "F5" && !e.ctrlKey) { e.preventDefault(); form.submit(); }
+    if (e.key === "F5" && !e.ctrlKey) { e.preventDefault(); enviar(true); }
   });
 
   // Atualizacao automatica de 10 min (INTERVALO_MIN do app). So recarrega com a aba VISIVEL e
   // sem card aberto: recarregar por baixo de uma OS que a pessoa esta lendo fecharia a leitura.
   setInterval(function () {
     if (document.hidden || !modal.hidden) return;
-    form.submit();
+    enviar(true);
   }, 10 * 60 * 1000);
+
+  document.getElementById("b_atualizar").addEventListener("click", function () { document.getElementById("atualizar").value = "1"; });
 
   // Limpar filtros: Cliente/Usina/Status/Tipos, a busca e a Etiqueta (mantem visao, Criado por e periodo), como no app
   document.getElementById("b_limpar").addEventListener("click", function () {
@@ -233,56 +294,13 @@
     q.set("modo", form.querySelector("input[name=modo]").value);
     var pessoa = form.querySelector("select[name=pessoa]"); if (pessoa) q.set("pessoa", pessoa.value);
     q.set("de", form.querySelector("input[name=de]").value); q.set("ate", form.querySelector("input[name=ate]").value);
+    if (window.OsCarga) { var t = window.OsCarga.token(); q.set("p", t); window.OsCarga.mostrar(t); }
     location.href = "/os/historico?" + q.toString();
   });
 
-  // ── meta das tarefas (tipo de tarefa, programacao, inicio, gatilho) chega DEPOIS, em lotes de 60, como no app ──
-  var ids = linhas.map(function (tr) { return tr.dataset.id; }), preset = {{ tarefa_sel|tojson }}, mexeuTarefa = false;
-  function tarefasOpcoes() {
-    var det = document.querySelector('.os-multi[data-nome="tarefa"]'), lista = det.querySelector(".os-multi-lista");
-    var marc = marcados("tarefa"), tipos = {};
-    preset.forEach(function (t) { tipos[t] = 1; });
-    linhas.forEach(function (tr) { (tr.dataset.tarefa || "").split(" / ").forEach(function (t) { if (t) tipos[t] = 1; }); });
-    var nomes = Object.keys(tipos).sort();
-    if (!nomes.length) return;
-    lista.innerHTML = "";
-    nomes.forEach(function (t) {
-      var l = document.createElement("label"), i = document.createElement("input");
-      i.type = "checkbox"; i.value = t;
-      i.checked = mexeuTarefa ? marc.indexOf(t) >= 0 : (marc.indexOf(t) >= 0 || preset.indexOf(t) >= 0);
-      i.addEventListener("change", function () { mexeuTarefa = true; resumo(det); aplica(); });
-      l.appendChild(i); l.appendChild(document.createTextNode(" " + t)); lista.appendChild(l);
-    });
-    resumo(det);
-  }
-  function brData(iso) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || "");
-    if (!m) return iso || "—";
-    var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
-    d.setUTCHours(d.getUTCHours() - 3);                                              // Brasilia, como api.fmt_data_br
-    var p = function (x) { return (x < 10 ? "0" : "") + x; };
-    return p(d.getUTCDate()) + "/" + p(d.getUTCMonth() + 1) + "/" + d.getUTCFullYear() + " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes());
-  }
-  function lote(i) {
-    if (i >= ids.length) { tarefasOpcoes(); aplica(); return; }
-    var fatia = ids.slice(i, i + 60);
-    fetch("/os/historico/meta?ids=" + fatia.join(","), {credentials: "same-origin", headers: {"Accept": "application/json"}})
-      .then(function (r) { return r.ok ? r.json() : {}; })
-      .then(function (m) {
-        fatia.forEach(function (id) {
-          var d = m[id]; if (!d) return;
-          var tr = document.querySelector('#tab_hist tr[data-id="' + id + '"]'); if (!tr) return;
-          if (d.tipo_tarefa) tr.dataset.tarefa = d.tipo_tarefa;
-          ["tipo_tarefa", "programada", "inicio", "gatilho", "event_date", "data_fim"].forEach(function (k) {
-            var td = tr.querySelector('td[data-k="' + k + '"]'); if (td && d[k]) td.textContent = (td.classList.contains("c-data") ? brData(d[k]) : d[k]);
-          });
-        });
-        tarefasOpcoes(); aplica(); lote(i + 60);
-      })
-      .catch(function () { lote(i + 60); });
-  }
+  // O tipo de tarefa, o início e o gatilho chegam PRONTOS em cada linha: antes a tela buscava tudo de novo em lotes de 60,
+  // um atrás do outro (34 idas ao Fracttal numa carga de 2.000 OS) — o servidor já tinha essa informação (27/09).
   cascataUsinas(); aplica();
-  if (ids.length) lote(0);
 })();
 </script>
 {% endblock %}

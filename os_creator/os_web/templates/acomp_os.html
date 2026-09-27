@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block titulo %}Chamado {{ c.folio }}{% endblock %}
+{% block body_class %}os-form acomp{% endblock %}
+{% block head %}<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/os/static/acomp.css">{% endblock %}
+{% block conteudo %}
+{# A tela do chamado (27/09/2026, escuro navy e topo compacto). Em cima, o estado na etiqueta e os quatro fatos que o fornecedor
+   pergunta (falha, menos de 7 dias, chegada, ticket). À esquerda, o que a equipe de chamados FAZ: o ticket, como abrir, a
+   cadeia OS de campo → inspeção → acompanhamento. À direita, o que ela LÊ e copia: as respostas do técnico em tabela (o
+   campo do formulário com o nome técnico embaixo), as observações com a linha do tempo e os outros chamados.
+   As duas tabelas de respostas recolhem até sobrar só o cabeçalho (Levi, 27/09: "dê para reduzir essa parte, com um
+   botão esconde e deixa só o título") — quem já sabe os campos de cor não precisa deles ocupando a tela. #}
+{% macro recolher(alvo) -%}
+<button type="button" class="recolher" data-recolher aria-expanded="true" aria-controls="{{ alvo }}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="q-esc">Esconder</span><span class="q-mos">Mostrar</span></button>
+{%- endmacro %}
+{% set eb = {'chegou': 'u-r', 'ticket': 'u-a', 'fim': 'u-g', '': 'u-m'}[c.col] %}
+<section class="ac" id="acomp-os" data-folio="{{ c.folio }}" data-wid="{{ wid }}" data-ativo="{{ c.code }}">
+  <div class="ac-head">
+    <div style="min-width:0">
+      <div class="ac-tit"><a class="ac-volta" href="/os/chamados/acompanhamento">← Acompanhamento</a>
+        <span class="tag {{ eb }}">{% if c.col == 'chegou' %}Sem ticket · há {{ c.dias }} dia{{ '' if c.dias == 1 else 's' }}{% elif c.col == 'ticket' %}Com o fornecedor · {{ c.tempo }}{% elif c.col == 'fim' %}{{ 'Em verificação' if c.status_id == 2 else 'Finalizado' }}{% if c.fim %} em {{ c.fim }}{% endif %}{% else %}Cancelada{% endif %}</span>
+        <h1>OS {{ c.folio }} <span>{{ c.ativo_nome or c.code }}</span></h1></div>
+      <p class="ac-sub">{{ c.local or '—' }}{% if c.marca %} · <b>{{ c.marca }}</b>{% endif %}{% if c.status %} · {{ c.status }} no Fracttal{% endif %}</p>
+    </div>
+    <div class="ac-acoes">
+      <a class="btn btn-o" href="/os/os/{{ wid }}">Abrir a OS</a>
+      {% if c.col in ('chegou', 'ticket') %}<button type="button" class="btn btn-i" id="b_finalizar">Finalizar chamado</button>{% endif %}
+    </div>
+  </div>
+  <div class="conf oculto" id="conf_fim">
+    <span>Finalizar conclui a OS {{ c.folio }} no Fracttal{% if not c.ticket %}, <b>sem ticket registrado</b>{% endif %}. Não tem volta pela tela.</span>
+    <span class="cresce"></span>
+    <button type="button" class="btn btn-i btn-p" id="b_fim_sim">Finalizar</button><button type="button" class="btn btn-o btn-p" id="b_fim_nao">Voltar</button>
+  </div>
+  <div class="msg" id="msg_fim"></div>
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">Data da falha</div><div class="linha"><span class="val pq">{{ n.data_falha or '—' }}</span>
+      <span class="note">OS de campo {{ c.os_campo or '—' }}</span></div></div>
+    <div class="kpi"><div class="lbl">Menos de 7 dias</div><div class="linha"><span class="val pq">{% if menos7.sim is none %}—{% else %}{{ 'Sim' if menos7.sim else 'Não' }} · {{ menos7.dias }} dia{{ '' if menos7.dias == 1 else 's' }}{% endif %}</span>
+      <span class="note" title="{% if n.menos7_nota is not none and menos7.sim is not none and n.menos7_nota != menos7.sim %}a nota diz &quot;{{ 'Sim' if n.menos7_nota else 'Não' }}&quot;: foi calculado no fechamento da inspeção{% else %}recalculado pela data da falha{% endif %}">{% if n.menos7_nota is not none and menos7.sim is not none and n.menos7_nota != menos7.sim %}a nota diz "{{ 'Sim' if n.menos7_nota else 'Não' }}"{% else %}recalculado hoje{% endif %}</span></div></div>
+    <div class="kpi"><div class="lbl">Chegou</div><div class="linha"><span class="val pq">{{ c.chegou or '—' }}</span>
+      <span class="note">inspeção {{ c.inspecao or '—' }}</span></div></div>
+    <div class="kpi"><div class="lbl">Ticket no fornecedor</div><div class="linha"><span class="val mono">{{ c.ticket or '—' }}</span>
+      <span class="note">{{ 'na subtarefa da OS' if c.ticket else 'ainda não aberto' }}</span></div></div>
+  </div>
+  <div class="ac-det">
+    <aside>
+      <section class="bloco">
+        <div class="bloco-h"><h2>Ticket no fornecedor</h2></div>
+        {% if item %}
+        <div class="linha-tk">
+          <input class="campo-tk" id="ticket" value="{{ c.ticket }}" placeholder="nº do ticket ou protocolo" maxlength="120"{% if c.col not in ('chegou', 'ticket') %} disabled{% endif %}>
+          <button type="button" class="btn btn-g" id="b_ticket"{% if c.col not in ('chegou', 'ticket') %} disabled{% endif %}>Salvar</button>
+        </div>
+        <p class="dica">Grava na subtarefa da OS {{ c.folio }} no Fracttal ("{{ item.descricao }}") e entra sozinho nas observações.</p>
+        <div class="msg" id="msg_ticket"></div>
+        {% else %}
+        <p class="dica">Esta OS não tem a subtarefa do nº do ticket.</p>
+        {% endif %}
+      </section>
+      <section class="bloco">
+        <div class="bloco-h"><h2>Como abrir</h2></div>
+        <p class="canal">{{ canal or 'Canal de abertura ainda não documentado para este fornecedor.' }}</p>
+      </section>
+      <section class="bloco">
+        <div class="bloco-h"><h2>A cadeia do chamado</h2></div>
+        <ol class="cadeia">
+          <li><span class="i">1</span><span class="t">OS de campo</span>{% if c.os_campo %}<a href="/os/os/folio/{{ c.os_campo }}">{{ c.os_campo }}</a>{% else %}<span class="t">—</span>{% endif %}</li>
+          <li><span class="i">2</span><span class="t">Inspeção · fotos e vídeos</span>{% if c.inspecao %}<a href="/os/os/folio/{{ c.inspecao }}">{{ c.inspecao }}</a>{% else %}<span class="t">—</span>{% endif %}</li>
+          <li class="aqui"><span class="i">3</span><span class="t">Acompanhamento</span><a href="/os/os/{{ wid }}">{{ c.folio }}</a></li>
+        </ol>
+      </section>
+      <section class="bloco">
+        <div class="bloco-h"><h2>Dados</h2></div>
+        <dl class="dados">
+          <dt>Ativo</dt><dd class="mono">{{ c.code or '—' }}</dd>
+          <dt>Tipo</dt><dd>{{ c.tipo or '—' }}</dd>
+          <dt>Fornecedor</dt><dd>{{ c.marca or '—' }}</dd>
+          <dt>Responsável</dt><dd{% if not c.da_equipe %} class="a"{% endif %}>{{ c.responsavel or '—' }}</dd>
+        </dl>
+      </section>
+    </aside>
+    <div>
+      <section class="bloco" data-recolhe="campos">
+        <div class="bloco-h"><h2>Para abrir o ticket</h2><span class="n">{{ n.campos|length }} campos</span>
+          <div class="bloco-a">{% if n.campos %}<button type="button" class="btn btn-o btn-p" data-copia="{{ copiar }}">Copiar tudo</button>{% endif %}{{ recolher('corpo_campos') }}</div></div>
+        <div class="bloco-c" id="corpo_campos">
+        {% if n.campos %}
+        <table class="t"><thead><tr><th>Campo do formulário</th><th>Resposta do técnico</th><th></th></tr></thead><tbody>
+          {% for x in n.campos %}<tr><td class="k">{{ x.rotulo }}<small>{{ x.chave }}</small></td><td class="v{% if x.mono %} mono{% endif %}">{{ x.valor or '—' }}</td>
+            <td class="c"><button type="button" class="btn btn-o btn-p" data-copia="{{ x.valor }}">Copiar</button></td></tr>{% endfor %}
+        </tbody></table>
+        {% else %}<p class="vazio-l">A nota desta OS não traz os campos do formulário do fornecedor.</p>{% endif %}
+        </div>
+      </section>
+      <section class="bloco" data-recolhe="demais">
+        <div class="bloco-h"><h2>Demais respostas do técnico</h2><span class="n">{{ n.demais|length }}</span>
+          <div class="bloco-a">{{ recolher('corpo_demais') }}</div></div>
+        <div class="bloco-c" id="corpo_demais">
+        {% if n.demais %}
+        <table class="t qa"><thead><tr><th>Pergunta da inspeção</th><th>Resposta</th></tr></thead><tbody>
+          {% for x in n.demais %}<tr><td class="k">{{ x.pergunta }}</td><td class="v">{{ x.resposta }}</td></tr>{% endfor %}
+        </tbody></table>
+        {% else %}<p class="vazio-l">Nenhuma outra resposta na nota.</p>{% endif %}
+        {% if c.inspecao %}<p class="dica">Foto e vídeo não vão para a nota: ficam anexados na inspeção {{ c.inspecao }}.</p>{% endif %}
+        </div>
+      </section>
+      {# a escolha de esconder volta ANTES da 1ª pintura: pelo acomp.js, que vem no fim da página, o bloco abriria e fecharia
+         na frente da pessoa. O clique e a gravação da escolha moram no acomp.js (mesma chave). #}
+      <script>try{document.querySelectorAll("#acomp-os [data-recolhe]").forEach(function(b){if(localStorage.getItem("acomp.recolhe."+b.dataset.recolhe)==="1"){b.classList.add("recolhido");b.querySelector("[data-recolher]").setAttribute("aria-expanded","false")}})}catch(e){}</script>
+      <section class="bloco">
+        <div class="bloco-h"><h2>Observações</h2><span class="n" id="n_obs">{{ tl|length }}</span></div>
+        {% if erro_obs %}<p class="aviso">{{ erro_obs }}</p>{% endif %}
+        <textarea class="obs" id="obs" maxlength="2000" placeholder="O que aconteceu? (a data entra sozinha)"{% if not pode_gravar %} disabled{% endif %}></textarea>
+        <div class="comp-l">
+          <span class="dica" style="margin:0">{% if pode_gravar %}Fica com o seu nome e a data e a hora em que você salvou.{% else %}Este servidor não tem a credencial de escrita do banco da Gridco: dá para ver, não para salvar.{% endif %}</span>
+          <button type="button" class="btn btn-g" id="b_obs"{% if not pode_gravar %} disabled{% endif %}>Salvar observação</button>
+        </div>
+        <div class="msg" id="msg_obs"></div>
+        <div class="tl" id="tl">
+          {% for e in tl %}<div class="tl-e{% if e.novo %} novo{% endif %}{% if e.ev %} ev{% endif %}"><div class="tl-g"><div class="tl-d">{{ e.d }}</div><div class="tl-a">{{ e.a }}</div></div>
+            <div class="tl-b"><div class="tl-x"><div class="tl-t">{{ e.texto }}</div><div class="tl-u">{{ e.autor }}</div></div></div></div>{% endfor %}
+        </div>
+      </section>
+      <section class="bloco">
+        <div class="bloco-h"><h2>Outros chamados</h2></div>
+        <div class="outros">
+          {% for x in outros.ativo %}<a href="/os/chamados/acompanhamento/{{ x.folio }}"><b>{{ x.folio }}</b><span>deste ativo · {{ x.marca }} · chegou {{ x.chegou }}</span></a>
+          {% else %}<p class="vazio-l">Nenhum outro chamado deste ativo.</p>{% endfor %}
+          {% for x in outros.campo %}<a href="/os/chamados/acompanhamento/{{ x.folio }}"><b>{{ x.folio }}</b><span>da mesma OS de campo {{ c.os_campo }} · {{ x.ativo_nome }}</span></a>{% endfor %}
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/os/static/acomp.js"></script>{% endblock %}

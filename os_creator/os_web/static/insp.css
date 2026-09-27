@@ -1,0 +1,39 @@
+/* os_creator/os_web/static/insp.css — a Inspeção de chamados (steps/insp_chamado.py) na web. O resto (cards
+   numerados, campos, rodapé, modal) é o os.css das outras telas; aqui só o que é desta: o botão "Últimas OS", o quadro
+   das subtarefas (o readbox do app) e o painel das últimas OS (o _PainelOS). */
+.insp-titulo{font-size:15px;font-weight:600;color:#fff}
+.insp-pai{display:flex;align-items:center;gap:9px}
+.insp-pai input{width:210px}
+.insp-hist{background:rgba(143,206,63,.12);color:var(--verde);border:1px solid rgba(143,206,63,.33);border-radius:8px;
+  padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;height:32px}
+.insp-hist:hover{background:rgba(143,206,63,.2);border-color:var(--verde)}
+.insp-lb-pai{color:var(--f-muted);font-size:12px;margin:0}
+.insp-resumo{color:var(--verde);font-size:13px;font-weight:600}
+.insp-subs{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;margin:0;padding:11px 13px 11px 38px;
+  color:#c4cbdb;font-size:12.5px;display:flex;flex-direction:column;gap:3px}
+.insp-subs .insp-vazio{list-style:none;margin-left:-25px}
+.insp-marca{color:var(--f-muted)}
+.insp-hint{flex:1}
+.insp-ok{background:rgba(166,226,46,.08);border:1px solid rgba(166,226,46,.35);border-radius:12px;padding:11px 14px;
+  color:#e6f5c8;font-size:13px}
+.insp-ok.aviso{background:rgba(250,178,25,.08);border-color:rgba(250,178,25,.4);color:#f3d99b}
+.insp-ok a{color:var(--f-green);margin-left:6px}
+/* o painel das últimas OS: a linha inteira é o botão (clicar preenche a OS pai) */
+.insp-modal{width:min(680px,96vw);padding-bottom:4px}
+.insp-modal-h{display:flex;align-items:center;gap:8px;padding:14px 58px 2px 15px}
+.insp-modal-t{color:var(--f-muted);font-size:10.5px;font-weight:700;letter-spacing:.8px}
+.insp-modal-dica{margin-left:auto;color:var(--verde);font-size:11px;font-weight:600}
+.insp-modal-nome{color:#e6e8ef;font-size:12.5px;font-weight:600;padding:0 15px 10px;border-bottom:1px solid var(--f-border)}
+.insp-hist-lista{display:flex;flex-direction:column}
+.insp-hist-l{display:flex;align-items:flex-start;gap:13px;padding:9px 14px 9px 13px;background:transparent;border:0;
+  border-left:2px solid transparent;border-bottom:1px solid rgba(255,255,255,.04);text-align:left;cursor:pointer;
+  font-family:inherit;color:inherit;width:100%}
+.insp-hist-l:hover{background:rgba(143,206,63,.08);border-left-color:var(--verde)}
+.insp-hist-n{color:var(--verde);font-family:Consolas,monospace;font-size:13px;font-weight:700;min-width:52px}
+.insp-hist-m{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+.insp-hist-t{color:#e6e8ef;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insp-hist-s{color:var(--f-muted);font-size:11px}
+.insp-hist-st{color:var(--c);border:1px solid color-mix(in srgb,var(--c) 40%,transparent);border-radius:9px;padding:2px 9px;
+  font-size:11px;font-weight:600;white-space:nowrap;background:rgba(255,255,255,.05)}
+.insp-hist-vazio{color:var(--f-muted);font-size:12.5px;padding:14px 15px;margin:0}
+.insp-modal-rod{color:var(--f-muted);font-size:11px;padding:9px 15px 11px}

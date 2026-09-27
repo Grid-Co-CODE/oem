@@ -1470,8 +1470,36 @@ def _shape_wo_row(w: dict) -> dict:
             "status_id": stid, "status": WO_STATUS.get(stid, f"Status {stid}")}
 
 
+class _Passos:
+    """O contador do círculo de carga: cada chamada é um pedido ao Fracttal que terminou. Seguro entre threads (as
+    páginas e os lotes vão em paralelo) e mudo sem quem escute. Devolve o que recebeu, para embrulhar o resultado."""
+
+    def __init__(self, avisar, total):
+        self.avisar, self.total, self.feito = avisar, max(1, int(total or 1)), 0
+        self._trava = threading.Lock()
+
+    def __call__(self, resultado=None):
+        if self.avisar is not None:
+            with self._trava:
+                self.feito = min(self.feito + 1, self.total)
+                feito = self.feito
+            try:
+                self.avisar(feito, self.total)
+            except Exception:                                  # noqa: BLE001 — o círculo nunca derruba a busca
+                pass
+        return resultado
+
+    def fim(self):
+        if self.avisar is not None:
+            try:
+                self.avisar(self.total, self.total)
+            except Exception:                                  # noqa: BLE001
+                pass
+
+
 def list_minhas_os(modo: str = "criadas", id_account=None, id_label=None,
-                   de: str = None, ate: str = None, status_ids=None, cap: int = HISTORICO_CAP) -> list:
+                   de: str = None, ate: str = None, status_ids=None, cap: int = HISTORICO_CAP,
+                   info: dict = None, progresso=None) -> list:
     """OS do Fracttal no PERÍODO [de, ate] (datas 'YYYY-MM-DD' — filtradas NO SERVIDOR por
     creation_date, então o período governa a busca de verdade). modo='criadas' (Histórico Geral, por
     'id_created_by') ou 'atribuidas' (id_assigned_user = id_personnel do logado). Em 'criadas',
@@ -1481,7 +1509,11 @@ def list_minhas_os(modo: str = "criadas", id_account=None, id_label=None,
     → [{'id','folio','cliente','usina','ativo','tipo','tipo_tarefa','descricao','criado_por',
         'atribuido_a','id_atribuido','etiquetas','data','status_id','status'}].
         'tipo' = tipo de ativo (Inversor/Tracker/…);
-        'tipo_tarefa' = tipo da OS (Corretiva/Preventiva/Inspeção/…), via _tipo_tarefa_por_os."""
+        'tipo_tarefa' = tipo da OS (Corretiva/Preventiva/Inspeção/…), via _tipo_tarefa_por_os.
+
+    `progresso(feito, total)` (opcional) é chamado a cada pedido ao Fracttal que termina — as páginas da listagem e os
+    lotes do meta das tarefas. É o que desenha o círculo de carga do Histórico web (Levi, 27/09: "no período de
+    carregamento poderia ter um círculo mostrando o progresso"). O total só se sabe depois da 1ª página."""
     idp, idacc = _current_user_ids()
     todos = False
     if modo == "atribuidas":
@@ -1513,11 +1545,17 @@ def list_minhas_os(modo: str = "criadas", id_account=None, id_label=None,
 
     first = _fetch_page(0)                   # 1ª página dá o total; as demais em paralelo
     total = int(first.get("total") or 0) if isinstance(first, dict) else 0
+    if isinstance(info, dict):               # quem chama pode AVISAR que o teto cortou as mais antigas
+        info.update({"total": total, "cap": cap})
     paginas = [first]
     starts = list(range(limit, min(total, cap), limit))
+    # a conta do círculo: 1ª página + as outras + os lotes do meta (130 OS cada, ver _meta_tarefa_por_os)
+    n_meta = -(-min(total, cap) // 130) if total else 0
+    passo = _Passos(progresso, 1 + len(starts) + n_meta)
+    passo()
     if starts:
         with _ExecutorComContexto(max_workers=min(6, len(starts))) as ex:
-            paginas.extend(ex.map(_fetch_page, starts))
+            paginas.extend(ex.map(lambda s: passo(_fetch_page(s)), starts))
     vistos = {}
     for res in paginas:
         for w in ((res.get("data") or []) if isinstance(res, dict) else []):
@@ -1526,13 +1564,19 @@ def list_minhas_os(modo: str = "criadas", id_account=None, id_label=None,
                 vistos[wid] = _shape_wo_row(w)
     out = list(vistos.values())
     out.sort(key=lambda x: x["data"], reverse=True)
-    meta = _meta_tarefa_por_os([d["id"] for d in out])    # enriquece: tipo de tarefa + evento + fim
+    ids = [d["id"] for d in out]                           # enriquece: tipo de tarefa + evento + fim
+    meta = _meta_tarefa_por_os(ids, passo=passo) if progresso is not None else _meta_tarefa_por_os(ids)
+    passo.fim()
     for d in out:
         m = meta.get(d["id"], {})
         d["tipo_tarefa"] = m.get("tipo_tarefa", "")
         d["event_date"] = m.get("event_date") or d.get("event_date", "")   # tarefa manda; senão a da lista
         d["data_fim"] = m.get("data_fim") or d.get("data_fim", "")
         d["note"] = m.get("note", "")                                       # p/ o board ler o bloco CHAMADO
+        # início real e gatilho (colunas da visão COS): o meta já os trazia e eles eram jogados fora — a tela web
+        # buscava tudo de novo, em lotes de 60 sequenciais (34 idas ao Fracttal por carga de 2000 OS, 27/09)
+        d["inicio"] = m.get("inicio") or d.get("inicio", "")
+        d["gatilho"] = m.get("gatilho") or d.get("gatilho", "")
     return out
 
 
@@ -1667,7 +1711,7 @@ RPC_WO_TASKS  = "tasks.work_orders_tasks_new_list"       # tarefa(s) da OS (even
 RPC_WO_FORMIT = "tasks.work_orders_task_form_items_list"  # subtarefas (checklist)
 
 
-def _meta_tarefa_por_os(wo_ids):
+def _meta_tarefa_por_os(wo_ids, passo=None):
     """{id_work_order: {'tipo_tarefa': 'Tipo' (ou 'A / B'), 'event_date': ISO}} p/ as OS dadas. A
     listagem NÃO traz tipo de tarefa nem a data do evento — vêm do RPC de tarefas (1 chamada por lote,
     em paralelo). Best-effort: erro num lote → ignora (sem quebrar a lista)."""
@@ -1726,6 +1770,8 @@ def _meta_tarefa_por_os(wo_ids):
             start += len(data)
             if not data or len(data) < limit:
                 break
+        if passo is not None:
+            passo()                                            # um lote a menos no círculo do Histórico
         return tipos, evt, fim, notas, ini, gat
 
     tipos_out, evt_out, fim_out, notas_out = {}, {}, {}, {}
@@ -2233,6 +2279,34 @@ def status_chamado_em_massa(ids, max_workers: int = 8) -> dict:
             if v:
                 out[k] = v
         return i, out
+
+    with _ExecutorComContexto(max_workers=min(max_workers, len(ids))) as ex:
+        return dict(ex.map(_um, ids))
+
+
+def tickets_os3_em_massa(ids, max_workers: int = 8) -> dict:
+    """O nº do ticket de VÁRIAS OS de acompanhamento de chamado (a OS 3), em paralelo → {id: ticket}.
+
+    A OS 3 nasce no servidor do App de Campo com UMA subtarefa — "Nº do ticket ou protocolo aberto no fabricante" — e é
+    ela que diz em que coluna do quadro do Acompanhamento a OS está (Levi, 27/09: "OSs que chegam, que a Singrid já
+    escreveu número de tickets e OSs finalizadas"). Casa pelo texto ("ticket" ou "protocolo") e não pela frase exata:
+    a frase mora no código do App, e uma vírgula mudada lá não pode esvaziar a coluna aqui.
+
+    `None` = NÃO LI (o Fracttal recusou aquela OS); `""` = li e está vazio. São coisas diferentes para quem desenha."""
+    ids = [i for i in dict.fromkeys(ids or []) if i]
+    if not ids:
+        return {}
+
+    def _um(i):
+        try:
+            res = _rpc_call(RPC_WO_FORMIT, {"id_work_order": i, "sort": []})
+        except FracttalError:
+            return i, None
+        for it in ((res.get("data") or []) if isinstance(res, dict) else []):
+            d = _norm_txt(it.get("description"))
+            if "ticket" in d or "protocolo" in d:
+                return i, str(_form_item_resposta(it) or "").strip()
+        return i, ""
 
     with _ExecutorComContexto(max_workers=min(max_workers, len(ids))) as ex:
         return dict(ex.map(_um, ids))

@@ -88,7 +88,7 @@ def test_detalhe_do_ativo_traz_marca_ultimas_4_os_e_os_destinos(cli):
     assert rotulos[:4] == [r for r, _ in ativos_web.DESTINOS_OS] and rotulos[-1] == "Inspeção de chamado (garantia)"
     assert d["destinos"][2]["href"].startswith("/os/performance/criar?frase=recomposicao%20de%20string&usina=")
     assert "ativo=Inversor%202.18" in d["destinos"][2]["href"]
-    assert d["destinos"][-1]["href"] == "/os/inspecao?ativo=11"
+    assert d["destinos"][-1]["href"] == "/os/chamados/inspecao?ativo=11"
     d2 = cli.get("/os/api/ativos/33").get_json()
     assert d2["inspecao"] is False and d2["destinos"][-1]["rotulo"] != "Inspeção de chamado (garantia)" and d2["os"] == []
     assert cli.get("/os/api/ativos/999").status_code == 404

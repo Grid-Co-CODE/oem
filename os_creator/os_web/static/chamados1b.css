@@ -1,0 +1,101 @@
+/* os_creator/os_web/static/chamados1b.css — a tela do Controle de fornecedores (27/09/2026), na linguagem da direção 1B
+   que o Levi aprovou para chamados (docs/redesign/design_handoff_chamados_1b): cor só como sinal, botão outline, número
+   em mono. Os tokens abaixo são os do handoff — nenhum hex a mais. O Acompanhamento de chamados nasceu aqui e saiu no
+   mesmo dia para o acomp.css ("tá tudo muito escuro" → o navy da plataforma). */
+:root{--g:#0C111C;--g-top:#111624;--card1b:#131928;--card-m:#111726;--bd:rgba(255,255,255,.07);--bd2:rgba(255,255,255,.12);
+  --div:rgba(255,255,255,.10);--tx:#E7EAF2;--tx-d:#C9CFDE;--tx-m:#7A85A0;--tx-f:#5B6479;--tx-l:#4E576D;--tx-c:#96A0B8;
+  --red:#F5766B;--amber:#F5A623;--blue:#4A9EF5;--green:#48D07A;--acc:#A6E22E;
+  --red-t:#F79B92;--amber-t:#F5C46A;--blue-t:#8AC0FA;--green-t:#7FDCA2;
+  --mono:'JetBrains Mono',Consolas,'Courier New',monospace}
+
+/* botões: outline, verde só em ação */
+.b1,.b0{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;padding:0 14px;border-radius:9px;
+  background:transparent;font:600 12.5px 'Segoe UI',Arial,sans-serif;cursor:pointer;white-space:nowrap;text-decoration:none}
+.b1{border:1px solid rgba(166,226,46,.5);color:var(--acc)}.b1:hover{background:rgba(166,226,46,.12);border-color:var(--acc)}
+.b0{border:1px solid rgba(255,255,255,.14);color:var(--tx-d);font-weight:400}.b0:hover{border-color:rgba(166,226,46,.5);color:#fff}
+.b1:disabled,.b0:disabled{opacity:.45;cursor:not-allowed}
+.bp{height:28px;padding:0 10px;font-size:11.5px;border-radius:8px}
+.ch1b :focus-visible{outline:none!important;box-shadow:0 0 0 1px var(--acc)!important;border-color:var(--acc)!important}
+.ch1b .in,.ch1b .sel{height:36px;border-radius:10px;border:1px solid var(--bd2);background:#0f1522;color:var(--tx);
+  padding:0 11px;font:13px 'Segoe UI',Arial,sans-serif;box-sizing:border-box}
+.ch1b .in:hover,.ch1b .sel:hover{border-color:rgba(166,226,46,.45)}
+.ch1b textarea.in{height:auto;min-height:62px;padding:9px 11px;line-height:1.5;resize:vertical;width:100%}
+.lbl{font-size:10.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--tx-l)}
+.mono{font-family:var(--mono)}
+.vazio{font-size:12px;color:var(--tx-f);padding:6px 2px}
+.ch1b{padding:16px 22px 30px;display:flex;flex-direction:column;gap:16px}
+.topo{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cresce{flex:1}
+.tit{font-size:20px;font-weight:500;letter-spacing:-.3px;color:var(--tx)}
+.res{font-size:12px;color:var(--tx-m);margin-top:3px}
+.res b{font-weight:600}
+.aviso-l{font-size:12px;color:var(--amber-t);display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.aviso-l i{width:7px;height:7px;border-radius:50%;background:var(--amber);flex:none;margin-top:6px}
+.erro-l{font-size:12.5px;color:var(--red-t)}
+.msg{font-size:12.5px;min-height:18px}
+.msg.ok{color:var(--green-t)}.msg.er{color:var(--red-t)}.msg.av{color:var(--amber-t)}
+
+.fc{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fc .in,.fc .sel{width:100%}
+.chip{border:1px solid var(--bd2);border-radius:11px;padding:2px 9px;font-size:10.5px;font-weight:600;color:var(--tx-c);white-space:nowrap}
+.dica{font-size:11.5px;color:var(--tx-f);line-height:1.45}
+
+/* ── controle de fornecedores ── */
+.abas1b{display:flex;gap:2px;border-bottom:1px solid var(--div);flex-wrap:wrap}
+.aba1b{padding:9px 14px;color:var(--tx-m);border:0;border-bottom:2px solid transparent;background:none;cursor:pointer;
+  font:500 13px 'Segoe UI',Arial,sans-serif}
+.aba1b:hover{color:#fff}.aba1b.on{color:var(--acc);border-bottom-color:var(--acc)}
+.aba1b em{font:700 11px var(--mono);color:var(--tx-f);margin-left:6px;font-style:normal}
+.cf{display:grid;grid-template-columns:320px minmax(0,1fr);border:1px solid var(--bd);border-radius:16px;overflow:hidden;background:var(--g)}
+@media (max-width:1000px){.cf{grid-template-columns:1fr}}
+.cf-l{border-right:1px solid var(--div);display:flex;flex-direction:column}
+.cf-lh{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px}
+.cf-lh button{color:var(--acc);font-size:12px;background:none;border:0;cursor:pointer;font-family:inherit;padding:0}
+.li{padding:12px 16px 12px 13px;border-top:1px solid var(--div);border-left:3px solid transparent;cursor:pointer;
+  background:none;border-right:0;border-bottom:0;text-align:left;width:100%;font-family:inherit;color:inherit;display:block}
+.li:hover{background:rgba(255,255,255,.02)}
+.li.on{border-left-color:var(--acc);background:rgba(166,226,46,.05)}
+.li-n{font-size:13.5px;font-weight:600;color:var(--tx);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.li-m{font-size:11.5px;color:var(--tx-m);margin-top:3px}
+.li-c{font-size:11px;color:var(--tx-f);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li.sd .li-n,.li.arq .li-n{color:var(--tx-m);font-weight:500}
+.sujo{width:7px;height:7px;border-radius:50%;background:var(--amber)}
+.cf-r{padding:18px 24px 24px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.cf-t{font-size:18px;font-weight:600;color:#fff}
+.cf-s{font-size:12.5px;color:var(--tx-m);line-height:1.5}
+.cf-s b{color:var(--tx);font-weight:600}
+.campos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px 14px}
+.atende{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:36px}
+.atende .chip button{background:none;border:0;color:var(--tx-f);cursor:pointer;margin-left:4px;padding:0;font-size:12px}
+.atende .chip button:hover{color:var(--red-t)}
+/* (0,2,1) para vencer o `body.os-form select` (0,1,2) do os.css, que dá 40 px a todo select */
+.ch1b .atende select{height:28px;padding:0 8px;border-radius:8px;border:1px solid var(--bd2);background:#0f1522;color:var(--tx-d);font-size:12px}
+.sec{border-top:1px solid var(--div);padding-top:12px;display:flex;flex-direction:column}
+.sec-t{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.sec-t .lbl{color:var(--tx-c)}
+.sec-t span{font-size:11.5px;color:var(--tx-f)}
+.sec-t button{margin-left:auto;font-size:11.5px;color:var(--acc);background:none;border:0;cursor:pointer;font-family:inherit;padding:0}
+.rw{display:grid;grid-template-columns:24px minmax(0,1fr) 128px 96px 104px 160px 58px;gap:10px;align-items:center;
+  padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.rw.cab{font-size:10.5px;color:var(--tx-l);font-weight:600;letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--div)}
+.rw .n{font:700 12px var(--mono);color:var(--acc);text-align:right}
+.rw .in,.rw .sel{height:32px;width:100%;font-size:12.5px}
+.rw .ro{font-size:12.5px;color:var(--tx-d);line-height:1.4}
+.rw .t{font-size:12px;color:var(--tx-m)}
+.rw .ch{font:11px var(--mono);color:var(--tx-f);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rw label{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--tx-m);cursor:pointer}
+.rw input[type=checkbox]{accent-color:#A6E22E;width:15px;height:15px}
+.rw .mv{display:flex;gap:2px;justify-content:flex-end}
+.rw .mv button{background:none;border:0;color:var(--tx-f);cursor:pointer;font-size:13px;line-height:1;padding:3px 4px}
+.rw .mv button:hover{color:#fff}.rw .mv button.x:hover{color:var(--red-t)}
+.rw.fora{opacity:.45}.rw.rep .ro,.rw.rep .in{text-decoration:line-through;color:var(--tx-f)}
+.rw .nota{grid-column:2 / -1;font-size:11px;color:var(--tx-f);margin-top:-2px}
+.ops{grid-column:2 / -1;display:flex;gap:6px;flex-wrap:wrap;padding-bottom:2px;align-items:center}
+.ops span{border:1px solid var(--bd2);border-radius:11px;padding:1px 9px;font-size:11px;color:var(--tx-c)}
+.ops .in{height:28px;max-width:420px;font-size:12px}
+.add{font-size:12.5px;color:var(--acc);cursor:pointer;padding:9px 0 0;background:none;border:0;text-align:left;font-family:inherit}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:6px}
+/* o select comprido vira a busca do os_busca.js (6+ opções): a caixa dele tem de ter a MESMA cara dos outros filtros */
+.ch1b .osb-in{height:36px!important;border-radius:10px!important;border:1px solid var(--bd2)!important;background:#0f1522!important;
+  color:var(--tx)!important;padding:0 11px!important;font:13px 'Segoe UI',Arial,sans-serif!important;box-sizing:border-box;width:100%}
+.ch1b .osb-in:hover{border-color:rgba(166,226,46,.45)!important}

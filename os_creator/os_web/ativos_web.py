@@ -60,5 +60,6 @@ def destinos(a: dict, inspecao: bool) -> list:
     out = [{"rotulo": r, "href": f"/os/performance/criar?frase={quote(t)}&usina={quote(usina)}&ativo={quote(nome)}"}
            for r, t in DESTINOS_OS]
     if inspecao:
-        out.append({"rotulo": ROTULO_INSPECAO, "href": f"/os/inspecao?ativo={a.get('id')}"})
+        # a tela mora em /os/chamados/inspecao desde 27/09 (o /os/inspecao de antes nunca existiu; hoje só redireciona)
+        out.append({"rotulo": ROTULO_INSPECAO, "href": f"/os/chamados/inspecao?ativo={quote(str(a.get('id') or ''))}"})
     return out

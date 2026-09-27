@@ -68,6 +68,9 @@ body.os-form .os-btn.primaria{background:var(--f-green);color:var(--f-ink)}
 .os-plano-sub{font-size:12px;color:var(--f-muted)}
 .os-plano-meta{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--f-muted)}.os-plano-subs{cursor:pointer}
 .os-plano-cta{width:34px;height:34px;border-radius:17px;background:var(--f-input);border:1px solid var(--f-border);display:inline-flex;align-items:center;justify-content:center;flex:none}
+/* o card de Chamados tem três portas (27/09) */
+.os-planos-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1180px){.os-planos-3{grid-template-columns:1fr 1fr}}
 @media (max-width:900px){.os-planos{grid-template-columns:1fr}}
 /* formulário (QSS_FORM): Card numerado, campos de 40px, foco verde */
 .os-cardf{background:var(--f-card);border:1px solid var(--f-border);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
@@ -419,3 +422,66 @@ a.tk-os:hover{text-decoration:underline}
 .trad-img-cell img{width:134px;height:100px;object-fit:contain;background:var(--f-bg);border:1px solid var(--f-border);border-radius:7px}
 .trad-img-cell .trad-img-nome{width:134px;height:28px!important;font-size:11.5px;padding:0 7px!important;border-radius:6px!important}
 .trad-img-cell .os-btn{width:134px}
+
+/* ── HISTÓRICO: os filtros (Levi, 27/09/2026) ─────────────────────────────────────────────────────────────────────
+   "os títulos fora dos cards de filtro e os cards alinhados perfeitamente aproveitando o máximo de espaço": 4 colunas
+   iguais × 2 linhas, rótulo em cima de TODOS os controles e a mesma altura em todos (select, busca do os_busca, multi e
+   período). Classes hf-* só do Histórico: os os-cell/os-hist-* seguem nas outras telas (Tickets, Solicitação) como eram. */
+.hf-grade{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 14px;margin-top:10px}
+@media (max-width:1100px){.hf-grade{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hf-cel{display:flex;flex-direction:column;gap:5px;min-width:0}
+.hf-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--f-muted);font-weight:600;line-height:1.2}
+.hf-cel select,.hf-cel .osb-in,.hf-cel .hf-multi summary,.hf-periodo input{height:38px!important;box-sizing:border-box;width:100%;
+  border-radius:10px;font-size:13px}
+.hf-cel select:disabled{opacity:.45;cursor:not-allowed}
+.hf-multi summary{padding:0 12px;justify-content:space-between}
+.hf-periodo{display:flex;align-items:center;gap:8px;color:var(--f-muted);font-size:12.5px}
+.hf-periodo input{flex:1;min-width:0;padding:0 10px!important}
+.hf-busca-os{min-width:0;width:150px}
+/* o input tem largura própria (size=20, ~180px) e vazava da caixa curta: flex:1 não encolhe abaixo dela */
+.hf-busca-os input{min-width:0;width:100%}
+.hf-teto{background:rgba(250,178,25,.08);border:1px solid rgba(250,178,25,.35);color:#f3d99b;border-radius:10px;
+  padding:8px 12px;font-size:12.5px;margin:10px 0 0}
+/* a busca por texto COLADA na tabela: 4 px entre ela e o cabeçalho da tabela */
+.hf-tabela{margin-top:12px}
+.hf-barra{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.hf-filtro{flex:1;display:flex;align-items:center;gap:8px;background:var(--f-input);border:1px solid var(--f-border);
+  border-radius:10px;height:38px;padding:0 12px;box-sizing:border-box}
+.hf-filtro:focus-within{border-color:var(--f-green)}
+.hf-filtro input{flex:1;background:transparent!important;border:none!important;height:36px!important;padding:0!important;
+  color:#fff;font-size:13px;outline:none}
+.hf-hint{color:var(--f-muted);font-size:12px;white-space:nowrap}
+
+/* ── o topo recolhível (Levi, 27/09: "opção de recolher essa parte de cima para o OS Creator ocupar mais espaço").
+   O botão mora na barra das abas, que fica — ela é a navegação. A escolha fica guardada no navegador. */
+.os-recolher{margin-left:auto;align-self:center;background:transparent;border:1px solid transparent;border-radius:8px;
+  color:var(--muted2);width:32px;height:28px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.os-recolher:hover{border-color:var(--card-b);color:#fff}
+.os-recolher svg{transition:transform .15s ease}
+body.os-sem-topo .os-header,body.os-sem-topo .os-sep{display:none}
+body.os-sem-topo .os-recolher svg{transform:rotate(180deg)}
+
+/* ── Histórico, lote da tarde de 27/09 ── */
+/* a busca por texto do tamanho do que ela diz: nunca menor que o próprio texto de exemplo (Levi: "está muito pequeno") */
+.hf-barra{flex-wrap:wrap}
+.hf-filtro{flex:1 1 460px;min-width:min(460px,100%);height:40px}
+.hf-filtro input{font-size:13.5px!important}
+/* o Ativo curto ("Inversor 1.10", "Tracker 35.100") e centralizado; o nome inteiro fica no title */
+.os-hist th.k-ativo,.os-hist td.k-ativo{text-align:center;white-space:nowrap}
+
+/* o círculo de carga (carga.js): enche com os pedidos ao Fracttal que já terminaram */
+.carga{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:rgba(5,9,18,.55)}
+.carga[hidden]{display:none}
+.carga-caixa{min-width:260px;padding:26px 30px 22px;background:#161d30;border:1px solid rgba(255,255,255,.1);border-radius:16px;
+  box-shadow:0 22px 60px rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;gap:6px;position:relative}
+.carga-anel{width:92px;height:92px;transform:rotate(-90deg)}
+.carga-trilho{fill:none;stroke:rgba(255,255,255,.1);stroke-width:5}
+.carga-arco{fill:none;stroke:#A6E22E;stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .3s ease}
+.carga-anel.ind{animation:carga-gira 1s linear infinite}
+@keyframes carga-gira{from{transform:rotate(-90deg)}to{transform:rotate(270deg)}}
+.carga-pct{position:absolute;top:60px;left:0;right:0;text-align:center;font:700 19px/1 'Segoe UI',Arial,sans-serif;color:#fff}
+.carga-txt{margin-top:8px;font-size:13px;color:#e6e8ef}
+.carga-sub{font-size:11.5px;color:#8a90a2;min-height:15px}
+/* Windows sem animação: o giro fica, mais lento (é ele que diz "está trabalhando"); a barra só não desliza */
+@media (prefers-reduced-motion:reduce){.carga-anel.ind{animation-duration:2.4s}.carga-arco{transition:none}}
+

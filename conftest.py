@@ -31,3 +31,35 @@ def qapp():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
     return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _chamados_sem_banco(monkeypatch):
+    """Os stores dos chamados (27/09/2026) vão ao banco da Gridco — nenhum teste vai. A leitura devolve vazio e a escrita
+    falha ALTO (quem quer testar escrita troca `gridco_abas._get`/`escrever` no próprio teste).
+
+    E o modelo da inspeção volta ao CÓDIGO antes e depois de cada teste: `chamado_modelos_store.aplicar` mexe no pacote
+    `chamado_garantia` em memória, e um teste que salva um fornecedor não pode mudar a inspeção do teste seguinte."""
+    try:
+        import chamado_modelos_store as cms
+        import chamados_obs_store as cos
+        import gridco_abas as ga
+    except Exception:                                    # noqa: BLE001 — ambiente sem o pacote: nada a proteger
+        yield
+        return
+
+    def _sem_rede(*a, **k):
+        raise RuntimeError("teste sem rede: troque gridco_abas._get/escrever no próprio teste")
+    monkeypatch.setattr(ga, "_get", _sem_rede)
+    monkeypatch.setattr(ga, "escrever", _sem_rede)
+    monkeypatch.setattr(cms, "_linhas", lambda: [])
+    monkeypatch.setattr(cos, "_linhas", lambda: [])
+    for mod in (cms, cos):
+        mod.ABA._id = None
+    cms._estado.update(banco=None, lido=0.0, proxima=0.0, erro="")
+    cos._estado.update(lista=None, lido=0.0)
+    cms.aplicar({})
+    yield
+    cms.aplicar({})
+    cms._estado.update(banco=None, lido=0.0, proxima=0.0, erro="")
+    cos._estado.update(lista=None, lido=0.0)

@@ -7,6 +7,12 @@ falha se um lado mudar sem o outro."""
 from __future__ import annotations
 from markupsafe import Markup
 
+# UM card de Chamados na web (Levi, 27/09/2026), no lugar dos dois do app — "Chamados" e "Inspeção de chamados". Ele
+# abre três portas: Inspeção, Acompanhamento e Controle de fornecedores. É a única divergência da grade: o teste de fidelidade conhece os dois
+# cards juntados pelo nome (CARDS_JUNTADOS) e segue conferindo todos os outros contra o app.
+SUB_CHAMADOS = "Inspeção, acompanhamento e fornecedores dos chamados de garantia"
+CARDS_JUNTADOS = ("Chamados", "Inspeção de chamados")
+
 # (chave, icone, titulo, subtitulo, destino). Ativos em 1º (Levi, 06/08): consulta é a porta de entrada. As áreas
 # (Engenharia) entram DEPOIS dos cards do app, sempre — a grade não muda para quem já usa.
 CARDS = [
@@ -14,8 +20,7 @@ CARDS = [
     {"chave": "perf", "icone": "bolt", "titulo": "Performance", "sub": "Inversores, Strings, Trackers e ETM", "href": "/os/performance"},
     {"chave": "cos", "icone": "stack", "titulo": "COS", "sub": "Ocorrência de desligamento, religamento e inspeção", "href": "/os/em-breve/cos"},
     {"chave": "pcm", "icone": "calendar", "titulo": "PCM", "sub": "OS planejada por família de plano, vários ativos", "href": "/os/em-breve/pcm"},
-    {"chave": "chamados", "icone": "headset", "titulo": "Chamados", "sub": "Nova OS ligada a uma OS pai, com a etiqueta CHAMADOS", "href": "/os/em-breve/chamados"},
-    {"chave": "insp", "icone": "searchcheck", "titulo": "Inspeção de chamados", "sub": "OS de teste que fundamenta o chamado — subtarefas por ativo e marca", "href": "/os/em-breve/insp"},
+    {"chave": "chamados", "icone": "headset", "titulo": "Chamados", "sub": SUB_CHAMADOS, "href": "/os/chamados"},
     {"chave": "tradicional", "icone": "file", "titulo": "Tradicional", "sub": "Criar OS do zero, passo a passo", "href": "/os/tradicional"},
     {"chave": "clonar", "icone": "copy", "titulo": "Clonar OS", "sub": "Duplicar uma OS existente pelo número", "href": "/os/clonar"},
     {"chave": "eng", "icone": "etm", "titulo": "Engenharia", "sub": "OS de ETM e as análises da Engenharia", "href": "/os/engenharia"},
@@ -32,8 +37,6 @@ ABAS = [
 NO_APP = {
     "cos": ("COS", "a OS de ocorrência: desligamento, religamento e inspeção, com as regras de proteção do COS"),
     "pcm": ("PCM", "a OS planejada por família de plano, para vários ativos de uma vez"),
-    "chamados": ("Chamados", "a OS nova ligada a uma OS pai, com a etiqueta CHAMADOS"),
-    "insp": ("Inspeção de chamados", "a OS de teste que fundamenta o chamado, com subtarefas por ativo e marca"),
     "tickets": ("Tickets", "as ocorrências de trackers e strings da Gridco Performance API"),
 }
 
@@ -70,6 +73,9 @@ ICONES = {
     "camera":   '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
     "monitor":  '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',
     "branch":   '<path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+    # o botão de recolher o topo e a porta Controle de fornecedores (só da web)
+    "chevup":   '<path d="m18 15-6-6-6 6"/>',
+    "listchecks": '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
 }
 ICONE_PADRAO = "doc"
 

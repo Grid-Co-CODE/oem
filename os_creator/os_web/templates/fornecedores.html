@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titulo %}Controle de fornecedores{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/chamados1b.css">{% endblock %}
+{% block conteudo %}
+{# Controle de fornecedores (Levi, 27/09/2026): o molde da tela de Temas do PCM — lista à esquerda, detalhe à direita —
+   com uma aba por tipo de ativo. A inspeção nasce com a BASE, o bloco do TIPO e o que o FORNECEDOR pede a mais; cada um
+   se edita no seu lugar. O desenho é todo do fornecedores.js, a partir do JSON abaixo (fornecedores_web.tela). #}
+<section class="ch1b" id="forn">
+  <div class="topo">
+    <a class="b0" href="/os/chamados">← Chamados</a>
+    <div><div class="tit">Controle de fornecedores</div>
+      <div class="res">As subtarefas que descem na inspeção de chamado, por tipo de ativo e fornecedor: a base, depois o tipo, depois o fornecedor</div></div>
+  </div>
+  <p class="aviso-l"><i></i>O App de Campo, onde o técnico abre a maioria das inspeções, ainda usa o modelo que está no código dele. O que se salva aqui vale na hora para a Inspeção de chamados do OS Creator; o App passa a valer junto quando ler este mesmo banco.</p>
+  {% if not dados.pode_gravar %}<p class="aviso-l"><i></i>Este servidor não tem a credencial de escrita do banco da Gridco: dá para ver e ajustar, mas não para salvar.</p>{% endif %}
+  {% if erro_banco %}<p class="aviso-l"><i></i>O banco da Gridco não respondeu na última leitura ({{ erro_banco }}). A tela mostra o que estava valendo.</p>{% endif %}
+  <div class="abas1b" id="f_abas"></div>
+  <div class="cf"><div class="cf-l" id="f_lista"></div><div class="cf-r" id="f_det"></div></div>
+</section>
+<script type="application/json" id="f_dados">{{ dados|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/os/static/fornecedores.js"></script>{% endblock %}

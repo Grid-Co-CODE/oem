@@ -4,13 +4,15 @@ from __future__ import annotations
 import datetime as dt
 import functools
 import os
+import threading
+import time
 from urllib.parse import quote
 
 from flask import (Blueprint, abort, jsonify, redirect, render_template, request, send_from_directory, session, url_for)
 
 import api
 
-from . import lancador, oauth_fracttal, perf_web, sessao, sso
+from . import ativo_curto, lancador, oauth_fracttal, perf_web, sessao, sso
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 _ASSETS = os.path.join(os.path.dirname(_AQUI), "assets")           # os_creator/assets (logo e ícone do app)
@@ -25,6 +27,13 @@ def _api_path() -> bool:
     return request.path.startswith("/os/api/")
 
 
+def _caminho_atual() -> str:
+    """O caminho COM a consulta, para o login devolver a pessoa exatamente onde estava. Com o `request.path`, o
+    "Abrir chamado" (/os/chamados/inspecao?pai=13926) voltava do login sem a OS de referência — e todo link com
+    filtro (Tickets, Performance com o plano) perdia o filtro do mesmo jeito (27/09)."""
+    return request.full_path.rstrip("?")
+
+
 def _destino_local(n: str) -> str:
     n = (n or "").strip()
     return n if (n.startswith("/os") and not n.startswith("//")) else url_for("os_web.home")
@@ -36,7 +45,7 @@ def exige_sessao(f):
         if not session.get("jwt"):
             if _api_path():
                 return jsonify({"erro": "Entre no Fracttal para continuar.", "login": True}), 401
-            return redirect(url_for("os_web.login") + "?next=" + quote(request.path, safe=""))
+            return redirect(url_for("os_web.login") + "?next=" + quote(_caminho_atual(), safe=""))
         return f(*a, **k)
     return _w
 
@@ -50,7 +59,7 @@ def _erro_fracttal(e):
         session["aviso"] = "A sessão do Fracttal caiu (outro login na sua conta ou o token venceu). Entre de novo."
         if _api_path():
             return jsonify({"erro": str(e), "login": True}), 401
-        return redirect(url_for("os_web.login") + "?next=" + quote(request.path, safe=""))
+        return redirect(url_for("os_web.login") + "?next=" + quote(_caminho_atual(), safe=""))
     if _api_path():
         return jsonify({"erro": str(e)}), 502
     return render_template("erro.html", conta=session.get("conta") or {}, aba="", mensagem=str(e)), 200
@@ -349,6 +358,68 @@ def api_performance_criar():
 
 
 # ── Históricos de OS ──────────────────────────────────────────────────────────
+# As três visões (Histórico Geral / Atribuídas a mim / Visão COS) são TRÊS BUSCAS diferentes no Fracttal — criadas por
+# mim, atribuídas a mim, a equipe inteira —, não três filtros da mesma lista: a da equipe passa de 2.000 OS em 30 dias,
+# então filtrar as outras duas a partir dela perderia OS. O que dá para fazer, e faz (Levi, 27/09: "está demorando demais,
+# por que não funciona como um filtro?"), é não repetir a busca: cada visão fica guardada alguns minutos por pessoa, e
+# voltar a ela é instantâneo. O botão de atualizar (e a atualização de 10 em 10 min) passam por cima da memória.
+TTL_HISTORICO = 180          # s — a lista de uma visão; o botão ↻ busca de novo na hora
+TTL_APOIO = 600              # s — etiquetas e pessoas, que quase não mudam
+_MEMO: dict = {}
+_MEMO_LOCK = threading.Lock()
+
+
+def _memo(chave, ttl: float, fn, forcar: bool = False):
+    """O resultado de `fn()` guardado por `ttl` segundos. Erro não é guardado (sobe como sempre)."""
+    agora = time.monotonic()
+    if not forcar:
+        with _MEMO_LOCK:
+            v = _MEMO.get(chave)
+        if v and agora - v[0] < ttl:
+            return v[1]
+    r = fn()
+    with _MEMO_LOCK:
+        _MEMO[chave] = (agora, r)
+        if len(_MEMO) > 300:                              # memória com teto: sai o que foi guardado há mais tempo
+            for k in sorted(_MEMO, key=lambda k: _MEMO[k][0])[:len(_MEMO) - 300]:
+                _MEMO.pop(k, None)
+    return r
+
+
+# ── o círculo de carga do Histórico (Levi, 27/09: "no período de carregamento poderia ter um círculo mostrando o
+# progresso"). O navegador manda um `p=<token>` junto com a busca e pergunta em /historico/progresso quanto já veio;
+# quem responde é o `api.list_minhas_os`, a cada página e a cada lote do meta das tarefas que termina. ──────────────
+_PROGRESSO: dict = {}
+_PROG_LOCK = threading.Lock()
+
+
+def _token_ok(t) -> str:
+    t = str(t or "").strip()
+    return t if 6 <= len(t) <= 40 and all(c.isalnum() or c in "-_" for c in t) else ""
+
+
+def _progresso_de(token):
+    """O `progresso(feito, total)` que a busca chama, gravando no registro deste token. Sem token válido, None."""
+    token = _token_ok(token)
+    if not token:
+        return None
+    with _PROG_LOCK:
+        _PROGRESSO[token] = {"feito": 0, "total": 0, "quando": time.time()}
+        if len(_PROGRESSO) > 200:                       # teto: sai o mais velho
+            for k in sorted(_PROGRESSO, key=lambda k: _PROGRESSO[k]["quando"])[:len(_PROGRESSO) - 200]:
+                _PROGRESSO.pop(k, None)
+
+    def _aviso(feito, total):
+        with _PROG_LOCK:
+            _PROGRESSO[token] = {"feito": int(feito), "total": int(total), "quando": time.time()}
+    return _aviso
+
+
+def _quem() -> str:
+    """A pessoa, para a memória não servir a lista de um para outro ("criadas por MIM" depende de quem é o mim)."""
+    return (session.get("conta") or {}).get("email") or sessao.email_do_jwt(session.get("jwt") or "") or "?"
+
+
 COLS = [("Nº", "folio"), ("Cliente", "cliente"), ("Usina", "usina"), ("Ativo", "ativo"), ("Descrição", "descricao"),
         ("Data de Criação", "data"), ("Data do Evento", "event_date"), ("Data Fim", "data_fim"), ("Status", "status"),
         ("Etiqueta", "etiqueta")]
@@ -379,7 +450,13 @@ def historico():
     Visão COS), Buscar OS pelo nº (direto, ignora filtros), Buscar (local), Limpar filtros, e a grade Criado por, Etiqueta,
     Status, Cliente, Usina, Tipo de ativo, Tipo de tarefa, Período. Como no app: Visão, Criado por, Etiqueta, Status e
     Período valem NO SERVIDOR (re-buscam); Cliente, Usina, Tipo de ativo, Tipo de tarefa e a busca são locais (JS sobre
-    a lista carregada). O tipo de tarefa chega depois, por /historico/meta — 3,5 s por 60 OS no Fracttal."""
+    a lista carregada). O tipo de tarefa já vem na lista (`list_minhas_os` junta o meta da tarefa na mesma busca).
+
+    "Pq não funciona como um filtro?" (Levi, 27/09): porque as três visões são três buscas DIFERENTES no Fracttal
+    (criadas por mim, atribuídas a mim, a equipe inteira) e a da equipe passa do teto de 2.000 em 30 dias — filtrar as
+    outras a partir dela perderia OS. O que dá para cortar, cortou-se: a lista fica 3 min na memória por pessoa e visão
+    (voltar a uma visão não vai ao Fracttal; o ↻, o F5 e a atualização de 10 min vão, com `atualizar=1`), e a tela
+    deixou de buscar de novo, em 34 lotes sequenciais de 60, o meta que o servidor já tinha mandado."""
     modo = request.args.get("modo") or "criadas"
     if modo not in ("criadas", "atribuidas", "cos"):
         modo = "criadas"
@@ -403,23 +480,38 @@ def historico():
     nome_para_id = {v: k for k, v in api.WO_STATUS.items()}
     status_sel = [x for x in request.args.getlist("status") if x in nome_para_id]
     status_ids = [nome_para_id[x] for x in status_sel] or None
-    linhas, erro = [], None
+    linhas, erro, info = [], None, {}
+    forcar = request.args.get("atualizar") == "1"
+    chave = ("hist", _quem(), modo_srv, id_account, id_label, de, ate, tuple(status_ids or ()))
+
+    aviso = _progresso_de(request.args.get("p"))
+
+    def _buscar():
+        inf = {}
+        return (api.list_minhas_os(modo=modo_srv, id_account=id_account, id_label=id_label, de=de, ate=ate,
+                                   status_ids=status_ids, info=inf, progresso=aviso) or []), inf
     try:
-        linhas = api.list_minhas_os(modo=modo_srv, id_account=id_account, id_label=id_label, de=de, ate=ate, status_ids=status_ids) or []
+        linhas, info = _memo(chave, TTL_HISTORICO, _buscar, forcar)
+        linhas = list(linhas)
     except api.FracttalError as e:
         if sessao.morta() or isinstance(e, api.SessionExpired):
             raise
         erro = str(e)
+    # o teto de 2.000 corta as OS MAIS ANTIGAS do período em silêncio — dizer, com o total do servidor e o que CHEGOU (a
+    # conta é total − carregadas, antes da busca local; o teto só entra para saber se houve corte)
+    total_srv, teto = int(info.get("total") or 0), int(info.get("cap") or 0)
+    cortadas = max(0, total_srv - len(linhas)) if teto and total_srv > teto else 0
     if busca:                                            # a busca é local (JS); aqui só para quem está sem JS
         b = busca.lower()
         linhas = [l for l in linhas if b in " ".join(str(l.get(k) or "") for k in ("folio", "usina", "ativo", "descricao", "cliente", "status")).lower()]
     labels, pessoas, eu = [], [], None
     try:
-        labels = sorted(api.get_labels() or [], key=lambda x: (x.get("description") or "").lower())
+        labels = sorted(_memo(("etiquetas",), TTL_APOIO, lambda: api.get_labels() or [], forcar),
+                        key=lambda x: (x.get("description") or "").lower())
     except Exception:                                    # noqa: BLE001 — sem etiquetas o filtro fica em 'Todas'
         pass
     try:
-        r = api.get_pessoas_contas() or {}
+        r = _memo(("pessoas", _quem()), TTL_APOIO, lambda: api.get_pessoas_contas() or {}, forcar)
         pessoas, eu = (r.get("pessoas") or []), r.get("eu")
     except Exception:                                    # noqa: BLE001 — idem
         pass
@@ -431,7 +523,11 @@ def historico():
             usina_cli.setdefault(l["usina"], l.get("cliente") or "")
     tipos_ativo = sorted({l.get("tipo") for l in linhas if l.get("tipo") and l.get("tipo") != "—"})
     tarefa_sel = list(api.TIPOS_COS) if modo == "cos" else []        # a COS já vem com os tipos do COS marcados
+    # o nome curto do ativo ("Inversor 1.10", "Tracker 35.100"): a frase de cada tipo sai do catálogo que já está no disco
+    # — ler o do Fracttal aqui (quando o cache venceu) poria minutos na frente do Histórico por um detalhe de exibição
+    frases = _memo(("frases_ativo",), 3600, lambda: ativo_curto.frases(api._read_asset_cache() or []))
     for l in linhas:
+        l["_ativo_curto"] = ativo_curto.curto(l.get("ativo"), frases.get(l.get("tipo")))
         l["_status_cor"] = STATUS_COR.get(l.get("status") or "")
         l["_etiqueta"] = ", ".join(e.get("nome") or "" for e in (l.get("etiquetas") or []) if isinstance(e, dict))
         l["_texto"] = (" ".join(str(l.get(k) or "") for k in ("folio", "cliente", "usina", "ativo", "descricao", "status")) + " " + l["_etiqueta"]).lower()
@@ -441,13 +537,25 @@ def historico():
                            labels=labels, pessoas=pessoas, pessoa_sel=pessoa_sel, etiqueta_sel=str(id_label or ""),
                            status_opts=list(api.WO_STATUS.values()), status_sel=status_sel, clientes=clientes,
                            usinas=sorted(usina_cli), usina_cli=usina_cli, tipos_ativo=tipos_ativo,
-                           tipos_tarefa=sorted(set(tarefa_sel)), tarefa_sel=tarefa_sel)
+                           tipos_tarefa=sorted(set(tarefa_sel) | {t for l in linhas for t in str(l.get("tipo_tarefa") or "").split(" / ") if t}),
+                           tarefa_sel=tarefa_sel, cortadas=cortadas, total_srv=total_srv, teto=teto)
+
+
+@bp.route("/historico/progresso")
+@exige_sessao
+def historico_progresso():
+    """Quanto da busca deste token já veio: {feito, total}. total=0 = ainda na 1ª página (o círculo gira sem número)."""
+    token = _token_ok(request.args.get("p"))
+    with _PROG_LOCK:
+        p = dict(_PROGRESSO.get(token) or {})
+    return jsonify({"feito": p.get("feito", 0), "total": p.get("total", 0), "conhecido": bool(p)})
 
 
 @bp.route("/historico/meta")
 @exige_sessao
 def historico_meta():
-    """Tipo de tarefa e datas da tarefa por OS, DEPOIS da lista (como o app: 3,5 s por 60 ids contra 0,7 s da página)."""
+    """Tipo de tarefa e datas da tarefa por OS, em lote. A tela nova não chama mais (desde 27/09 o tipo já vem na lista);
+    fica para a página aberta antes da troca, cujo JS ainda pede o meta depois da lista."""
     from flask import jsonify
     ids = [int(x) for x in (request.args.get("ids") or "").split(",") if x.strip().isdigit()]
     if not ids:

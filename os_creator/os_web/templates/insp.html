@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titulo %}Inspeção de chamados{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/insp.css">{% endblock %}
+{% block conteudo %}
+{# InspChamadoTab (steps/insp_chamado.py) na web: os MESMOS quatro cards — 1 Equipamento com falha, 2 Origem e datas,
+   3 Execução, 4 Subtarefas que a OS vai levar — e o rodapé com o "Criar OS de inspeção". O painel "Últimas OS" do app
+   (um popup) é o modal. Chegando com ?pai=<nº> (o "Abrir chamado" do card da OS) a tela já abre com o ativo, a data do
+   incidente e o responsável daquela OS; com ?ativo=<id> (atalho da aba Ativos), com o ativo. #}
+<section class="os-pagina" id="insp" data-pai="{{ pai }}" data-ativo="{{ ativo }}" data-agora="{{ agora }}"
+         data-programada="{{ programada }}" data-sem-pai="{{ sem.pai }}" data-sem-previa="{{ sem.previa }}">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/chamados">← Voltar</a>
+    <span class="insp-titulo">Inspeção de chamados</span>
+    <span class="os-cresce"></span>
+  </div>
+
+  {# ── Card 1: o equipamento ── #}
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">1</span><span class="os-cardf-t">Equipamento com falha</span></div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Cliente <i>*</i></span>
+        <select id="cb_cli" data-busca="1"><option value="">{{ sem.cli }}</option></select></label>
+      <label class="os-campo"><span class="os-lbl">Usina <i>*</i></span>
+        <select id="cb_usi" data-busca="1" disabled><option value="">{{ sem.usi }}</option></select></label>
+    </div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Tipo de ativo <i>*</i></span>
+        <select id="cb_tipo" data-busca="1" disabled><option value="">{{ sem.tipo }}</option></select></label>
+      <label class="os-campo"><span class="os-lbl">Ativo <i>*</i></span>
+        <select id="cb_ativo" data-busca="1" disabled><option value="">{{ sem.ativo }}</option></select></label>
+    </div>
+    <label class="os-campo"><span class="os-lbl">Marca do ativo <i>*</i> <small>(vem preenchida quando o cadastro do ativo diz a marca)</small></span>
+      <select id="cb_marca" data-busca="1" disabled><option value="">{{ sem.marca }}</option></select></label>
+  </div>
+
+  {# ── Card 2: origem e quando ── #}
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">2</span><span class="os-cardf-t">Origem e datas</span></div>
+    <div class="os-campo"><span class="os-lbl">OS pai <small>(a data do incidente passa a ser a dela)</small></span>
+      <span class="insp-pai">
+        <input id="ed_pai" type="text" inputmode="numeric" autocomplete="off" placeholder="nº da OS que originou (opcional)" value="{{ pai }}">
+        <button type="button" class="insp-hist" id="b_hist" hidden title="As últimas OS deste ativo — clique numa para usar como OS pai">Últimas OS</button>
+      </span></div>
+    <p class="insp-lb-pai" id="lb_pai">{{ sem.pai }}</p>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Data do incidente <i>*</i></span>
+        <input id="dt_inc" type="datetime-local" value="{{ agora }}"></label>
+      <label class="os-campo"><span class="os-lbl">Data programada <i>*</i> <small>(quando o técnico vai a campo)</small></span>
+        <input id="dt_prog" type="datetime-local" value="{{ programada }}"></label>
+    </div>
+  </div>
+
+  {# ── Card 3: quem executa + observação ── #}
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">3</span><span class="os-cardf-t">Execução</span></div>
+    <label class="os-campo"><span class="os-lbl">Responsável em campo <i>*</i></span>
+      <select id="cb_resp" data-busca="1"><option value="">— Selecione o responsável —</option></select></label>
+    <label class="os-campo"><span class="os-lbl">Observação</span>
+      <textarea id="ed_obs" rows="3" placeholder="contexto para o técnico (opcional)"></textarea></label>
+  </div>
+
+  {# ── Card 4: o que a OS vai levar ── #}
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">4</span><span class="os-cardf-t">Subtarefas que a OS vai levar</span></div>
+    <div class="insp-resumo" id="lb_resumo">{{ sem.previa }}</div>
+    <ol class="insp-subs" id="lb_subs"><li class="insp-vazio">—</li></ol>
+  </div>
+
+  <div class="insp-ok" id="res" hidden></div>
+  <div class="os-rodape">
+    <span class="os-ajuda insp-hint" id="hint"></span>
+    <button type="button" class="os-btn primaria" id="b_criar">Criar OS de inspeção</button>
+  </div>
+</section>
+
+{# o painel "ÚLTIMAS OS DESTE ATIVO" do app (_PainelOS): a linha inteira é o botão — clicar preenche a OS pai #}
+<div class="os-modal" id="modal_hist" hidden>
+  <div class="os-modal-fundo" data-fechar></div>
+  <div class="os-modal-card os-form insp-modal" role="dialog" aria-modal="true" aria-label="Últimas OS deste ativo">
+    <button type="button" class="os-modal-x" data-fechar aria-label="Fechar">×</button>
+    <div class="insp-modal-h"><span class="insp-modal-t">ÚLTIMAS OS DESTE ATIVO</span><span class="insp-modal-dica" id="hist_dica">clique para usar como OS pai</span></div>
+    <div class="insp-modal-nome" id="hist_nome">—</div>
+    <div class="insp-hist-lista" id="hist_lista"></div>
+    <div class="insp-modal-rod" id="hist_rod"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/os/static/insp.js"></script>{% endblock %}

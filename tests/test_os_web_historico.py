@@ -32,6 +32,11 @@ def _sem_rede(monkeypatch):
     monkeypatch.setattr(api, "get_pessoas_contas", lambda: PESSOAS)
     monkeypatch.setattr(api, "_code_to_loc", lambda: {})
     monkeypatch.setattr(api, "meta_tarefas_por_os", lambda ids: {})
+    # o nome curto do Ativo lê o catálogo do DISCO (21 mil ativos) para as frases de cada tipo: aqui, nenhum
+    monkeypatch.setattr(api, "_read_asset_cache", lambda: [])
+    # a lista de cada visão fica guardada alguns minutos (rotas._memo, 27/09): entre um teste e outro, memória limpa
+    from os_web import rotas
+    rotas._MEMO.clear()
 
 
 @pytest.fixture
@@ -46,7 +51,7 @@ def cli(monkeypatch):
 
 def test_lista_criadas_por_mim_com_as_colunas_do_app(cli, monkeypatch):
     visto = {}
-    def _lista(modo="criadas", id_account=None, id_label=None, de=None, ate=None, status_ids=None, cap=2000):
+    def _lista(modo="criadas", id_account=None, id_label=None, de=None, ate=None, status_ids=None, cap=2000, **k):
         visto.update(modo=modo, de=de, ate=ate, id_account=id_account)
         return LINHAS
     monkeypatch.setattr(api, "list_minhas_os", _lista)
@@ -202,7 +207,7 @@ def test_historico_tem_os_filtros_do_app(cli, monkeypatch):
 
 def test_filtros_do_servidor_vao_para_a_api_como_no_app(cli, monkeypatch):
     visto = {}
-    def _lista(modo="criadas", id_account=None, id_label=None, de=None, ate=None, status_ids=None, cap=2000):
+    def _lista(modo="criadas", id_account=None, id_label=None, de=None, ate=None, status_ids=None, cap=2000, **k):
         visto.update(modo=modo, id_account=id_account, id_label=id_label, status_ids=status_ids)
         return LINHAS
     monkeypatch.setattr(api, "list_minhas_os", _lista)

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block titulo %}Acompanhamento de chamados{% endblock %}
+{% block body_class %}os-form acomp{% endblock %}
+{% block head %}<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/os/static/acomp.css">{% endblock %}
+{% block conteudo %}
+{# O quadro da equipe de chamados (Levi, 27/09/2026 — 3ª rodada, aprovada: escuro navy, limpo, com o topo numa linha só e a
+   faixa de números baixa; a clara "ficou muito branco" e a parte de cima "ocupava boa parte da tela"). As colunas saem da
+   PRÓPRIA OS de acompanhamento — sem ticket, com ticket, finalizada; regra em acomp_web.py, filtros no acomp.js. #}
+{% macro cartao(c) -%}
+{% set cls = {'chegou': 'cr', 'ticket': 'ca', 'fim': 'cg'}[c.col] %}
+<a class="card {{ cls }}{% if c.col == 'fim' %} fim{% endif %}" href="/os/chamados/acompanhamento/{{ c.folio }}" title="{{ c.tempo }}"
+   data-marca="{{ c.marca }}" data-cliente="{{ c.cliente }}" data-tipo="{{ c.tipo }}" data-equipe="{{ '1' if c.da_equipe else '0' }}" data-busca="{{ c.busca }}">
+  <div class="l1"><span class="os">{{ c.folio }}</span>{% if c.inspecao %}<span class="meta">inspeção {{ c.inspecao }}</span>{% endif %}
+    {% if c.tempo_curto %}<span class="tag u-{{ c.urg }}">{{ c.tempo_curto }}</span>{% endif %}</div>
+  <div class="ct">{{ c.ativo_nome or c.code or '—' }}</div>
+  <div class="l3"><span class="loc">{{ c.local or '—' }}</span>{% if c.marca %}<span class="forn">{{ c.marca }}</span>{% endif %}</div>
+  {% if c.ticket %}<span class="tk">Ticket {{ c.ticket }}</span>{% endif %}
+  {% if not c.da_equipe and c.responsavel %}<div class="dono">no nome de {{ c.responsavel }}</div>{% endif %}
+  {% if c.ticket_nao_lido %}<div class="dono">não consegui ler o ticket desta OS agora</div>{% endif %}
+</a>
+{%- endmacro %}
+{% macro coluna(cls, chave, nome, sub, vazio) -%}
+<div class="col {{ cls }}" data-col="{{ chave }}">
+  <div class="col-h"><b>{{ nome }}</b><span>{{ sub }}</span><em data-n>{{ q.n[chave] }}</em></div>
+  <div class="cards">{% for c in q.colunas[chave] %}{{ cartao(c) }}{% endfor %}</div>
+  <div class="vazio{% if q.colunas[chave] %} oculto{% endif %}" data-vazio>{{ vazio }}</div>
+</div>
+{%- endmacro %}
+<section class="ac" id="acomp">
+  <div class="ac-head">
+    <div class="ac-tit"><a class="ac-volta" href="/os/chamados">← Chamados</a><h1>Acompanhamento <span>de chamados</span></h1></div>
+    <div class="ac-acoes">
+      {% if quando %}<span class="ac-fonte">lido do Fracttal às {{ quando[11:] }} de {{ quando[:5] }}</span>{% endif %}
+      <a class="btn btn-g" href="/os/chamados/acompanhamento?atualizar=1">Atualizar</a>
+    </div>
+  </div>
+  {% if erro %}<p class="aviso err" style="margin-top:14px">Não consegui ler as OS no Fracttal: {{ erro }}</p>{% endif %}
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">Sem ticket</div><div class="linha"><span class="val{% if q.n.chegou %} r{% endif %}">{{ q.n.chegou }}</span>
+      <span class="note">esperando abrir no fornecedor</span></div></div>
+    <div class="kpi"><div class="lbl">Há mais de 7 dias</div><div class="linha"><span class="val{% if q.mais_7 %} r{% endif %}">{{ q.mais_7 }}</span>
+      <span class="note">{% if q.mais_antiga %}a mais antiga: <b>{{ q.mais_antiga.folio }}</b>, {{ q.mais_antiga.dias }} dia{{ '' if q.mais_antiga.dias == 1 else 's' }}{% else %}nenhuma esperando{% endif %}</span></div></div>
+    <div class="kpi"><div class="lbl">Com o fornecedor</div><div class="linha"><span class="val{% if q.n.ticket %} a{% endif %}">{{ q.n.ticket }}</span>
+      <span class="note">ticket aberto</span></div></div>
+    <div class="kpi"><div class="lbl">Finalizados</div><div class="linha"><span class="val{% if q.n.fim %} g{% endif %}">{{ q.n.fim }}</span>
+      <span class="note">nos últimos 90 dias</span></div></div>
+  </div>
+  {% if erro_obs %}<p class="aviso">{{ erro_obs }}</p>{% endif %}
+  {% if q.fora %}<p class="aviso"><b>{{ q.fora }} de {{ q.total }}</b> OS de acompanhamento estão no nome de outra pessoa, não da equipe de chamados{% if equipe %} ({{ equipe }}){% endif %}. O quadro mostra todas.</p>{% endif %}
+  <div class="filtros">
+    <label class="fcampo"><span class="flbl">Fornecedor</span><select data-f="marca" data-osb="nativo"><option value="">Todos</option>{% for o in q.opcoes.marca %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
+    <label class="fcampo"><span class="flbl">Cliente</span><select data-f="cliente" data-osb="nativo"><option value="">Todos</option>{% for o in q.opcoes.cliente %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
+    <label class="fcampo"><span class="flbl">Tipo de ativo</span><select data-f="tipo" data-osb="nativo"><option value="">Todos</option>{% for o in q.opcoes.tipo %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
+    <label class="fcampo"><span class="flbl">Responsável</span><select data-f="equipe" data-osb="nativo"><option value="">Todos</option><option value="1">Equipe de chamados</option><option value="0">Outra pessoa</option></select></label>
+    <label class="fcampo"><span class="flbl">Buscar</span><input data-f="busca" type="search" placeholder="nº da OS, ativo, usina, ticket…" autocomplete="off"></label>
+    <button type="button" class="limpar" data-limpar>Limpar filtros</button>
+  </div>
+  <div class="board">
+    {{ coluna('cr', 'chegou', 'Chegaram', 'abrir o ticket', 'Nenhuma OS esperando ticket.') }}
+    {{ coluna('ca', 'ticket', 'Ticket aberto', 'com o fornecedor', 'Nenhum ticket aberto no fornecedor.') }}
+    {{ coluna('cg', 'fim', 'Finalizados', 'últimos 90 dias', 'Nenhum chamado finalizado nos últimos 90 dias.') }}
+  </div>
+  {% if q.canceladas or q.antigas %}<p class="rodape">{% if q.canceladas %}{{ q.canceladas }} cancelada{{ '' if q.canceladas == 1 else 's' }} fora do quadro{% endif %}{% if q.canceladas and q.antigas %} · {% endif %}{% if q.antigas %}{{ q.antigas }} finalizada{{ '' if q.antigas == 1 else 's' }} há mais de 90 dias{% endif %}.</p>{% endif %}
+</section>
+{% endblock %}
+{% block scripts %}<script src="/os/static/acomp.js"></script>{% endblock %}

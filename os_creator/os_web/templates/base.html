@@ -7,9 +7,12 @@
 <link rel="icon" href="/os/assets/grid-icon.png">
 <link rel="stylesheet" href="/os/static/os.css">
 <script src="/os/static/os_busca.js" defer></script>
+<script src="/os/static/carga.js" defer></script>
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
+{# o topo recolhido fica guardado NO NAVEGADOR (Levi, 27/09); aplicado antes do cabeçalho, para não piscar aberto #}
+<script>try { if (localStorage.getItem("osTopoRecolhido") === "1") document.body.classList.add("os-sem-topo"); } catch (e) {}</script>
 {# cabeçalho igual ao do app (MainWindow._build_header): símbolo + Grid Co. + subtítulo | avatar + nome + cargo #}
 <header class="os-header">
   <div class="os-marca">
@@ -32,9 +35,16 @@
 <nav class="os-tabs">
   {# `aba_nav` existe para a tela que usa `aba` para outra coisa (Tickets: Trackers/Strings) #}
   {% for t in abas %}
-  <a class="os-tab {% if (aba_nav|default(aba)) == t.chave %}on{% endif %}" href="{{ t.href }}">{% if t.icone %}{{ icone(t.icone, '#c9cfe0', 18) }}{% endif %}<span>{{ t.titulo }}</span></a>
+  <a class="os-tab {% if (aba_nav|default(aba)) == t.chave %}on{% endif %}" href="{{ t.href }}"{% if t.chave == 'hist' %} data-carga{% endif %}>{% if t.icone %}{{ icone(t.icone, '#c9cfe0', 18) }}{% endif %}<span>{{ t.titulo }}</span></a>
   {% endfor %}
+  <button type="button" class="os-recolher" id="b_topo" title="Recolher / mostrar o topo" aria-label="Recolher ou mostrar o topo">{{ icone('chevup', '#c9cfe0', 18) }}</button>
 </nav>
+<script>
+document.getElementById("b_topo").addEventListener("click", function () {
+  var recolhido = document.body.classList.toggle("os-sem-topo");
+  try { localStorage.setItem("osTopoRecolhido", recolhido ? "1" : "0"); } catch (e) {}
+});
+</script>
 {% endif %}
 <main class="os-main">
 {% block conteudo %}{% endblock %}

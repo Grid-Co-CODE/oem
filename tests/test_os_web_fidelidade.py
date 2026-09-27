@@ -55,7 +55,18 @@ def test_cards_do_lancador_iguais_aos_do_app():
     # as AREAS entram depois dos cards do app (steps/engenharia e Qt-free e pode ser importado)
     from steps import engenharia
     do_app.append((engenharia.ICONE, engenharia.TITULO, engenharia.DESCRICAO))
-    assert [(c["icone"], c["titulo"], c["sub"]) for c in lancador.CARDS] == do_app
+    # A UNICA divergencia da grade (Levi, 27/09/2026): os cards "Chamados" e "Inspecao de chamados" do app viram UM
+    # card de Chamados na web, no lugar do primeiro, com as duas portas dentro. O app segue com os dois — se ele mudar,
+    # este teste acusa, porque os titulos juntados tem de continuar existindo la.
+    titulos_app = [t for _i, t, _s in do_app]
+    assert all(t in titulos_app for t in lancador.CARDS_JUNTADOS), "o app mudou os cards de chamados"
+    esperado = []
+    for ico, tit, sub in do_app:
+        if tit == lancador.CARDS_JUNTADOS[0]:
+            esperado.append((ico, tit, lancador.SUB_CHAMADOS))
+        elif tit not in lancador.CARDS_JUNTADOS:
+            esperado.append((ico, tit, sub))
+    assert [(c["icone"], c["titulo"], c["sub"]) for c in lancador.CARDS] == esperado
 
 
 def test_icones_do_lancador_existem_como_svg():

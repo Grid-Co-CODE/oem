@@ -99,7 +99,9 @@
     <span class="det-ajuda">{{ n_sub }} subtarefa(s)</span><span class="os-cresce"></span>
     <a class="det-b verde" href="/os/clonar?folio={{ d.folio }}">{{ icone('copy', '#0B1020', 16) }}Clonar esta OS</a>
     <button type="button" class="det-b verde" data-acao="fluxo" title="Mostra esta OS encadeada com as outras — pais, filhas e todo o histórico do ativo">{{ icone('branch', '#0B1020', 16) }}Fluxo</button>
-    <a class="det-b ambar" href="/os/chamados/abrir?folio={{ d.folio }}" title="Cria a OS de chamado como filha desta, com a etiqueta CHAMADOS">Abrir chamado</a>
+    {# o chamado nasce de uma OS de TESTE (29/07): o botão abre a Inspeção de chamados com o ativo, a data do incidente e o
+       responsável DESTA OS, que vira a OS pai da inspeção (Levi, 27/09) #}
+    <a class="det-b ambar" href="/os/chamados/inspecao?pai={{ d.folio }}" title="Abre a Inspeção de chamados com o ativo, a data do incidente e o responsável desta OS">Abrir chamado</a>
     <button type="button" class="det-b ok" data-acao="concluir" title="Fecha a OS no Fracttal (irreversível — precisa de permissão na sua conta)">Concluir OS</button>
     <button type="button" class="det-b perigo" data-acao="cancelar" title="Cancela a OS no Fracttal (precisa de permissão na sua conta)">Cancelar OS</button>
     {% if parcial %}<button type="button" class="det-b ghost" data-fechar>Fechar</button>{% else %}<a class="det-b ghost" href="/os/historico">Fechar</a>{% endif %}

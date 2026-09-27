@@ -51,6 +51,8 @@
     return novo;
   }
   const urlCard = (d, status) => '/os/os/' + d.dataset.wid + '?parcial=1&status=' + encodeURIComponent(status || d.dataset.status || '');
+  // a OS mudou no Fracttal: quem mostra uma LISTA dela (o Histórico, por baixo do card) sabe que tem de reler ao fechar
+  const alterou = (d) => document.dispatchEvent(new CustomEvent('os:alterada', {detail: {wid: d && d.dataset.wid}}));
 
   // ── diálogo: clona o <template data-dlg> do card num overlay ACIMA do modal do Histórico ──
   let aberto = null;
@@ -120,7 +122,7 @@
         trava(ok, true); hint(dlg, 'gravando no Fracttal…');
         try {
           const j = await pedir('/os/api/os/' + d.dataset.wid + '/responsavel', {id_personnel: numero(opt.value), name: opt.textContent, folio: d.dataset.folio});
-          dlg.fechar(); await recarregar(d, urlCard(d), j.mensagem);
+          alterou(d); dlg.fechar(); await recarregar(d, urlCard(d), j.mensagem);
         } catch (e) { trava(ok, false); hint(dlg, e.message); }
       });
     },
@@ -149,7 +151,7 @@
         const ids = Array.from(marcadas).filter(Boolean).map(numero);
         if (!ids.length) { hint(dlg, 'Marque ao menos uma etiqueta (ou Cancelar).'); return; }
         trava(ok, true); hint(dlg, 'salvando…');
-        try { await pedir('/os/api/os/' + d.dataset.wid + '/etiquetas', {ids}); dlg.fechar(); await recarregar(d, urlCard(d)); }
+        try { await pedir('/os/api/os/' + d.dataset.wid + '/etiquetas', {ids}); alterou(d); dlg.fechar(); await recarregar(d, urlCard(d)); }
         catch (e) { trava(ok, false); hint(dlg, '⚠ ' + e.message); }
       });
     },
@@ -161,7 +163,7 @@
       const ta = q(d, '[data-nota-editor]'); const novo = ta.value.trim();
       if (novo === ta.defaultValue.trim()) { modoNota(d, false); return; }
       trava(btn, true, 'salvando…');
-      try { await pedir('/os/api/os/' + d.dataset.wid + '/nota', {nota: novo, status: d.dataset.status}); await recarregar(d, urlCard(d)); }
+      try { await pedir('/os/api/os/' + d.dataset.wid + '/nota', {nota: novo, status: d.dataset.status}); alterou(d); await recarregar(d, urlCard(d)); }
       catch (e) { trava(btn, false, 'Salvar'); mensagem(d, 'Não consegui salvar a observação. ' + e.message, true); }
     },
 
@@ -177,7 +179,7 @@
         trava(ok, true, 'concluindo…');
         try {
           const j = await pedir('/os/api/os/' + d.dataset.wid + '/concluir', {folio: d.dataset.folio});
-          dlg.fechar(); await recarregar(d, urlCard(d, 'Concluída'), j.mensagem, !!j.aviso);
+          alterou(d); dlg.fechar(); await recarregar(d, urlCard(d, 'Concluída'), j.mensagem, !!j.aviso);
         } catch (e) { trava(ok, false, 'Concluir OS'); hint(dlg, 'Erro ao concluir OS: ' + e.message); }
       });
     },
@@ -210,7 +212,7 @@
         try {
           const j = await pedir('/os/api/os/' + d.dataset.wid + '/tarefa/' + tid + '/executar',
             {valores, inicio: ini.value, fim: fim.value, nota: q(dlg.caixa, '[data-exec-nota]').value});
-          dlg.fechar(); await recarregar(d, urlCard(d), j.mensagem, !!j.aviso);
+          alterou(d); dlg.fechar(); await recarregar(d, urlCard(d), j.mensagem, !!j.aviso);
         } catch (e) { trava(ok, false, 'Salvar e registrar'); hint(dlg, 'Não consegui registrar: ' + e.message); }
       });
     },
@@ -234,7 +236,7 @@
         trava(ok, true); hint(dlg, 'cancelando no Fracttal…');
         try {
           const j = await pedir('/os/api/os/' + d.dataset.wid + '/cancelar', {id_status_custom: numero(sel.value), note: obs.value.trim(), folio});
-          dlg.fechar(); await recarregar(d, urlCard(d, 'Cancelada'), j.mensagem);
+          alterou(d); dlg.fechar(); await recarregar(d, urlCard(d, 'Cancelada'), j.mensagem);
         } catch (e) { trava(ok, false); hint(dlg, 'Não foi possível cancelar: ' + e.message); }
       });
     },

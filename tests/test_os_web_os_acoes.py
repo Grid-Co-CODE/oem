@@ -54,8 +54,9 @@ def test_o_card_habilita_os_controles_do_app(cli):
                 "Fecha a OS no Fracttal (irreversível — precisa de permissão na sua conta)",
                 "Cancela a OS no Fracttal (precisa de permissão na sua conta)"):
         assert txt in html, txt
-    # Clonar e Abrir chamado são telas de outros pacotes: viram links pelo número da OS
-    assert 'href="/os/clonar?folio=9812"' in html and 'href="/os/chamados/abrir?folio=9812"' in html
+    # Clonar e Abrir chamado são telas de outros pacotes: viram links pelo número da OS. O "Abrir chamado" leva à Inspeção
+    # de chamados com esta OS como pai (Levi, 27/09: o chamado nasce da OS de teste)
+    assert 'href="/os/clonar?folio=9812"' in html and 'href="/os/chamados/inspecao?pai=9812"' in html
     # o card sabe quem é (o JS recarrega o fragmento por aqui) e a etiqueta leva o id (o seletor nasce marcado)
     assert 'data-wid="501"' in html and 'data-folio="9812"' in html and 'data-status="Em Processo"' in html
     assert 'data-id="4660"' in html

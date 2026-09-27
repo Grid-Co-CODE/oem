@@ -16,8 +16,8 @@ CARDS = [
     ("Performance", "Inversores, Strings, Trackers e ETM"),
     ("COS", "Ocorrência de desligamento, religamento e inspeção"),
     ("PCM", "OS planejada por família de plano, vários ativos"),
-    ("Chamados", "Nova OS ligada a uma OS pai, com a etiqueta CHAMADOS"),
-    ("Inspeção de chamados", "OS de teste que fundamenta o chamado — subtarefas por ativo e marca"),
+    # os dois cards de chamados do app viram UM na web (Levi, 27/09/2026), com as três portas dentro
+    ("Chamados", "Inspeção, acompanhamento e fornecedores dos chamados de garantia"),
     ("Tradicional", "Criar OS do zero, passo a passo"),
     ("Clonar OS", "Duplicar uma OS existente pelo número"),
     ("Engenharia", "OS de ETM e as análises da Engenharia"),
