@@ -3,7 +3,8 @@
    O estado da tela é o JSON do servidor (fornecedores_web.tela) + os RASCUNHOS: cada bloco editado vira uma cópia em
    `S.rasc[chave]` até ser salvo ou descartado — trocar de aba ou de fornecedor não perde o que foi digitado, e a lista
    marca com um ponto âmbar o que está sem salvar. Salvar manda o bloco inteiro com a versão que a tela leu; se alguém
-   salvou antes, o servidor recusa (409) em vez de apagar a edição do outro. */
+   salvou antes, o servidor recusa (409) em vez de apagar a edição do outro. O visual é o do chamados.css — o mesmo
+   escuro do Acompanhamento (Levi, 27/09: "leva o mesmo visual escuro para o Controle de fornecedores"). */
 (function () {
   "use strict";
   const H = function (s) {
@@ -11,7 +12,6 @@
       return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
     });
   };
-  const dois = function (n) { return String(n).padStart(2, "0"); };
   const norm = function (s) { return String(s || "").trim().toLowerCase(); };
   const copia = function (x) { return JSON.parse(JSON.stringify(x)); };
   const raiz = document.getElementById("forn");
@@ -72,11 +72,11 @@
   function desenharAbas() {
     const nb = salvo("BASE").length;
     document.getElementById("f_abas").innerHTML =
-      '<button type="button" class="aba1b' + (S.aba === -1 ? " on" : "") + '" data-aba="-1">Base<em>' + dois(nb) + "</em></button>" +
+      '<button type="button" class="aba' + (S.aba === -1 ? " on" : "") + '" data-aba="-1">Base<em>' + nb + "</em></button>" +
       D.abas.map(function (a, i) {
         const n = a.fornecedores.filter(function (f) { return !f.arquivado; }).length;
-        return '<button type="button" class="aba1b' + (i === S.aba ? " on" : "") + '" data-aba="' + i + '">' + H(a.nome) +
-          "<em>" + dois(n) + "</em></button>";
+        return '<button type="button" class="aba' + (i === S.aba ? " on" : "") + '" data-aba="' + i + '">' + H(a.nome) +
+          "<em>" + n + "</em></button>";
       }).join("");
   }
 
@@ -113,14 +113,14 @@
     let h = '<div class="cf-lh"><span class="lbl">' + H(a.nome) + "</span>" +
             (D.pode_gravar ? '<button type="button" data-novo="1">+ novo fornecedor</button>' : "") + "</div>";
     if (S.novo) {
-      h += '<div class="li" style="cursor:default"><input class="in" id="novo_nome" maxlength="40" placeholder="nome do fornecedor" style="width:100%">' +
-           '<div class="bar"><button type="button" class="b1 bp" data-novo-ok="1">Criar</button>' +
-           '<button type="button" class="b0 bp" data-novo="0">Cancelar</button></div><div class="msg er" id="novo_msg"></div></div>';
+      h += '<div class="li novo"><input class="in" id="novo_nome" maxlength="40" placeholder="nome do fornecedor">' +
+           '<div class="bar"><button type="button" class="btn btn-g btn-p" data-novo-ok="1">Criar</button>' +
+           '<button type="button" class="btn btn-o btn-p" data-novo="0">Cancelar</button></div><div class="msg er" id="novo_msg"></div></div>';
     }
     h += itens.map(itemLista).join("");
     const sd = (a.sem_doc || []).filter(function (m) { return !S.rasc["MARCA:" + m]; });
     if (sd.length) {
-      h += '<div class="cf-lh" style="padding-top:18px"><span class="lbl">Sem processo escrito</span></div>' + sd.map(function (m) {
+      h += '<div class="cf-lh sep"><span class="lbl">Sem processo escrito</span></div>' + sd.map(function (m) {
         return '<button type="button" class="li sd" data-sem="' + H(m) + '"><div class="li-n">' + H(m) + "</div>" +
                '<div class="li-m">só a base e o bloco do tipo · pedir o documento à Singrid</div></button>';
       }).join("");
@@ -133,8 +133,8 @@
 
   function linhaLeitura(s, n) {
     return '<div class="rw"><span class="n">' + n + '</span><span class="ro">' + H(s.desc) + '</span><span class="t">' +
-      H(D.tipos[s.tipo] || s.tipo) + '</span><span class="t"' + (s.obrig ? ' style="color:var(--tx-d)"' : "") + ">" +
-      (s.obrig ? "obrigatória" : "—") + '</span><span class="t"' + (s.anexo ? ' style="color:var(--tx-d)"' : "") + ">" +
+      H(D.tipos[s.tipo] || s.tipo) + '</span><span class="t' + (s.obrig ? " on" : "") + '">' +
+      (s.obrig ? "obrigatória" : "—") + '</span><span class="t' + (s.anexo ? " on" : "") + '">' +
       (s.anexo ? "anexo" : "—") + '</span><span class="ch" title="campo no formulário do fornecedor">' + H(s.chave || "—") +
       "</span><span></span>" + (s.tipo === "lista" && (s.opcoes || []).length ?
         '<div class="ops">' + s.opcoes.map(function (o) { return "<span>" + H(o) + "</span>"; }).join("") + "</div>" : "") + "</div>";
@@ -148,7 +148,7 @@
     }).join("");
     let col6;
     if (marca) {
-      col6 = '<select class="sel" data-k="vale"><option value="">todos os tipos</option>' + (marca.atende || []).map(function (t) {
+      col6 = '<select class="sel" data-k="vale" data-osb="nativo"><option value="">todos os tipos</option>' + (marca.atende || []).map(function (t) {
         return '<option value="' + H(t) + '"' + ((s.so_para || [])[0] === t ? " selected" : "") + ">só " + H(nomeTipo(t)) + "</option>";
       }).join("") + "</select>";
     } else {
@@ -161,22 +161,22 @@
     return '<div class="rw' + (fora ? " fora" : "") + (rep ? " rep" : "") + '" data-ch="' + H(ch) + '" data-i="' + i + '">' +
       '<span class="n">' + (fora || rep ? "—" : n) + "</span>" +
       '<input class="in" data-k="desc" value="' + H(s.desc) + '" maxlength="250" placeholder="a pergunta ao técnico">' +
-      '<select class="sel" data-k="tipo">' + tipos + "</select>" +
+      '<select class="sel" data-k="tipo" data-osb="nativo">' + tipos + "</select>" +
       '<label><input type="checkbox" data-k="obrig"' + (s.obrig ? " checked" : "") + "> obrigatória</label>" +
       '<label><input type="checkbox" data-k="anexo"' + (s.anexo ? " checked" : "") + "> anexo</label>" + col6 +
       '<span class="mv"><button type="button" data-mv="-1" title="Subir">↑</button><button type="button" data-mv="1" title="Descer">↓</button>' +
       '<button type="button" class="x" data-tira="1" title="Tirar a pergunta">×</button></span>' +
       (s.tipo === "lista" ? '<div class="ops">' + (s.opcoes || []).map(function (o, j) {
-        return "<span>" + H(o) + ' <button type="button" class="x" data-tira-op="' + j + '" title="Tirar a opção" style="background:none;border:0;color:var(--tx-f);cursor:pointer">×</button></span>';
+        return "<span>" + H(o) + ' <button type="button" class="x" data-tira-op="' + j + '" title="Tirar a opção">×</button></span>';
       }).join("") + '<input class="in" data-op-nova="1" maxlength="60" placeholder="nova opção e Enter"></div>' : "") +
       (nota ? '<div class="nota">' + nota + "</div>" : "") + "</div>";
   }
 
   function barra(ch, extra) {
     const pode = D.pode_gravar;
-    return '<div class="bar"><button type="button" class="b1" data-salvar="' + H(ch) + '"' + (pode && sujo(ch) ? "" : " disabled") + ">" +
+    return '<div class="bar"><button type="button" class="btn btn-g" data-salvar="' + H(ch) + '"' + (pode && sujo(ch) ? "" : " disabled") + ">" +
       (ch.indexOf("MARCA:") === 0 ? "Salvar fornecedor" : ch === "BASE" ? "Salvar a base" : "Salvar") + "</button>" +
-      '<button type="button" class="b0" data-descartar="' + H(ch) + '"' + (sujo(ch) ? "" : " disabled") + ">Descartar alterações</button>" +
+      '<button type="button" class="btn btn-o" data-descartar="' + H(ch) + '"' + (sujo(ch) ? "" : " disabled") + ">Descartar alterações</button>" +
       (extra || "") + "</div>";
   }
 
@@ -204,10 +204,10 @@
     }).join("");
     const tiposPoe = D.tipos_ativo.filter(function (t) { return (b.atende || []).indexOf(t) < 0; });
     const arq = novo ? "" : (S.conf === ch ?
-      '<span class="dica" style="color:var(--amber-t)">' + (b.arquivado ? "Reativar volta a oferecer " + H(m) + " na inspeção." :
-        "Arquivar tira " + H(m) + " da inspeção; as OS já criadas não mudam.") + '</span><button type="button" class="b1 bp" data-arq-ok="' + H(ch) + '">' +
-        (b.arquivado ? "Reativar" : "Arquivar") + '</button><button type="button" class="b0 bp" data-arq-nao="1">Voltar</button>' :
-      '<button type="button" class="b0" data-arquivar="' + H(ch) + '"' + (D.pode_gravar ? "" : " disabled") + ">" +
+      '<span class="dica av">' + (b.arquivado ? "Reativar volta a oferecer " + H(m) + " na inspeção." :
+        "Arquivar tira " + H(m) + " da inspeção; as OS já criadas não mudam.") + '</span><button type="button" class="btn btn-i btn-p" data-arq-ok="' + H(ch) + '">' +
+        (b.arquivado ? "Reativar" : "Arquivar") + '</button><button type="button" class="btn btn-o btn-p" data-arq-nao="1">Voltar</button>' :
+      '<button type="button" class="btn btn-o" data-arquivar="' + H(ch) + '"' + (D.pode_gravar ? "" : " disabled") + ">" +
         ((D.blocos[ch] || {}).arquivado ? "Reativar fornecedor" : "Arquivar fornecedor") + "</button>");
     return '<div class="cf-t">' + H(m) + " · " + H(a.nome) + (b.arquivado ? ' <span class="chip">arquivado</span>' : "") + "</div>" +
       '<div class="cf-s">' + (b.arquivado ? "Arquivado: não aparece na inspeção." : 'A inspeção nasce com <b id="f_resumo">' + H(resumo(ef)) + "</b>.") +
@@ -218,9 +218,9 @@
       '" maxlength="300" placeholder="portal, e-mail, formulário…"></div></div>' +
       '<div class="fc"><span class="lbl">Atende</span><div class="atende">' + (b.atende || []).map(function (t) {
         return '<span class="chip">' + H(nomeTipo(t)) + '<button type="button" data-tira-tipo="' + H(t) + '" title="Tirar este tipo">×</button></span>';
-      }).join("") + (tiposPoe.length ? '<select data-poe-tipo="' + H(ch) + '"><option value="">+ tipo de ativo</option>' +
+      }).join("") + (tiposPoe.length ? '<select data-osb="nativo" data-poe-tipo="' + H(ch) + '"><option value="">+ tipo de ativo</option>' +
         tiposPoe.map(function (t) { return '<option value="' + H(t) + '">' + H(nomeTipo(t)) + "</option>"; }).join("") + "</select>" : "") + "</div></div>" +
-      (b.igual_a && !S.rasc[ch] ? '<p class="aviso-l"><i></i>Hoje é o mesmo pacote da ' + H(b.igual_a) + ": no código as duas listas são uma só, e " +
+      (b.igual_a && !S.rasc[ch] ? '<p class="aviso">Hoje é o mesmo pacote da ' + H(b.igual_a) + ": no código as duas listas são uma só, e " +
         H(m) + " acompanha o que for salvo na " + H(b.igual_a) + ". Salvando aqui, " + H(m) + " passa a ter a lista dela.</p>" : "") +
       '<div class="sec"><div class="sec-t"><span class="lbl">1 · Base</span><span>toda inspeção</span><button type="button" data-ir-base="1">editar a base</button></div>' +
         salvo("BASE").map(function (s, i) { return linhaLeitura(s, i + 1); }).join("") + "</div>" +

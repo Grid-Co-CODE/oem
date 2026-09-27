@@ -1,18 +1,20 @@
-/* os_creator/os_web/static/acomp.css — o Acompanhamento de chamados: o quadro e a tela do chamado (Levi, 27/09/2026).
-   Saiu na 3ª rodada de desenho do mesmo dia. 1ª: o 1B escuro, "parece algo mal feito… tá tudo muito escuro". 2ª: a
-   identidade clara do site, "ficou muito branco, quero um visual mais dark" + "essa parte de cima está ocupando boa parte
-   da tela". Esta, aprovada ("Ficou muito bom!!!"): o ESCURO navy da plataforma (os tokens do tema escuro — #090d18/#161d30,
-   verde Grid, texto branco frio, sem lilás) com o desenho enxuto da clara — superfícies chapadas, sem gradiente nem card
-   tingido, topo numa linha só e a faixa de números baixa. Estado segue o semáforo por matiz distinto: vermelho = esperando
-   ticket, âmbar = com o fornecedor, verde = finalizado. */
+/* os_creator/os_web/static/chamados.css — o visual escuro das telas de chamados: o Acompanhamento (o quadro e a tela do
+   chamado) e o Controle de fornecedores (Levi, 27/09/2026).
+   Saiu na 3ª rodada de desenho do Acompanhamento, no mesmo dia. 1ª: o 1B escuro, "parece algo mal feito… tá tudo muito
+   escuro". 2ª: a identidade clara do site, "ficou muito branco, quero um visual mais dark" + "essa parte de cima está
+   ocupando boa parte da tela". Esta, aprovada ("Ficou muito bom!!!"): o ESCURO navy da plataforma (os tokens do tema
+   escuro — #090d18/#161d30, verde Grid, texto branco frio, sem lilás) com o desenho enxuto da clara — superfícies
+   chapadas, sem gradiente nem card tingido, topo numa linha só e a faixa de números baixa. Estado segue o semáforo por
+   matiz distinto: vermelho = esperando ticket, âmbar = com o fornecedor, verde = finalizado. O Controle de fornecedores
+   veio logo depois ("leva o mesmo visual escuro para o Controle de fornecedores"): a seção dele fica no fim. */
 :root{--bg:#090d18;--sf:#161d30;--sf2:#1c2640;--sf3:#243154;--ln:rgba(255,255,255,.07);--ln2:rgba(255,255,255,.13);
   --tx:#e9eef6;--mu:#94a3b8;--fa:#64748b;--gr:#a3d900;--gr-h:#b6ec12;--gr-t:#b8e84a;--gr-tint:rgba(163,217,0,.13);
   --rd:#ff5b6e;--rd-t:#ff8a98;--rd-tint:rgba(255,91,110,.13);--am:#F0B53D;--am-t:#f5c86a;--am-tint:rgba(240,181,61,.14);
   --ok:#4ade80;--ok-t:#7ee2a8;--ok-tint:rgba(74,222,128,.12);
   --font:'Inter','Segoe UI',Arial,sans-serif;--mono:ui-monospace,Consolas,'Cascadia Mono',monospace}
 
-body.os-form.acomp{background:var(--bg);color:var(--tx);font-family:var(--font)}
-body.acomp :focus-visible{outline:2px solid var(--gr);outline-offset:2px}
+body.os-form.cham{background:var(--bg);color:var(--tx);font-family:var(--font)}
+body.cham :focus-visible{outline:2px solid var(--gr);outline-offset:2px}
 .ac{max-width:1480px;margin:0 auto;padding:14px 26px 56px}
 .ac *{box-sizing:border-box}
 .oculto{display:none!important}
@@ -58,13 +60,13 @@ body.acomp :focus-visible{outline:2px solid var(--gr);outline-offset:2px}
 .filtros{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
 .fcampo{display:flex;flex-direction:column;gap:4px}
 .flbl{font:600 10.5px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--mu)}
-body.acomp .filtros select,body.acomp .filtros input{background:transparent;border:0;border-bottom:1px solid var(--ln2);border-radius:0;
+body.cham .filtros select,body.cham .filtros input{background:transparent;border:0;border-bottom:1px solid var(--ln2);border-radius:0;
   color:var(--tx);font:500 13px var(--font);padding:5px 2px;height:32px;min-width:170px}
-body.acomp .filtros input{min-width:250px;font-weight:400}
-body.acomp .filtros select:hover,body.acomp .filtros input:hover{border-color:var(--ln2);border-bottom-color:var(--mu)}
-body.acomp .filtros select:focus,body.acomp .filtros input:focus{outline:none;border-bottom-color:var(--gr)}
-body.acomp .filtros input::placeholder{color:var(--fa)}
-body.acomp .filtros option{color:var(--tx);background:var(--sf)}
+body.cham .filtros input{min-width:250px;font-weight:400}
+body.cham .filtros select:hover,body.cham .filtros input:hover{border-color:var(--ln2);border-bottom-color:var(--mu)}
+body.cham .filtros select:focus,body.cham .filtros input:focus{outline:none;border-bottom-color:var(--gr)}
+body.cham .filtros input::placeholder{color:var(--fa)}
+body.cham .filtros option{color:var(--tx);background:var(--sf)}
 .limpar{background:none;border:0;color:var(--gr-t);font:500 12.5px var(--font);cursor:pointer;padding:0 0 8px;margin-left:auto}
 .limpar:hover{color:#fff;text-decoration:underline;text-underline-offset:3px}
 
@@ -130,10 +132,10 @@ body.acomp .filtros option{color:var(--tx);background:var(--sf)}
 .bloco.recolhido .recolher svg{transform:rotate(-90deg)}
 .dica{font-size:11.5px;line-height:1.5;color:var(--fa);margin:8px 0 0}
 .canal{font-size:12.5px;line-height:1.55;color:var(--tx);margin:0}
-body.acomp .ac .campo-tk{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px solid var(--ln2);border-radius:0;
+body.cham .ac .campo-tk{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px solid var(--ln2);border-radius:0;
   color:#fff;font:500 14px var(--mono);padding:6px 2px;height:36px}
-body.acomp .ac .campo-tk:focus{outline:none;border-bottom-color:var(--gr)}
-body.acomp .ac .campo-tk:disabled{color:var(--mu)}
+body.cham .ac .campo-tk:focus{outline:none;border-bottom-color:var(--gr)}
+body.cham .ac .campo-tk:disabled{color:var(--mu)}
 .linha-tk{display:flex;gap:10px;align-items:flex-end}
 .msg{font-size:12.5px;min-height:18px;margin-top:8px}
 .msg:empty{min-height:0;margin:0}
@@ -165,10 +167,10 @@ table.t td.v.mono{font:12px var(--mono)}
 table.t td.c{width:1%;white-space:nowrap;text-align:right}
 table.t tbody tr:hover td{background:rgba(255,255,255,.025)}
 .vazio-l{font-size:12.5px;color:var(--fa);padding:4px 0;margin:0}
-body.acomp .ac textarea.obs{width:100%;min-height:70px;background:var(--bg);border:1px solid var(--ln2);border-radius:8px;color:var(--tx);
+body.cham .ac textarea.obs{width:100%;min-height:70px;background:var(--bg);border:1px solid var(--ln2);border-radius:8px;color:var(--tx);
   font:400 13px/1.55 var(--font);padding:9px 11px;resize:vertical}
-body.acomp .ac textarea.obs:focus{outline:none;border-color:var(--gr)}
-body.acomp .ac textarea.obs::placeholder{color:var(--fa)}
+body.cham .ac textarea.obs:focus{outline:none;border-color:var(--gr)}
+body.cham .ac textarea.obs::placeholder{color:var(--fa)}
 .comp-l{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}
 .tl{margin-top:16px}
 .tl-e{display:grid;grid-template-columns:50px 1fr;gap:12px}
@@ -192,7 +194,97 @@ body.acomp .ac textarea.obs::placeholder{color:var(--fa)}
 @media (max-width:640px){.ac{padding:12px 14px 44px}.ac-head h1{font-size:18px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px}
   .kpi:nth-child(odd){padding-left:0;border-left:0}.kpi:nth-child(even){padding:0 0 0 12px;border-left:1px solid var(--ln)}
   .kpi .val{font-size:21px}.kpi .note{white-space:normal}table.t td.k,table.t.qa td.k{width:auto}
-  body.acomp .os-n2,body.acomp .os-cargo,body.acomp .os-nome,body.acomp .os-sair{display:none}
-  body.acomp .os-header{padding:10px 16px}body.acomp .os-tabs{overflow-x:auto}body.acomp .os-tab{white-space:nowrap;padding:10px 12px}
-  .filtros{gap:16px}body.acomp .filtros select{min-width:140px}body.acomp .filtros input{min-width:0;width:100%}.fcampo:has(input){flex:1 1 100%}}
+  body.cham .os-n2,body.cham .os-cargo,body.cham .os-nome,body.cham .os-sair{display:none}
+  body.cham .os-header{padding:10px 16px}body.cham .os-tabs{overflow-x:auto}body.cham .os-tab{white-space:nowrap;padding:10px 12px}
+  .filtros{gap:16px}body.cham .filtros select{min-width:140px}body.cham .filtros input{min-width:0;width:100%}.fcampo:has(input){flex:1 1 100%}}
 @media (prefers-reduced-motion:reduce){.card{transition-duration:.06s}.recolher svg{transition-duration:.06s}}
+
+/* ── Controle de fornecedores ── o desenho é do fornecedores.js (as classes são as dele). A lista à esquerda e o editor à
+   direita, cada um num cartão, como a tela do chamado. Os campos do editor são CAIXAS, e não sublinhados como os filtros
+   do quadro: numa grade de perguntas, é a caixa que separa um campo do vizinho. Tudo sob #forn: este arquivo também
+   serve ao Acompanhamento, e nada daqui pode vazar para lá. */
+#forn .ac-head{margin-bottom:14px}
+#forn .abas{display:flex;gap:2px;border-bottom:1px solid var(--ln);margin:2px 0 16px;flex-wrap:wrap}
+#forn .aba{display:inline-flex;align-items:baseline;gap:7px;background:none;border:0;border-bottom:2px solid transparent;
+  margin-bottom:-1px;padding:9px 12px;color:var(--mu);font:500 13px var(--font);cursor:pointer}
+#forn .aba:hover{color:#fff}
+#forn .aba.on{color:#fff;border-bottom-color:var(--gr)}
+#forn .aba em{font:600 11.5px var(--font);font-style:normal;color:var(--fa);font-variant-numeric:tabular-nums}
+#forn .aba.on em{color:var(--gr-t)}
+#forn .cf{display:grid;grid-template-columns:320px minmax(0,1fr);gap:18px;align-items:start}
+/* o editor é largo (7 colunas por pergunta): até 1200 px a lista vai para cima, com altura contida, e o editor ganha a
+   largura toda — lado a lado, numa tela de 1024 px a coluna da pergunta sumia entre as fixas */
+@media (max-width:1200px){#forn .cf{grid-template-columns:minmax(0,1fr)}#forn .cf-l{max-height:340px;overflow-y:auto}}
+#forn .cf-l{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:4px 0 6px;min-width:0;overflow:hidden}
+#forn .cf-r{background:var(--sf);border:1px solid var(--ln);border-radius:12px;padding:16px 18px 18px;min-width:0;
+  display:flex;flex-direction:column;gap:12px}
+#forn .lbl{font:600 10.5px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--mu)}
+#forn .cf-lh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px 9px}
+#forn .cf-lh.sep{padding-top:18px}
+#forn .cf-lh button,#forn .sec-t button,#forn .add{background:none;border:0;padding:0;color:var(--gr-t);
+  font:500 12.5px var(--font);cursor:pointer}
+#forn .cf-lh button:hover,#forn .sec-t button:hover,#forn .add:hover{color:#fff}
+#forn .li{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--ln);
+  border-left:3px solid transparent;padding:11px 16px 11px 13px;color:inherit;font:inherit;cursor:pointer}
+#forn .li:hover{background:rgba(255,255,255,.03)}
+#forn .li.on{border-left-color:var(--gr);background:var(--sf2)}
+#forn .li.novo{cursor:default;background:var(--sf2)}
+#forn .li-n{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:600 13.5px/1.3 var(--font);color:#fff}
+#forn .li-m{font-size:12px;line-height:1.4;color:var(--mu);margin-top:3px}
+#forn .li-c{font-size:11.5px;color:var(--fa);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#forn .li.sd .li-n,#forn .li.arq .li-n{color:var(--mu);font-weight:500}
+#forn .sujo{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--am)}
+#forn .chip,#forn .ops>span{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--ln2);border-radius:999px;
+  padding:1px 9px;font:500 11px/1.6 var(--font);color:var(--mu);white-space:nowrap}
+#forn .chip button,#forn .ops>span button{background:none;border:0;padding:0;margin-left:2px;color:var(--fa);
+  font-size:13px;line-height:1;cursor:pointer}
+#forn .chip button:hover,#forn .ops>span button:hover{color:var(--rd-t)}
+#forn .cf-t{font:700 17px/1.3 var(--font);color:#fff;letter-spacing:-.01em}
+#forn .cf-s{font-size:12.5px;line-height:1.55;color:var(--mu)}
+#forn .cf-s b{color:var(--tx);font-weight:600}
+#forn .cf-r .dica{margin:0}
+#forn .dica.av{color:var(--am-t)}
+#forn .cf-r .aviso{margin:0}
+#forn .campos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px 14px}
+#forn .fc{display:flex;flex-direction:column;gap:6px;min-width:0}
+#forn .atende{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:34px}
+/* (1,2,1) para vencer o body.os-form input/select (0,1,2) do os.css, que dá 40 px e o fundo dele a todo campo */
+body.cham #forn .in,body.cham #forn .sel,body.cham #forn .atende select{width:100%;height:34px;box-sizing:border-box;
+  background:var(--bg);border:1px solid var(--ln2);border-radius:8px;color:var(--tx);font:400 13px var(--font);padding:0 10px}
+body.cham #forn .atende select{width:auto;height:28px;padding:0 8px;font-size:12px;color:var(--mu)}
+body.cham #forn .in:hover,body.cham #forn .sel:hover,body.cham #forn .atende select:hover{border-color:rgba(255,255,255,.24)}
+body.cham #forn .in:focus,body.cham #forn .sel:focus,body.cham #forn .atende select:focus{outline:none;border-color:var(--gr)}
+body.cham #forn .in:disabled{background:transparent;color:var(--mu)}
+body.cham #forn .in::placeholder{color:var(--fa)}
+body.cham #forn option{background:var(--sf);color:var(--tx)}
+#forn .sec{border-top:1px solid var(--ln);padding-top:12px;display:flex;flex-direction:column}
+#forn .sec-t{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+#forn .sec-t .lbl{color:var(--tx)}
+#forn .sec-t span{font-size:11.5px;color:var(--fa)}
+#forn .sec-t button{margin-left:auto;font-size:12px}
+#forn .rw{display:grid;grid-template-columns:24px minmax(0,1fr) 120px 100px 80px 150px 64px;gap:10px;align-items:center;
+  padding:6px 0;border-bottom:1px solid var(--ln)}
+#forn .rw.cab{padding:2px 0 7px;border-bottom:1px solid var(--ln2);font:600 10.5px/1.2 var(--font);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--mu)}
+#forn .rw .n{font:600 12px var(--font);color:var(--gr-t);text-align:right;font-variant-numeric:tabular-nums}
+#forn .rw .ro{font-size:12.5px;line-height:1.45;color:var(--tx)}
+#forn .rw .t{font-size:12px;color:var(--fa)}
+#forn .rw .t.on{color:var(--tx)}
+#forn .rw .ch{font:11px var(--mono);color:var(--fa);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#forn .rw label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mu);cursor:pointer}
+body.cham #forn .rw input[type=checkbox]{width:15px;height:15px;margin:0;padding:0;accent-color:var(--gr)}
+#forn .rw .mv{display:flex;gap:2px;justify-content:flex-end}
+#forn .rw .mv button{background:none;border:0;border-radius:6px;padding:4px 5px;color:var(--fa);font-size:13px;line-height:1;cursor:pointer}
+#forn .rw .mv button:hover{color:#fff;background:rgba(255,255,255,.06)}
+#forn .rw .mv button.x:hover{color:var(--rd-t)}
+#forn .rw.fora{opacity:.45}
+#forn .rw.rep .ro,body.cham #forn .rw.rep .in{text-decoration:line-through;color:var(--fa)}
+#forn .rw .nota{grid-column:2 / -1;font-size:11.5px;color:var(--fa);margin-top:-2px}
+#forn .ops{grid-column:2 / -1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-bottom:2px}
+body.cham #forn .ops .in{width:auto;min-width:220px;max-width:420px;height:28px;font-size:12px}
+#forn .add{align-self:flex-start;padding-top:10px}
+#forn .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:4px}
+#forn .li .bar{padding-top:8px}
+#forn .vazio{margin:8px 0 2px}
+/* a grade de perguntas tem 7 colunas: em tela estreita ela rola DENTRO do cartão, e a página não ganha rolagem lateral */
+@media (max-width:900px){#forn .sec{overflow-x:auto}#forn .rw{min-width:780px}#forn .campos{grid-template-columns:minmax(0,1fr)}}

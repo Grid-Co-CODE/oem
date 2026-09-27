@@ -71,6 +71,19 @@ def test_a_pagina(cli):
     assert "O App de Campo" in h and "/os/static/fornecedores.js" in h
 
 
+def test_o_mesmo_visual_escuro_do_acompanhamento(cli, monkeypatch):
+    """Levi, 27/09: "leva o mesmo visual escuro para o Controle de fornecedores". As três telas de chamados leem a MESMA
+    folha — o 1B (chamados1b.css) saiu de vez."""
+    import api
+    monkeypatch.setattr(api, "list_chamados", lambda **k: [])              # o quadro sem ir ao Fracttal
+    monkeypatch.setattr(api, "tickets_os3_em_massa", lambda ids: {})
+    for url in ("/os/chamados/fornecedores", "/os/chamados/acompanhamento"):
+        h = cli.get(url).get_data(as_text=True)
+        assert 'href="/os/static/chamados.css"' in h and "os-form cham" in h and "chamados1b" not in h, url
+    assert cli.get("/os/static/chamados.css").status_code == 200
+    assert cli.get("/os/static/chamados1b.css").status_code == 404
+
+
 def test_sem_credencial_a_pagina_avisa(cli, monkeypatch):
     monkeypatch.setattr(ga, "pode_gravar", lambda: False)
     h = cli.get("/os/chamados/fornecedores").get_data(as_text=True)
