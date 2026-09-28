@@ -197,7 +197,7 @@ def test_criado_por_etiqueta_e_periodo_buscam_na_hora(monkeypatch):
     monkeypatch.setattr(api, "list_minhas_os", lambda **k: [dict(LINHA)])
     h = _cli().get("/os/historico").get_data(as_text=True)
     assert '["pessoa", "etiqueta"].forEach' in h and 'input[name=de], input[name=ate]' in h
-    assert "window.OsCarga.mostrar(t)" in h and '<script src="/os/static/carga.js" defer></script>' in h
+    assert "window.OsCarga.mostrar(t)" in h and '<script src="/os/static/carga.js"></script>' in h            # sem defer desde 27/09 (as telas usam na carga)
     assert 'href="/os/historico" data-carga' in h                        # a aba também mostra o círculo
 
 

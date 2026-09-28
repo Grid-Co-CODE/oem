@@ -7,11 +7,14 @@
    o estado da tela é sempre o que o Fracttal diz, e não o que o navegador lembra. #}
 {% block conteudo %}
 <section class="os-pagina">
-  <nav class="os-seg os-subnav" aria-label="Solicitação / PCM">
-    <a href="/os/solicitacao">Nova solicitação</a>
-    <a class="on" href="/os/solicitacao/fila">Fila do PCM</a>
-    <a href="/os/solicitacao/historico">Histórico</a>
-  </nav>
+  {# 27/09: a fila e o histórico são do setor PCM (a Nova solicitação saiu daqui: mora nas Solicitações da tela inicial) #}
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/setor/pcm">&larr; PCM</a>
+    <nav class="os-seg os-subnav" aria-label="PCM" style="margin:0">
+      <a class="on" href="/os/solicitacao/fila">Fila do PCM</a>
+      <a href="/os/solicitacao/historico">Histórico de solicitações</a>
+    </nav>
+  </div>
 
   <form class="os-hist-topo" method="get" action="/os/solicitacao/fila">
     <input type="hidden" name="ver" value="{{ ver }}">
@@ -131,8 +134,8 @@
     r.hidden = false; r.className = "os-resultado" + (bom ? "" : " ruim"); r.textContent = txt;
   }
   function post(url, corpo_, ao_dar_certo) {
-    fetch(url, {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify(corpo_)})
+    OsCarga.buscar(url, {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(corpo_)}, "Gravando no Fracttal…")
       .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
       .then(function (x) {
         resultado(x.j.erro || x.j.mensagem || "Sem resposta.", x.ok);
@@ -173,7 +176,7 @@
       document.querySelectorAll("tr.sol-l").forEach(function (t) { t.classList.remove("on"); });
       a.closest("tr").classList.add("on");
       corpo.innerHTML = '<p class="os-ajuda">Carregando a solicitação…</p>'; mostrarPainel(true);
-      fetch("/os/api/solic/" + a.dataset.id, {credentials: "same-origin"})
+      OsCarga.buscar("/os/api/solic/" + a.dataset.id, {credentials: "same-origin"}, "Abrindo a solicitação…")
         .then(function (r) { return r.json(); })
         .then(function (j) { if (j.erro) { corpo.innerHTML = '<p class="os-erro">' + j.erro + "</p>"; return; } desenhar(j); })
         .catch(function (e) { corpo.innerHTML = '<p class="os-erro">Não consegui carregar: ' + e + "</p>"; });

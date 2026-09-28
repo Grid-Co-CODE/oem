@@ -30,7 +30,9 @@
   const dica = (t) => { hint.textContent = t || ''; };
 
   async function pedir(url, opts) {
-    const r = await fetch(url, Object.assign({headers: {'Accept': 'application/json'}}, opts || {}));
+    // o círculo de carga do base.html (27/09); sem ele — o teste que roda este arquivo no node —, o fetch puro
+    const o = Object.assign({headers: {'Accept': 'application/json'}}, opts || {});
+    const r = await (typeof OsCarga !== 'undefined' ? OsCarga.buscar(url, o, 'Carregando…') : fetch(url, o));
     let j = {};
     try { j = await r.json(); } catch (e) { /* corpo vazio */ }
     if (!r.ok) throw new Error(j.erro || ('HTTP ' + r.status));

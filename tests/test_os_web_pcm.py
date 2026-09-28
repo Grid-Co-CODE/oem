@@ -87,14 +87,16 @@ def test_a_tela_tem_a_estrutura_da_pcmtab_do_app(cli):
                 "Plano de tarefa", "Subt.", "Data/hora programada", "0 marcado(s)",
                 "Programação em massa", "(aplica a todas as linhas marcadas)", "Aplicar data", "Manhã (07:00)", "Tarde (13:00)", "Avançar 1 mês",
                 "Detalhes e responsável", "Observação", "(opcional)", "Requerido por", "(digite p/ pesquisar)", "Recarregar responsáveis",
-                "Ela depende de outra OS?", "(opcional — OS pai)", "Selecione a OS pai (nº) — opcional", "Criar OS (PCM)"):
+                # "OS pai" COMO RÓTULO, e a explicação depois, como o app faz desde 15/09 (steps/pcm.py)
+                "OS pai", "(opcional — se esta OS depende de outra)", "Selecione a OS pai (nº) — opcional", "Criar OS (PCM)"):
         assert txt in html, txt
     # as dicas (tooltips) do app viram title
     assert 'title="Marca apenas os ativos que têm plano nesta família (desmarca os demais)"' in html
     assert 'title="Define a DATA (dia/mês/ano) de todas as linhas; mantém o horário de cada uma"' in html
     # clientes: TODOS os que têm o campo (o PCM não filtra por carteira, diferente da Performance), ordenados
-    assert "<option>2C</option>" in html and "<option>Thopen</option>" in html
-    assert html.index("<option>2C</option>") < html.index("<option>Thopen</option>")
+    # com `value`: sem ele o navegador colapsa o espaço duplo do nome (tests/test_os_web_option_value.py, 22/09)
+    assert '<option value="2C">2C</option>' in html and '<option value="Thopen">Thopen</option>' in html
+    assert html.index('<option value="2C">2C</option>') < html.index('<option value="Thopen">Thopen</option>')
     assert 'href="/os/static/pcm.css"' in html and 'src="/os/static/pcm.js"' in html
     assert "alert(" not in html
 

@@ -19,7 +19,7 @@
     if (!/^\d+$/.test(folio)) { hint('informe o número da OS'); return; }
     hint('lendo a OS de referência…'); resultado('');
     $('resumo').textContent = 'Lendo a OS de referência…';
-    const r = await fetch('/os/api/clonar/os?folio=' + encodeURIComponent(folio));
+    const r = await OsCarga.buscar('/os/api/clonar/os?folio=' + encodeURIComponent(folio), undefined, 'Buscando a OS no Fracttal…');
     if (!r.ok) { const e = await apiErro(r); $('resumo').innerHTML = '<span class="sem">' + esc(e) + '</span>'; hint(''); return; }
     D = await r.json(); sel = -1;
     $('t_ref').textContent = 'OS de referência ' + (D.folio || folio);
@@ -138,7 +138,7 @@
   $('b_upd').addEventListener('click', async () => {
     const t = D && D.tarefas[sel]; if (!temAtivo(t)) { hint('Selecione uma tarefa com ativo.'); return; }
     $('b_upd').disabled = true; hint('buscando as subtarefas do modelo no Fracttal…');
-    const r = await fetch('/os/api/clonar/modelo', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({asset_id: t.asset.id, descricao: t.descricao || ''})});
+    const r = await OsCarga.buscar('/os/api/clonar/modelo', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({asset_id: t.asset.id, descricao: t.descricao || ''})}, 'Carregando o modelo da tarefa…');
     const j = r.ok ? await r.json() : {erro: await apiErro(r)};
     $('b_upd').disabled = false;
     if (j.achou) { t.subtarefas = j.subtarefas || []; renderSubs(); refreshCount(); hint('subtarefas atualizadas do modelo (' + t.subtarefas.length + ').'); }
@@ -149,7 +149,7 @@
     if (!confirm('Isso substitui as subtarefas de ' + com.length + ' tarefa(s) pela versão atual do modelo de cada ativo — quaisquer edições/exclusões manuais serão perdidas.\n\nContinuar?')) return;
     $('b_upd_all').disabled = true; $('b_upd').disabled = true; $('btn_criar').disabled = true;
     hint('atualizando ' + com.length + ' tarefa(s) do modelo… (pode levar alguns segundos)');
-    const r = await fetch('/os/api/clonar/modelo-todas', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tarefas: D.tarefas})});
+    const r = await OsCarga.buscar('/os/api/clonar/modelo-todas', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tarefas: D.tarefas})}, 'Carregando os modelos das tarefas…');
     const j = r.ok ? await r.json() : {erro: await apiErro(r)};
     $('b_upd_all').disabled = false;
     if (!r.ok) { hint(''); resultado(j.erro, false); atualizaResumo(); return; }
@@ -178,7 +178,7 @@
     hint('criando clone com ' + n + ' tarefa(s)… (pode levar alguns segundos)');
     const corpo = {tarefas: D.tarefas, id_responsible: +idp, responsible_name: cb.selectedOptions[0].textContent.trim(),
                    clonar_etiquetas: $('chk_etiq').checked, etiqueta_ids: D.etiqueta_ids || [], note: $('obs').value.trim()};
-    const r = await fetch('/os/api/clonar/criar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corpo)});
+    const r = await OsCarga.buscar('/os/api/clonar/criar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corpo)}, 'Criando a OS no Fracttal…');
     const j = r.ok ? await r.json() : {ok: false, mensagem: await apiErro(r)};
     $('btn_criar').disabled = false; hint('');
     resultado(j.mensagem || (j.ok ? 'OS clonada.' : 'Falha desconhecida ao clonar.'), !!j.ok);

@@ -127,7 +127,9 @@ def test_cascata_cliente_usina_tipo_ativos_como_o_step1():
     assert trad.tipos_de(ASSETS, "Thopen", "Thopen - Tanabi 2 - SP") == ["Estação Meteorológica", "Inversor"]   # tipo vazio fora
     ativos = trad.ativos_de(ASSETS, "Thopen", "Thopen - Tanabi 2 - SP")
     assert [a["id"] for a in ativos] == [11, 12, 13]                                    # ordem do catálogo; o sem tipo (51) fora
-    assert ativos[0] == {"id": 11, "code": "TNB200-INVR2.18", "label": "TNB200-INVR2.18 — Inversor 2.18", "tipo": "Inversor"}
+    # `curto` (27/09) é o nome da prévia do título "[Ativo] - Motivo" da Solicitação
+    assert ativos[0] == {"id": 11, "code": "TNB200-INVR2.18", "label": "TNB200-INVR2.18 — Inversor 2.18", "tipo": "Inversor",
+                         "curto": "Inversor 2.18"}
     assert [a["id"] for a in trad.ativos_de(ASSETS, "Thopen", "Thopen - Tanabi 2 - SP", tipo="Inversor", busca="2.17")] == [12]
     assert trad.ativos_de(ASSETS, "Thopen", "") == []
 

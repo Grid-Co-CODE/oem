@@ -189,8 +189,11 @@ def test_cards_prontos_nao_apontam_para_em_breve():
     servidas = set()
     for mod in blueprints.modulos():
         servidas.update(_rotas_do_modulo(mod))
-    for c in lancador.CARDS + lancador.ABAS:
-        href = c["href"]
+    # desde 27/09 o card que espera uma tela (`em_breve`) acende sozinho quando a rota existe (`lancador.portas_vivas`):
+    # o que se confere é o link que a tela inicial MOSTRA, não o escrito no lançador
+    existe = lambda rota: rota.startswith("/os/") and rota[3:] in servidas      # noqa: E731
+    for c in lancador.portas_vivas(lancador.CARDS + lancador.ABAS, existe):
+        href = c["href"] or ""
         if href.startswith("/os/em-breve/"):
             rota = "/" + href.split("/os/em-breve/")[1]
             assert rota not in servidas, ("o card %r manda para 'em breve' mas /os%s existe"

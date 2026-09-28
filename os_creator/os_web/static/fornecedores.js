@@ -274,11 +274,11 @@
     S.msg = {texto: "Salvando…", tipo: ""};
     desenharDetalhe();
     try {
-      const resp = await fetch("/os/api/fornecedores/salvar", {
+      const resp = await OsCarga.buscar("/os/api/fornecedores/salvar", {
         method: "POST", headers: {"Content-Type": "application/json", "X-Requested-With": "fetch"},
         body: JSON.stringify({chave: ch, versao: (D.blocos[ch] || {}).versao || "",
                               dados: {subtarefas: r.subtarefas || [], canal: r.canal || "", atende: r.atende || [],
-                                      arquivado: !!r.arquivado}})});
+                                      arquivado: !!r.arquivado}})}, "Salvando no banco…");
       let j = {};
       try { j = await resp.json(); } catch (e) { j = {}; }
       if (resp.status === 401 && j.login) {

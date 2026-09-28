@@ -15,8 +15,12 @@ trava que o `lancador.py` já usa para os textos dos cards.
 """
 from __future__ import annotations
 import datetime as dt
+import re
+import unicodedata
 
 import solic_spec as sp
+
+from . import ativo_curto as nomes  # o módulo; `ativo_curto` aqui embaixo é a função antiga do painel
 
 # ── a régua do painel (steps/solic_pcm.py) ───────────────────────────────────────────────────
 PENDENTE, ANDAMENTO, FINALIZADA, FORA = "pendente", "andamento", "finalizada", "fora"
@@ -147,8 +151,67 @@ def temas_para_tela() -> list:
         except KeyError:                     # tema declarado sem checklist escrito ainda
             n = len(sp.subtarefas_base())
         out.append({"chave": chave, "nome": nome, "classif1": c.get("classif1") or "",
-                    "tipo": c.get("tipo") or "", "n_subs": n})
+                    "tipo": c.get("tipo") or "", "n_subs": n, "motivo": sp.motivo(chave),
+                    "tipos": tipos_do_tema(chave)})
     return out
+
+
+# ── o tema segue o TIPO de ativo (Levi, 27/09/2026) ──────────────────────────────────────────────
+# "só deve aparecer caso o tema seja daquele tipo de ativo selecionado, então se for inversor, só vai aparecer tema de
+# inversores, se for trackers só trackers, se for ETM só ETM, se for nenhum então vai ficar sem tema mesmo!"
+# Quem manda é o `tipo_equipamento` do tema: o PCM escolhe na tela de Temas, e é o mesmo campo que desde 04/09 filtra os
+# ativos pelo tema. Vazio — 9 dos 10 temas em 27/09 —, vale esta tabela, escrita com os tipos do CADASTRO (o campo
+# `tipo` do catálogo, conferido em 27/09: NBRK é o nobreak, RELE o relé da cabine, DTRF e DJMT os disjuntores do
+# transformador e de média tensão, Usina o item da planta). Tema novo sem nada disso cai na regra do nome
+# (tracker/TCU, inversor, ETM); fora dela ele não aparece em tipo nenhum — e a tela diz que o tipo está sem tema.
+TIPOS_DO_TEMA = {
+    "inversor_inspecao": ("Inversor",), "inversor_substituicao": ("Inversor",), "inversor_garantia": ("Inversor",),
+    "tracker_reset_tcu": ("Estrutura Trackers",), "tracker_inject": ("Estrutura Trackers",),
+    "tracker_motor": ("Estrutura Trackers",), "tracker_chamado": ("Estrutura Trackers",),
+    "nobreak": ("NBRK",),
+    "protecao_transformador": ("Transformador", "Cabine", "RELE", "DTRF", "DJMT"),
+    "vegetacao": ("Usina",),
+}
+_PELO_NOME = ((r"\btracker", "Estrutura Trackers"), (r"\btcu\b", "Estrutura Trackers"), (r"\binversor", "Inversor"),
+              (r"\betm\b", "Estação Meteorológica"), (r"\bestacao meteo", "Estação Meteorológica"),
+              (r"\bmeteorolog", "Estação Meteorológica"))
+
+
+def _sem_acento(t) -> str:
+    return unicodedata.normalize("NFKD", str(t or "")).encode("ascii", "ignore").decode().lower()
+
+
+def tipos_do_tema(chave: str) -> list:
+    """Os tipos de ativo em que o tema aparece: o `tipo_equipamento` dele; senão a tabela; senão o nome."""
+    t = sp.TEMAS.get(chave) or {}
+    eq = str(t.get("tipo_equipamento") or "").strip()
+    if eq:
+        return [eq]
+    if chave in TIPOS_DO_TEMA:
+        return list(TIPOS_DO_TEMA[chave])
+    base = _sem_acento(str(chave).replace("_", " ") + " " + str(t.get("nome") or ""))
+    for regra, tipo in _PELO_NOME:
+        if re.search(regra, base):
+            return [tipo]
+    return []
+
+
+# ── o título "[Ativo] - Motivo" (Levi, 27/09/2026) ─────────────────────────────────────────────────
+# O tema sugere "[Ativo] - <motivo>" e a marca vira o nome curto de CADA ativo ao criar: são N solicitações com os mesmos
+# campos, uma por ativo, e o título de uma não pode levar o nome da outra. O nome curto é o da coluna Ativo do
+# Histórico ("Inversor 1.5", sem marca nem modelo — `os_web/ativo_curto.py`).
+MARCA_ATIVO = "[Ativo]"
+
+
+def nome_curto(asset: dict, frases=None) -> str:
+    return nomes.do_catalogo(asset, frases)
+
+
+def titulo_do_ativo(descricao: str, asset: dict, frases=None) -> str:
+    descricao = str(descricao or "")
+    if MARCA_ATIVO not in descricao:
+        return descricao
+    return descricao.replace(MARCA_ATIVO, "[%s]" % nome_curto(asset, frases))
 
 
 def subtarefas_do_tema(tema: str, tipo_ativo: str = "") -> list:

@@ -46,7 +46,9 @@ SETORES = [
      "sub": "Inversores, strings, trackers e ETM: as OS de análise da equipe.", "portas": _portas_perf()},
     {"chave": "cos", "icone": "stack", "titulo": "COS", "href": "/os/em-breve/cos", "em_breve": "/os/cos",
      "sub": "Ocorrência de desligamento, religamento e inspeção, com as regras de proteção.",
-     "portas": [{"rotulo": "Desligamento"}, {"rotulo": "Religamento"}, {"rotulo": "Inspeção"}]},
+     # as três levam à MESMA tela: é nela que se escolhe o tipo (sem a rota, o card apagado mostra as três sem link)
+     "portas": [{"rotulo": "Desligamento", "href": "/os/cos"}, {"rotulo": "Religamento", "href": "/os/cos"},
+                {"rotulo": "Inspeção", "href": "/os/cos"}]},
     {"chave": "pcm", "icone": "calendar", "titulo": "PCM", "href": "/os/setor/pcm",
      "sub": "As OS pelos planos do Fracttal e as solicitações que chegam ao PCM.",
      "portas": [{"rotulo": "Planos: Handover, MPS, MPA", "em_breve": "/os/pcm"},

@@ -6,11 +6,14 @@
    sessenta pedidos de vista. Sem paginação e sem recarga viva: uma tabela e uma busca. #}
 {% block conteudo %}
 <section class="os-pagina">
-  <nav class="os-seg os-subnav" aria-label="Solicitação / PCM">
-    <a href="/os/solicitacao">Nova solicitação</a>
-    <a href="/os/solicitacao/fila">Fila do PCM</a>
-    <a class="on" href="/os/solicitacao/historico">Histórico</a>
-  </nav>
+  {# 27/09: a fila e o histórico são do setor PCM (a Nova solicitação saiu daqui: mora nas Solicitações da tela inicial) #}
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/setor/pcm">&larr; PCM</a>
+    <nav class="os-seg os-subnav" aria-label="PCM" style="margin:0">
+      <a href="/os/solicitacao/fila">Fila do PCM</a>
+      <a class="on" href="/os/solicitacao/historico">Histórico de solicitações</a>
+    </nav>
+  </div>
 
   <form class="os-hist-topo" method="get" action="/os/solicitacao/historico">
     <div class="os-hist-dir">

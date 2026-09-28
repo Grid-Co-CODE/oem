@@ -277,7 +277,7 @@
 
   async function carregarUsinas(preservar) {
     const cli = cbCli.value; const cur = preservar ? cbUsi.value : '';
-    const r = await fetch('/os/api/performance/usinas?cliente=' + encodeURIComponent(cli)); const j = await r.json();
+    const r = await OsCarga.buscar('/os/api/performance/usinas?cliente=' + encodeURIComponent(cli), undefined, 'Carregando as usinas…'); const j = await r.json();
     cbUsi.innerHTML = '<option value="">— Selecione a usina —</option>' + (j.usinas || []).map(u => '<option value="' + esc(u) + '"' + (u === cur ? ' selected' : '') + '>' + esc(u) + '</option>').join('');
   }
   cbCli.onchange = async () => { await carregarUsinas(true); onUsina(); };
@@ -289,7 +289,7 @@
     resumo.textContent = 'Selecione a usina para carregar o plano.'; hint.textContent = '';
     if (!usi) return;
     hint.textContent = 'buscando ativos com o plano…';
-    const r = await fetch('/os/api/performance/alvos?usina=' + encodeURIComponent(usi) + '&frase=' + encodeURIComponent(FRASE));
+    const r = await OsCarga.buscar('/os/api/performance/alvos?usina=' + encodeURIComponent(usi) + '&frase=' + encodeURIComponent(FRASE), undefined, 'Buscando os ativos da usina…');
     const j = await r.json();
     if (!r.ok) { hint.textContent = '⚠ ativos: ' + apiErro(j, r); return; }
     if (j.cliente && cbCli.value !== j.cliente && [...cbCli.options].some(o => o.value === j.cliente)) { cbCli.value = j.cliente; await carregarUsinas(true); }
@@ -359,10 +359,10 @@
     btn.disabled = true; $('hint_criar').textContent = 'criando ' + itens.length + ' OS… (pode levar alguns segundos)';
     const res = $('resultado'); res.hidden = true;
     try {
-      const r = await fetch('/os/api/performance/criar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      const r = await OsCarga.buscar('/os/api/performance/criar', {method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({frase: FRASE, base: b, modo, evento: $('dt_prog').value, programada: prog, itens,
                               gerar_ticket: ger,
-                              responsavel: {id_personnel: Number(opt.value), name: opt.dataset.name}})});
+                              responsavel: {id_personnel: Number(opt.value), name: opt.dataset.name}})}, 'Criando as OS no Fracttal…');
       const j = await r.json();
       res.hidden = false; res.classList.toggle('ruim', !r.ok || !j.ok);
       res.textContent = r.ok ? j.mensagem : ('⚠ ' + apiErro(j, r));

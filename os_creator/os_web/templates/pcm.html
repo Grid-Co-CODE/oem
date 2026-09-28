@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block titulo %}PCM — OS por plano de tarefas{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/pcm.css">{% endblock %}
+{% block conteudo %}
+{# A PcmTab do app (steps/pcm.py), o diálogo "PCM — OS por plano de tarefas" que o card PCM abre: Card 1 Ativo (Cliente →
+   Usina → Tipo + busca), Card 2 Plano de tarefas ("Sem plano de tarefas", família + "Carregar planos", a tabela de ativos
+   em que cada linha mostra o plano da família, as subtarefas, a data/hora e o tempo, e a programação em massa), Card 3
+   Detalhes e responsável (observação, Requerido por, OS pai) e o botão no FIM do conteúdo, como no app. As dicas
+   (tooltips) do app viram `title`. #}
+<section class="os-pagina" id="pcm" data-hoje="{{ hoje }}">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/setor/pcm">← PCM</a>
+    <span class="os-head-ic">{{ icone('calendar', '#A6E22E', 20) }}</span>
+    <span class="os-head-titulo">PCM — OS por plano de tarefas</span>
+  </div>
+
+  {# ── Card 1: Ativo ── #}
+  {# No card PCM o app passa a tela por `tornar_todos_pesquisaveis` (app.py): cliente, usina, tipo e família viram combos
+     com busca, e o responsável já nasce assim. Daí o data-busca="1" em todos — curtos também. O combo de plano de cada
+     linha nasce depois e fica simples, como lá (data-osb="nativo", no pcm.js). #}
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">1</span><span class="os-cardf-t">Ativo</span></div>
+    <div class="os-linha2">
+      {# os clientes vêm prontos do servidor, como o `addItems` do app (texto = valor): o pcm.js lê o texto cru da opção,
+         nunca o `value` — ver pcm_web.opcoes. As usinas, que TÊM nome com espaço duplo, o pcm.js monta com `value`. #}
+      <label class="os-campo"><span class="os-lbl">Cliente <i>*</i></span>
+        <select id="cb_cli" data-busca="1" autocomplete="off"><option value="">— Selecione o cliente —</option>{% for c in clientes %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></label>
+      <label class="os-campo"><span class="os-lbl">Usina <i>*</i></span>
+        <select id="cb_usi" data-busca="1" autocomplete="off" disabled><option value="">— Selecione a usina —</option></select></label>
+    </div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Tipo de equipamento</span>
+        <select id="cb_tipo" data-busca="1" autocomplete="off" disabled><option value="">Todos os tipos</option></select></label>
+      <label class="os-campo"><span class="os-lbl">&nbsp;</span>
+        <input id="busca" type="search" placeholder="Filtrar ativo por código ou nome…" autocomplete="off"></label>
+    </div>
+  </div>
+
+  {# ── Card 2: Plano de tarefas (sem plano + família + tabela + programação em massa) ── #}
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">2</span><span class="os-cardf-t">Plano de tarefas</span></div>
+    <div class="pcm-semplano">
+      <label class="os-check" title="Cria 1 OS com cada ativo marcado como tarefa, SEM plano — a subtarefa fica como 'Procedimento'."><input type="checkbox" id="ck_sem_plano" autocomplete="off"> Sem plano de tarefas</label>
+      <span class="os-lbl" id="desc_lbl" hidden>Descrição da tarefa</span>
+      <input id="ed_desc" type="text" placeholder="opcional (vale p/ todas) — vazio = 'Procedimento'" autocomplete="off" hidden>
+    </div>
+    <div class="os-campo">
+      <span class="os-lbl" id="fam_lbl">Família do plano</span>
+      <div class="pcm-fam">
+        <select id="cb_familia" data-busca="1" autocomplete="off"><option value="">(carregue os planos)</option></select>
+        <button type="button" class="os-btn secondary" id="b_planos">Carregar planos</button>
+      </div>
+    </div>
+    <p class="os-erro" id="aviso_planos" hidden></p>
+    <div class="os-linha-ativos">
+      <span class="os-lbl">Ativos <i>*</i> <small>(marque um ou vários — o plano aparece após carregar)</small></span>
+      <span class="os-cresce"></span>
+      <button type="button" class="os-btn secondary mini" id="b_complano" title="Marca apenas os ativos que têm plano nesta família (desmarca os demais)">Só com plano</button>
+      <button type="button" class="os-btn secondary mini" id="b_all">Selecionar todos</button>
+      <button type="button" class="os-btn secondary mini" id="b_none">Limpar</button>
+    </div>
+    <div class="os-tbl-wrap pcm-tbl-wrap">
+      <table class="os-tbl pcm-tbl" id="tbl">
+        <thead><tr><th>Ativo</th><th>Plano de tarefa</th><th class="c-subt">Subt.</th><th class="c-dt">Data/hora programada</th><th class="c-tempo">Tempo</th></tr></thead>
+        <tbody id="tbody"><tr class="vazio"><td colspan="5">Selecione cliente e usina para ver os ativos.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="os-ajuda" id="sel_lbl">0 marcado(s)</div>
+    {# DENTRO do card Plano, logo abaixo do "X marcado(s)", como no app #}
+    <span class="os-lbl">Programação em massa <small>(aplica a todas as linhas marcadas)</small></span>
+    <div class="pcm-massa">
+      <input id="bulk_date" type="date" value="{{ hoje }}" autocomplete="off">
+      <button type="button" class="os-btn secondary" id="b_data" title="Define a DATA (dia/mês/ano) de todas as linhas; mantém o horário de cada uma">Aplicar data</button>
+      <button type="button" class="os-btn secondary" id="b_manha" title="Define o horário de TODAS as linhas para 07:00">Manhã (07:00)</button>
+      <button type="button" class="os-btn secondary" id="b_tarde" title="Define o horário de TODAS as linhas para 13:00">Tarde (13:00)</button>
+      <button type="button" class="os-btn secondary" id="b_mes" title="Adia a data de cada linha em 1 mês">Avançar 1 mês</button>
+    </div>
+  </div>
+
+  {# ── Card 3: Detalhes e responsável ── #}
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">3</span><span class="os-cardf-t">Detalhes e responsável</span></div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Observação <small>(opcional)</small></span>
+        <textarea id="obs" rows="2" autocomplete="off"></textarea></label>
+      <div class="os-campo"><span class="os-lbl">Requerido por <i>*</i> <small>(digite p/ pesquisar)</small></span>
+        <div class="pcm-resp">
+          <select id="cb_resp" data-busca="1" autocomplete="off"><option value="">carregando…</option></select>
+          <button type="button" class="os-btn secondary pcm-reload" id="b_resp" title="Recarregar responsáveis">↻</button>
+        </div>
+      </div>
+    </div>
+    {# "OS pai" COMO RÓTULO e a explicação depois, como o app faz desde 15/09 ("quem procurava 'OS pai' passava o olho e
+       não achava"); a pergunta que era o rótulo antes ficou como a dica. #}
+    <div class="os-campo">
+      <span class="os-lbl">OS pai <small>(opcional — se esta OS depende de outra)</small></span>
+      <div class="pcm-ospai">
+        <input id="ospai_in" type="text" placeholder="Selecione a OS pai (nº) — opcional" title="Opcional: vincula esta OS a uma OS pai. Digite o número e escolha." autocomplete="off" inputmode="numeric">
+        <div class="pcm-ospai-lista" id="ospai_lista" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  {# o botão no FIM do conteúdo (rolando), sem rodapé fixo ocupando a tela — como no app #}
+  <div class="pcm-fim">
+    <button type="button" class="os-btn primaria" id="btn_criar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>Criar OS (PCM)</button>
+  </div>
+  <div class="os-ajuda pcm-hint" id="hint"></div>
+  <div class="os-resultado" id="resultado" hidden></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/os/static/pcm.js"></script>{% endblock %}

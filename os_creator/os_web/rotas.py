@@ -13,7 +13,7 @@ from flask import (Blueprint, abort, current_app, jsonify, redirect, render_temp
 
 import api
 
-from . import ativo_curto, lancador, oauth_fracttal, perf_web, sessao, sso
+from . import ativo_curto, engenharia_web, lancador, oauth_fracttal, perf_web, sessao, sso
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 _ASSETS = os.path.join(os.path.dirname(_AQUI), "assets")           # os_creator/assets (logo e ícone do app)
@@ -267,6 +267,9 @@ def home():
     ola = lancador.saudacao(agora.hour) + (", " + nome[0] if nome else "")
     setores = [dict(s, portas=lancador.portas_vivas(s.get("portas"), _rota_existe))
                for s in lancador.portas_vivas(lancador.SETORES, _rota_existe)]
+    if engenharia_web.supervisorio():                   # 27/09: o supervisório da Engenharia ligado no .env
+        setores = [dict(s, etiqueta="", portas=[{"rotulo": "Supervisório", "href": "/os/engenharia"}])
+                   if s["chave"] == "eng" else s for s in setores]
     return render_template("home.html", conta=conta, aba="criar", selo=selo, ola=ola, consulta=lancador.CONSULTA,
                            pilulas_ativos=pilulas, setores=setores, tradicional=lancador.TRADICIONAL,
                            solicitacoes=lancador.SOLICITACOES)

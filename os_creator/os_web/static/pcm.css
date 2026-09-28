@@ -1,0 +1,51 @@
+/* os_creator/os_web/static/pcm.css — só o que o os.css não tem para a PcmTab (steps/pcm.py) na web. Cores pelas variáveis
+   do os.css; o vermelho e o cinza das linhas são os do app (_RED #e06c6c, _DIM #8a90a2) e só dizem ESTADO: vermelho =
+   ativo marcado sem plano na família (ou plano sem subtarefa), cinza = ainda não há o que mostrar. */
+#pcm input[type=date],#pcm input[type=datetime-local]{color-scheme:dark}     /* o ícone do calendário visível no navy */
+.pcm-semplano{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pcm-semplano .os-check input{width:16px;height:16px;padding:0;margin:0}
+.pcm-semplano input[type=text]{flex:1;min-width:240px}
+.pcm-fam{display:flex;gap:8px}
+.pcm-fam .osb,.pcm-fam>select{flex:1;min-width:0}          /* o os_busca embrulha o <select> num div.osb */
+.os-lbl.desab{opacity:.45}
+/* desligado (usina sem cliente, tipo sem usina, família no "Sem plano"): o campo visível é a busca do os_busca */
+#pcm .osb-in:disabled,#pcm select:disabled{opacity:.45;cursor:not-allowed}
+/* a tabela com a altura mínima do app (230 px) e rolagem PRÓPRIA, como o QTableWidget: a usina de 100 inversores não vira
+   uma página de três telas, e todas as linhas continuam na tabela — a criação e a programação em massa valem para
+   todas, como no app, e não para uma página delas */
+.pcm-tbl-wrap{min-height:230px;max-height:min(62vh,640px);overflow:auto;border-radius:10px}
+.pcm-tbl thead th{position:sticky;top:0;z-index:1}
+.pcm-tbl .c-subt{width:64px;text-align:center}
+.pcm-tbl .c-dt{width:200px}
+.pcm-tbl .c-tempo{width:140px}
+.pcm-tbl td select.plano{height:32px;border-radius:7px;padding:0 8px;width:100%;font-size:12px}
+.pcm-chk{display:flex;align-items:center;gap:10px;cursor:pointer;color:#fff}
+.pcm-dim{color:var(--muted)}
+.pcm-pre{white-space:pre}
+.pcm-red,.pcm-tbl tr.sem td,.pcm-tbl tr.sem .pcm-chk{color:#e06c6c}
+/* o tempo da tarefa (o _TempoTarefa): HH:mm e as duas setas, que andam de 30 em 30 min */
+.pcm-tempo{display:inline-flex;align-items:center;gap:4px}
+.pcm-tbl .pcm-tempo input.tp{width:64px;text-align:center;padding:0 6px}
+.pcm-tempo .tp-setas{display:inline-flex;flex-direction:column;gap:2px}
+.pcm-tempo .tp-b{width:22px;height:14px;padding:0;border:1px solid var(--f-border);border-radius:4px;background:var(--f-input);
+  color:var(--muted2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.pcm-tempo .tp-b:hover{border-color:var(--f-green);color:#fff}
+/* programação em massa: a data + os quatro botões numa linha, como o drow do app */
+.pcm-massa{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pcm-massa input[type=date]{width:170px}
+/* Requerido por: o campo pesquisável + o ↻ (40 px) */
+.pcm-resp{display:flex;gap:8px;align-items:center}
+.pcm-resp .osb,.pcm-resp>select{flex:1;min-width:0}
+.pcm-reload{width:40px;height:40px;padding:0;flex:none}
+/* OS pai (OsPaiPicker): campo + a lista de resultados por baixo */
+.pcm-ospai{position:relative;max-width:560px}
+.pcm-ospai input{width:100%}
+.pcm-ospai-lista{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:var(--f-card);
+  border:1px solid var(--f-border);border-radius:10px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.45)}
+.pcm-ospai-lista[hidden]{display:none}
+.pcm-ospai-item{padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--txt);font-size:13px}
+.pcm-ospai-item:hover,.pcm-ospai-item.on{background:var(--f-input)}
+/* o botão no fim do conteúdo, à direita, e a dica embaixo dele (o `hint` do app) */
+.pcm-fim{display:flex;justify-content:flex-end}
+.pcm-hint{text-align:right;min-height:16px}
+.pcm-abrir{font-weight:600}

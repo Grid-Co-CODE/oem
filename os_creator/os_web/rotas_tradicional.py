@@ -17,8 +17,9 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 import api
 
+from . import ativo_curto
 from . import tradicional_web as trad
-from .rotas import _conta, exige_sessao
+from .rotas import _conta, _memo, exige_sessao
 
 bp = Blueprint("os_web_tradicional", __name__, url_prefix="/os")
 
@@ -47,8 +48,10 @@ def api_catalogo():
     cliente = (request.args.get("cliente") or "").strip()
     usina = (request.args.get("usina") or "").strip()
     if usina:
+        # as frases do tipo (o nome curto de "Infraestrutura Civil" etc.) com a mesma memória de 1 h do Histórico
+        frases = _memo(("frases_ativo",), 3600, lambda: ativo_curto.frases(api._read_asset_cache() or []))
         return jsonify({"cliente": cliente, "usina": usina, "tipos": trad.tipos_de(assets, cliente, usina),
-                        "ativos": trad.ativos_de(assets, cliente, usina)})
+                        "ativos": trad.ativos_de(assets, cliente, usina, frases=frases)})
     if cliente:
         return jsonify({"cliente": cliente, "usinas": trad.usinas_de(assets, cliente)})
     return jsonify({"clientes": trad.clientes(assets), "recarregado": force})

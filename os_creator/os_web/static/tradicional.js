@@ -14,7 +14,7 @@
   const LIMITE = 4 * 1024 * 1024;                                                          // MAX_CONTENT_LENGTH do app
 
   async function getJson(url) {
-    const r = await fetch(url, {credentials: 'same-origin'});
+    const r = await OsCarga.buscar(url, {credentials: 'same-origin'}, 'Carregando…');
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(apiErro(j, r));
     return j;
@@ -325,9 +325,9 @@
       if (total > 0) {                                        // imagens → multipart: bytes, como Step1.selected_images()
         const fd = new FormData(); fd.append('payload', JSON.stringify(payload));
         ativos.forEach((a) => (imgs.get(a.id) || []).forEach((im) => fd.append('imagens:' + a.code, im.file, im.nome)));
-        r = await fetch('/os/api/tradicional/criar', {method: 'POST', body: fd, credentials: 'same-origin'});
+        r = await OsCarga.buscar('/os/api/tradicional/criar', {method: 'POST', body: fd, credentials: 'same-origin'}, 'Criando a OS no Fracttal…');
       } else {
-        r = await fetch('/os/api/tradicional/criar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), credentials: 'same-origin'});
+        r = await OsCarga.buscar('/os/api/tradicional/criar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), credentials: 'same-origin'}, 'Criando a OS no Fracttal…');
       }
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { erroModal(apiErro(j, r)); return; }        // erro fica no diálogo, como o QMessageBox.critical do app

@@ -7,7 +7,10 @@
 <link rel="icon" href="/os/assets/grid-icon.png">
 <link rel="stylesheet" href="/os/static/os.css">
 <script src="/os/static/os_busca.js" defer></script>
-<script src="/os/static/carga.js" defer></script>
+<script src="/os/static/carga.js"></script>{# sem defer: as telas usam o OsCarga já na carga #}
+{# se o carga.js não chegar, as buscas seguem sem o círculo — nenhuma tela pode parar por causa dele #}
+<script>window.OsCarga = window.OsCarga || {buscar: function (u, o) { return fetch(u, o); }, durante: function (p) { return p; },
+  girar: function () {}, mostrar: function () {}, esconder: function () {}, token: function () { return ""; }};</script>
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">

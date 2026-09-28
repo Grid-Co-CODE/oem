@@ -10,6 +10,7 @@ from flask import Blueprint, render_template
 
 from steps import engenharia as area
 
+from . import engenharia_web
 from .rotas import _conta, exige_sessao
 
 bp = Blueprint("os_web_engenharia", __name__, url_prefix="/os")
@@ -21,4 +22,5 @@ AVISO = "Área em construção pela Engenharia. O primeiro fluxo será OS de ETM
 @exige_sessao
 def engenharia():
     return render_template("engenharia.html", conta=_conta(), aba="criar", titulo=area.TITULO, descricao=area.DESCRICAO,
-                           aviso=AVISO, icone_svg=area.ICONES.get(area.ICONE, ""))
+                           aviso=AVISO, icone_svg=area.ICONES.get(area.ICONE, ""),
+                           supervisorio=engenharia_web.supervisorio())      # 27/09: a ligação com o da Engenharia

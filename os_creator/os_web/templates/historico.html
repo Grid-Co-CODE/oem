@@ -122,7 +122,7 @@
     corpo.innerHTML = '<p class="os-ajuda" style="padding:24px">Carregando a OS…</p>';
     modal.hidden = false; document.body.classList.add("os-modal-aberto");
     var sep = url.indexOf("?") >= 0 ? "&" : "?";
-    fetch(url + sep + "parcial=1", {headers: {"X-Requested-With": "fetch"}, credentials: "same-origin"})
+    OsCarga.buscar(url + sep + "parcial=1", {headers: {"X-Requested-With": "fetch"}, credentials: "same-origin"}, "Abrindo a OS…")
       .then(function (r) { return r.text(); })
       .then(function (h) {
         corpo.innerHTML = h; corpo.scrollTop = 0;

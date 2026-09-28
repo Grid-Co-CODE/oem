@@ -9,11 +9,12 @@
    rearranjam. A única parte viva é a cascata, que não tem como não ser. #}
 {% block conteudo %}
 <section class="os-pagina">
-  <nav class="os-seg os-subnav" aria-label="Solicitação / PCM">
-    <a class="on" href="/os/solicitacao">Nova solicitação</a>
-    <a href="/os/solicitacao/fila">Fila do PCM</a>
-    <a href="/os/solicitacao/historico">Histórico</a>
-  </nav>
+  {# 27/09: sem os botões da Fila do PCM e do Histórico — eles moram no setor PCM; a Nova solicitação, nas Solicitações
+     da tela inicial #}
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/">&larr; Início</a>
+    <span class="os-head-titulo">Nova solicitação</span>
+  </div>
 
   <div class="os-cardf">
     <div class="os-cardf-h"><span class="os-cardf-t">1 · Ativo</span></div>
@@ -23,7 +24,7 @@
       <label class="os-cell"><span class="os-lbl">Usina</span>
         <select id="cb_usina" disabled><option value="">{{ todos_usina }}</option></select></label>
       <label class="os-cell"><span class="os-lbl">Tipo de ativo</span>
-        <select id="cb_tipo" disabled><option value="">{{ todos_tipo }}</option></select></label>
+        <select id="cb_tipo" data-busca="1" disabled><option value="">{{ todos_tipo }}</option></select></label>
     </div>
     <label class="os-cell" style="margin-top:8px"><span class="os-lbl">Buscar ativo</span>
       <input type="search" id="busca" placeholder="parte do nome do ativo" disabled></label>
@@ -39,11 +40,12 @@
     <label class="os-cell"><span class="os-lbl">Tema</span>
       <select id="cb_tema">
         <option value="">— sem tema (só as subtarefas da base) —</option>
-        {% for t in temas %}<option value="{{ t.chave }}" data-c1="{{ t.classif1 }}" data-tipo="{{ t.tipo }}" data-n="{{ t.n_subs }}">{{ t.nome }}</option>{% endfor %}
+        {% for t in temas %}<option value="{{ t.chave }}" data-c1="{{ t.classif1 }}" data-tipo="{{ t.tipo }}" data-n="{{ t.n_subs }}" data-motivo="{{ t.motivo }}" data-tipos="{{ t.tipos|join('|') }}">{{ t.nome }}</option>{% endfor %}
       </select></label>
-    <div class="os-ajuda" id="hint_tema">O tema põe o título no padrão, desce a classificação certa e a OS já nasce com o checklist.</div>
+    <div class="os-ajuda" id="hint_tema">Escolha o tipo de ativo (ou marque um ativo) para ver os temas dele.</div>
     <label class="os-cell" style="margin-top:8px"><span class="os-lbl">Título</span>
-      <input type="text" id="ed_desc" maxlength="180" placeholder="[Usina][Ativo] - Motivo"></label>
+      <input type="text" id="ed_desc" maxlength="180" placeholder="[Ativo] - Motivo"></label>
+    <div class="os-ajuda" id="hint_titulo"></div>
     <label class="os-cell" style="margin-top:8px"><span class="os-lbl">Relato (observação)</span>
       <textarea id="ed_obs" rows="4" placeholder="o que aconteceu, com o detalhe que o PCM precisa para programar"></textarea></label>
   </div>
@@ -59,7 +61,7 @@
         <select id="cb_c2"><option value="">— selecione —</option>{% for o in c2 %}<option value="{{ o.id }}">{{ o.description }}</option>{% endfor %}</select></label>
       <label class="os-cell"><span class="os-lbl">Data do incidente</span>
         <input type="datetime-local" id="dt_inc" value="{{ agora }}"></label>
-      <label class="os-cell"><span class="os-lbl">Data sugerida ao PCM</span>
+      <label class="os-cell"><span class="os-lbl">Data Programada (Sugestão)</span>
         <input type="datetime-local" id="dt_sug" value="{{ sugerida }}"></label>
       <label class="os-cell"><span class="os-lbl">Técnico sugerido</span>
         <select id="cb_tec"><option value="">— nenhum —</option>{% for p in pessoas %}<option value="{{ p.name }}">{{ p.name }}</option>{% endfor %}</select></label>
@@ -129,15 +131,15 @@
     if (!e.target.classList.contains("chk")) return;
     var code = e.target.closest("tr").dataset.code;
     e.target.checked ? marcados.add(code) : marcados.delete(code);
-    pintar();
+    pintar(); filtrarTemas(); previaTitulo();
   });
   // a cascata reaproveita o catalogo do Tradicional: e o MESMO `load_assets_cached` do lado de la,
   // e ter dois endpoints para a mesma pergunta so criaria duas respostas possiveis.
-  function busca_json(u) { return fetch(u, {credentials: "same-origin"}).then(function (r) { return r.json(); }); }
+  function busca_json(u) { return OsCarga.buscar(u, {credentials: "same-origin"}, "Carregando…").then(function (r) { return r.json(); }); }
   cbCli.addEventListener("change", function () {
     cbUsi.innerHTML = '<option value="">{{ todos_usina }}</option>'; cbUsi.disabled = true;
     cbTipo.innerHTML = '<option value="">{{ todos_tipo }}</option>'; cbTipo.disabled = true;
-    busca.disabled = true; ativos = []; marcados.clear(); pintar();
+    busca.disabled = true; ativos = []; marcados.clear(); pintar(); filtrarTemas();
     if (!cbCli.value) return;
     busca_json("/os/api/tradicional/catalogo?cliente=" + encodeURIComponent(cbCli.value)).then(function (j) {
       (j.usinas || []).forEach(function (u) { cbUsi.add(new Option(u, u)); });
@@ -145,7 +147,7 @@
     });
   });
   cbUsi.addEventListener("change", function () {
-    ativos = []; marcados.clear(); pintar();
+    ativos = []; marcados.clear(); pintar(); filtrarTemas();
     if (!cbUsi.value) { cbTipo.disabled = true; busca.disabled = true; return; }
     busca_json("/os/api/tradicional/catalogo?cliente=" + encodeURIComponent(cbCli.value)
       + "&usina=" + encodeURIComponent(cbUsi.value)).then(function (j) {
@@ -155,7 +157,7 @@
       ativos = j.ativos || []; limite = PAGINA; pintar();
     });
   });
-  cbTipo.addEventListener("change", function () { limite = PAGINA; pintar(); });
+  cbTipo.addEventListener("change", function () { limite = PAGINA; pintar(); filtrarTemas(); });
   busca.addEventListener("input", function () { limite = PAGINA; pintar(); });
 
   // ── tema → classificação sugerida + subtarefas ──
@@ -202,10 +204,8 @@
   }
   cbTema.addEventListener("change", function () {
     var op = cbTema.options[cbTema.selectedIndex], c1 = op.getAttribute("data-c1") || "";
-    hintTema.textContent = cbTema.value
-      ? "Sugere Classificação 1 “" + c1 + "”" + (op.getAttribute("data-tipo") ? " · " + op.getAttribute("data-tipo") : "")
-        + " e " + op.getAttribute("data-n") + " subtarefas."
-      : "O tema põe o título no padrão, desce a classificação certa e a OS já nasce com o checklist.";
+    dicaTema();
+    sugerirTitulo();
     // marca a Classificação 1 sugerida PELO NOME, e só se ela existir nesta conta: o id da lista
     // muda de conta para conta, e o nome é o que o `solic_spec` guarda.
     if (c1) {
@@ -220,6 +220,77 @@
     carregarSubs();
   });
   carregarSubs();
+
+  // ── o tema segue o TIPO de ativo (Levi, 27/09: "se for inversor, só vai aparecer tema de inversores, se for trackers
+  //    só trackers, se for ETM só ETM, se for nenhum então vai ficar sem tema mesmo") ──
+  // O tipo é o escolhido no campo; sem ele, o dos ativos marcados. Os tipos de cada tema vêm do servidor
+  // (solic_web.tipos_do_tema: o tipo de equipamento do tema, senão a tabela, senão o nome).
+  var TEMAS = Array.prototype.slice.call(cbTema.options, 1).map(function (o) {
+    return {chave: o.value, nome: o.text, c1: o.getAttribute("data-c1") || "", tipo: o.getAttribute("data-tipo") || "",
+            n: o.getAttribute("data-n") || "", motivo: o.getAttribute("data-motivo") || "",
+            tipos: (o.getAttribute("data-tipos") || "").split("|").filter(Boolean)};
+  });
+  var edDesc = document.getElementById("ed_desc"), hintTit = document.getElementById("hint_titulo");
+  var sugerido = "";          // o último título que a TELA pôs: se a pessoa escreveu o dela, a tela não mexe mais
+  function marcadosLista() { return ativos.filter(function (a) { return marcados.has(a.code); }); }
+  function tiposAlvo() {
+    if (cbTipo.value) return [cbTipo.value];
+    var vistos = {};
+    marcadosLista().forEach(function (a) { if (a.tipo) vistos[a.tipo] = 1; });
+    return Object.keys(vistos);
+  }
+  function temasQueValem() {
+    var alvo = tiposAlvo().map(semAcento);
+    if (!alvo.length) return [];
+    return TEMAS.filter(function (t) {
+      var tt = t.tipos.map(semAcento);
+      return alvo.every(function (x) { return tt.indexOf(x) >= 0; });
+    });
+  }
+  function esc(t) { return String(t || "").replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
+  function dicaTema() {
+    var alvo = tiposAlvo(), op = cbTema.options[cbTema.selectedIndex];
+    if (cbTema.value && op) {
+      hintTema.textContent = "Sugere Classificação 1 “" + (op.getAttribute("data-c1") || "") + "”"
+        + (op.getAttribute("data-tipo") ? " · " + op.getAttribute("data-tipo") : "") + " e " + op.getAttribute("data-n") + " subtarefas.";
+    } else if (!alvo.length) {
+      hintTema.textContent = "Escolha o tipo de ativo (ou marque um ativo) para ver os temas dele.";
+    } else if (!temasQueValem().length) {
+      hintTema.textContent = alvo.length > 1
+        ? "Os ativos marcados são de tipos diferentes (" + alvo.join(", ") + "): cada tema vale para um tipo só, então a solicitação vai sem tema."
+        : "Nenhum tema para " + alvo[0] + ": a solicitação vai sem tema, só com as subtarefas da base.";
+    } else {
+      hintTema.textContent = "Os temas de " + alvo.join(", ") + ". O tema põe o título no padrão, desce a classificação certa e a OS já nasce com o checklist.";
+    }
+  }
+  function filtrarTemas() {
+    var atual = cbTema.value, vale = temasQueValem();
+    cbTema.innerHTML = '<option value="">— sem tema (só as subtarefas da base) —</option>' + vale.map(function (t) {
+      return '<option value="' + esc(t.chave) + '" data-c1="' + esc(t.c1) + '" data-tipo="' + esc(t.tipo) + '" data-n="' + esc(t.n)
+        + '" data-motivo="' + esc(t.motivo) + '" data-tipos="' + esc(t.tipos.join("|")) + '">' + esc(t.nome) + '</option>';
+    }).join("");
+    var segue = vale.some(function (t) { return t.chave === atual; });
+    cbTema.value = segue ? atual : "";
+    if (atual && !segue) cbTema.dispatchEvent(new Event("change"));      // o tema saiu: volta a base e o título
+    else dicaTema();
+  }
+  function sugerirTitulo() {
+    var op = cbTema.options[cbTema.selectedIndex];
+    var novo = cbTema.value && op && op.getAttribute("data-motivo") ? "[Ativo] - " + op.getAttribute("data-motivo") : "";
+    if (!edDesc.value.trim() || edDesc.value === sugerido) { edDesc.value = novo; sugerido = novo; }
+    previaTitulo();
+  }
+  function previaTitulo() {
+    var v = edDesc.value || "";
+    if (v.indexOf("[Ativo]") < 0) { hintTit.textContent = ""; return; }
+    var m = marcadosLista();
+    hintTit.textContent = m.length
+      ? "Vai sair “" + v.replace("[Ativo]", "[" + (m[0].curto || "Ativo") + "]") + "”"
+        + (m.length > 1 ? " — e assim com o nome de cada um dos " + m.length + " ativos marcados." : ".")
+      : "[Ativo] vira o nome de cada ativo marcado.";
+  }
+  edDesc.addEventListener("input", previaTitulo);
+  filtrarTemas();
 
   // ── criar ──
   var btn = document.getElementById("b_criar"), hint = document.getElementById("hint"),
@@ -244,15 +315,15 @@
     if (!corpo.ativos.length) { hint.textContent = "Marque ao menos um ativo."; return; }
     if (marcados.size > 1 && !confirm("Vão ser criadas " + marcados.size + " solicitações, uma por ativo, com os mesmos campos. Confirma?")) return;
     btn.disabled = true; hint.textContent = "criando…"; res.hidden = true;
-    fetch("/os/api/solic/criar", {method: "POST", credentials: "same-origin",
-      headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)})
+    OsCarga.buscar("/os/api/solic/criar", {method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)}, "Criando as solicitações no Fracttal…")
       .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
       .then(function (x) {
         btn.disabled = false; hint.textContent = "";
         res.hidden = false;
         res.className = "os-resultado" + (x.ok && !x.j.falhas ? "" : " ruim");
         res.textContent = x.j.erro || x.j.mensagem || "Sem resposta do servidor.";
-        if (x.ok && x.j.ok) { marcados.clear(); pintar(); document.getElementById("ed_desc").value = ""; document.getElementById("ed_obs").value = ""; }
+        if (x.ok && x.j.ok) { marcados.clear(); pintar(); document.getElementById("ed_desc").value = ""; document.getElementById("ed_obs").value = ""; filtrarTemas(); sugerirTitulo(); }
       })
       .catch(function (e) { btn.disabled = false; hint.textContent = ""; res.hidden = false; res.className = "os-resultado ruim"; res.textContent = "Falhou: " + e; });
   });

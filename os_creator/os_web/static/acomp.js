@@ -9,8 +9,8 @@
   }
 
   async function postar(url, corpo) {
-    const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json", "X-Requested-With": "fetch"},
-                                body: JSON.stringify(corpo || {})});
+    const r = await OsCarga.buscar(url, {method: "POST", headers: {"Content-Type": "application/json", "X-Requested-With": "fetch"},
+                                body: JSON.stringify(corpo || {})}, "Gravando…");
     let j = {};
     try { j = await r.json(); } catch (e) { j = {}; }
     if (r.status === 401 && j.login) {

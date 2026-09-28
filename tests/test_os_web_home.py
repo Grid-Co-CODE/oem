@@ -75,13 +75,16 @@ def test_as_portas_de_cada_setor(cli):
     assert html.count("data-carga") >= 4                                           # o Histórico com o círculo de carga
 
 
-def test_o_que_ainda_mora_no_app_aparece_apagado(cli):
-    """COS e a clonagem de planos (a PcmTab) ainda não nasceram na web: apagados, sem link, dizendo onde moram."""
+def test_o_cos_e_a_clonagem_nasceram_e_acenderam(cli):
+    """O que ainda não nasceu na web fica apagado, sem link, dizendo onde mora. O COS (/os/cos, tests/test_os_web_cos.py)
+    e a clonagem de planos (/os/pcm, tests/test_os_web_pcm.py) nasceram em 27/09: acenderam sozinhos, sem mexer no
+    lançador — o card do COS deixa de ir ao "em breve" e as três pílulas viram link."""
     html = cli.get("/os/").get_data(as_text=True)
     cos = html[html.index('data-chave="cos"') - 40:html.index('data-chave="pcm"')]
-    assert 'class="setor fora"' in cos and "no app de mesa" in cos and 'href="/os/em-breve/cos"' in cos
+    assert 'class="setor fora"' not in cos and "no app de mesa" not in cos and 'href="/os/em-breve/cos"' not in cos
+    assert '<h3><a href="/os/cos">COS</a></h3>' in cos and '<a href="/os/cos">Religamento</a>' in cos
     pcm = html[html.index('data-chave="pcm"'):html.index('data-chave="chamados"')]
-    assert "Planos: Handover, MPS, MPA</span>" in pcm and 'href="/os/pcm"' not in pcm
+    assert '<a href="/os/pcm">Planos: Handover, MPS, MPA</a>' in pcm and "Planos: Handover, MPS, MPA</span>" not in pcm
 
 
 def test_a_porta_acende_sozinha_quando_a_tela_nasce():
@@ -102,7 +105,7 @@ def test_o_setor_pcm_separado_em_tres(cli):
     pos = [html.index(t) for t in ("Clonagem de planos", "Fila do PCM", "Histórico de solicitações")]
     assert pos == sorted(pos)
     assert 'href="/os/solicitacao/fila"' in html and 'href="/os/solicitacao/historico"' in html
-    assert '<div class="porta fora">' in html and "no app de mesa" in html          # a clonagem, ainda no app
+    assert '<a class="porta" href="/os/pcm">' in html and "no app de mesa" not in html   # a clonagem nasceu na web (27/09)
     assert all(f in html for f in ("Handover", "MPA", "MPS"))
     assert cli.get("/os/setor/nada").status_code == 404
     r = cli.get("/os/setor/chamados")

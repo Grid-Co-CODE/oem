@@ -18,7 +18,7 @@
   async function pedir(url, corpo) {
     const opt = {credentials: 'same-origin', headers: {'Accept': 'application/json'}};
     if (corpo !== undefined) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(corpo); }
-    const r = await fetch(url, opt);
+    const r = await OsCarga.buscar(url, opt, 'Gravando no Fracttal…');
     let j = null; try { j = await r.json(); } catch (e) { j = null; }
     if (!r.ok) throw new Error(apiErro(j, r));
     return j || {};
@@ -40,7 +40,7 @@
 
   // Recarrega o card NO LUGAR (o corpo do modal do Histórico ou o main da página cheia): o Fracttal é a fonte do que ficou.
   async function recarregar(d, url, texto, ruim) {
-    const r = await fetch(url, {credentials: 'same-origin', headers: {'X-Requested-With': 'fetch'}});
+    const r = await OsCarga.buscar(url, {credentials: 'same-origin', headers: {'X-Requested-With': 'fetch'}}, 'Abrindo a OS…');
     const html = await r.text();
     const tmp = document.createElement('div'); tmp.innerHTML = html;
     const novo = tmp.querySelector('.det') || tmp.firstElementChild;

@@ -11,7 +11,7 @@
 
   // ── carga ──
   async function carregar() {
-    const r = await fetch('/os/api/ativos/catalogo');
+    const r = await OsCarga.buscar('/os/api/ativos/catalogo', undefined, 'Carregando o catálogo de ativos…');
     if (!r.ok) { $('sub').textContent = 'não consegui carregar o catálogo: HTTP ' + r.status; return; }
     const d = await r.json();
     chegou(d.ativos || [], d.info || {});
@@ -106,7 +106,7 @@
     $('d_usina').textContent = (a.usina_curta || '—').slice(0, 26); $('d_cliente').textContent = (a.cliente || '—').slice(0, 26);
     $('os_box').innerHTML = ''; $('os_hint').hidden = false; $('os_hint').textContent = 'buscando as OS…';
     $('b_os').disabled = true; $('menu').hidden = true;
-    const r = await fetch('/os/api/ativos/' + a.id);
+    const r = await OsCarga.buscar('/os/api/ativos/' + a.id, undefined, 'Buscando as OS do ativo…');
     if (!r.ok || selId !== a.id) { if (selId === a.id) $('os_hint').textContent = 'não consegui buscar as OS'; return; }
     const d = await r.json();
     $('d_marca').textContent = String(d.marca || '—').slice(0, 26);
@@ -133,7 +133,7 @@
     const b = $('b_reload'); b.disabled = true; b.textContent = 'atualizando…'; $('sub').textContent = 'buscando o catálogo no Fracttal…';
     const antes = TODOS.length;
     try {
-      const r = await fetch('/os/api/ativos/atualizar', {method: 'POST'});
+      const r = await OsCarga.buscar('/os/api/ativos/atualizar', {method: 'POST'}, 'Atualizando o catálogo no Fracttal…');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
       const rc = await fetch('/os/api/ativos/catalogo'); const d = await rc.json();

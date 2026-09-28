@@ -109,3 +109,19 @@ def curto(nome, frases_do_tipo=None) -> str:
                 r = f + ((" " + resto[0]) if resto and _NUM.match(resto[0]) else "")
                 break
     return r or s or bruto[:40]
+
+
+def do_catalogo(asset: dict, frases=None) -> str:
+    """O nome curto de um registro do catálogo ({description, tipo, usina, code}): o `curto` da descrição, com a frase
+    do tipo; o item da planta (tipo "Usina") vira o nome dela, sem o cliente nem o estado ("Cliente X - Usina Teste 1 -
+    CE" → "Usina Teste 1", o corte do `api._usina_curta`). É o nome que o título "[Ativo] - Motivo" da Solicitação usa
+    (27/09/2026)."""
+    a = asset or {}
+    desc = a.get("description") or ""
+    if a.get("tipo") == "Usina":
+        import api                                        # só o corte de texto do nome da usina
+        return api._usina_curta(a.get("usina") or desc.split("  ")[0])
+    nome = curto(desc, (frases or {}).get(a.get("tipo") or ""))
+    if nome in ("", "—"):
+        nome = " ".join(desc.split("{")[0].split()) or str(a.get("code") or "")
+    return nome

@@ -14,6 +14,8 @@ import datetime as dt
 
 import api
 
+from . import ativo_curto
+
 STEP_LABELS = ["Ativo + Data", "Detalhes da Tarefa", "Sub tarefas", "Responsável"]   # app.py::STEP_LABELS
 CLIENTES_OCULTOS = {"almoxarifado", "teste - pa"}                                    # steps/step1.py — almoxarifado e ambiente de teste
 TODOS_CLIENTE = "— Selecione o cliente —"
@@ -60,9 +62,10 @@ def tipos_de(assets: list, cliente: str, usina: str) -> list:
     return sorted({a.get("tipo") for a in (assets or []) if a.get("cliente") == cliente and a.get("usina") == usina and a.get("tipo")})
 
 
-def ativos_de(assets: list, cliente: str, usina: str, tipo: str | None = None, busca: str = "") -> list:
+def ativos_de(assets: list, cliente: str, usina: str, tipo: str | None = None, busca: str = "", frases=None) -> list:
     """Os ativos da usina, enxutos para a tabela (id, code, label, tipo), na ordem do catálogo. A busca é a do app:
-    substring do `label` em minúsculas, sem tirar acento."""
+    substring do `label` em minúsculas, sem tirar acento. `curto` (27/09) é o nome da prévia do título "[Ativo] - Motivo"
+    da Solicitação — o MESMO que o servidor põe ao criar (`ativo_curto.do_catalogo`)."""
     if not usina:
         return []
     txt = (busca or "").strip().lower()
@@ -74,7 +77,8 @@ def ativos_de(assets: list, cliente: str, usina: str, tipo: str | None = None, b
             continue
         if txt and txt not in str(a.get("label") or "").lower():
             continue
-        out.append({"id": a.get("id"), "code": a.get("code"), "label": a.get("label"), "tipo": a.get("tipo")})
+        out.append({"id": a.get("id"), "code": a.get("code"), "label": a.get("label"), "tipo": a.get("tipo"),
+                    "curto": ativo_curto.do_catalogo(a, frases)})
     return out
 
 

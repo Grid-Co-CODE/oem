@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block titulo %}COS{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/cos.css">{% endblock %}
+{% block conteudo %}
+{# A tela COS do app (steps/varias_os.py, VariasOSsDialog) na mesma ordem: a barra do Tipo + o clonador na linha do
+   Voltar (o _wrap_modo do app.py), e os cards 1 Ativo, 2 Categoria da ocorrência, 3 Ação e permissivo de segurança e
+   4 Responsável lado a lado, 5 O ativo falhou?, 6 Como vai ficar e 7 Evento (o último, como no app), com o rodapé fixo
+   Cancelar · Recomeçar · Criar OSs. O estado inicial desenhado aqui é o da tela recém-aberta do app: Religamento da
+   UFV · A · Remoto · já realizada (Finalizados) · "O ativo falhou?" marcado · Severidade "Muito alto". #}
+<section class="os-pagina os-cos" id="cos">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/">← Voltar</a>
+    <div class="cos-barra" id="modo_bar">
+      <span class="cos-rot">Tipo:</span>
+      <div class="os-seg" id="seg_tipo" role="group" aria-label="Tipo de OS">{% for t in tipos %}<button type="button" class="os-seg-btn{% if loop.first %} on{% endif %}">{{ t }}</button>{% endfor %}</div>
+      <span class="os-cresce"></span>
+      <label class="cos-rot" for="ed_clone">Clonar OS nº</label>
+      <input id="ed_clone" type="text" class="cos-clone-in" placeholder="ex.: 9184" inputmode="numeric" autocomplete="off"
+             title="Número de uma OS criada pelo COS — preenche este formulário igual a ela">
+      <button type="button" class="os-btn secondary" id="b_clone">Clonar</button>
+    </div>
+  </div>
+  <div class="os-resultado cos-res" id="msg_clone" hidden><span class="cos-res-txt"></span><button type="button" class="cos-res-x" title="Fechar esta mensagem">fechar</button></div>
+
+  {# ── Card 1: Ativo ── #}
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-badge">1</span><span class="os-cardf-t">Ativo</span></div>
+    <label class="cos-terc" id="terc_row">
+      <input type="checkbox" id="sw_terc" class="cos-sw-in">
+      <span class="cos-sw" aria-hidden="true"></span>
+      <span class="cos-terc-txt"><b>Usina de terceiros</b><small>O&amp;M de usina que não é ativo cadastrado — Cliente/Usina livres + ativo genérico</small></span>
+    </label>
+    <div class="os-seg cos-seg" id="seg_modo" role="group" aria-label="Modo">{% for m in modos %}<button type="button" class="os-seg-btn{% if loop.first %} on{% endif %}">{{ m }}</button>{% endfor %}</div>
+    <div class="os-linha2">
+      <div class="os-campo"><span class="os-lbl">Cliente <i>*</i></span>
+        <div class="cos-sel" id="w_cli_sel"><select id="cb_cli" aria-label="Cliente"><option value="">— Selecione o cliente —</option>{% for c in clientes %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
+        <input id="ed_cli" type="text" placeholder="Digite o cliente…" autocomplete="off" aria-label="Cliente" hidden></div>
+      <div class="os-campo"><span class="os-lbl">Usina <i>*</i></span>
+        <div class="cos-sel" id="w_usi_sel"><select id="cb_usi" data-busca="1" aria-label="Usina"><option value="">— Selecione a usina —</option>{% for u in usinas %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select></div>
+        <input id="ed_usi" type="text" placeholder="Digite a usina…" autocomplete="off" aria-label="Usina" hidden></div>
+    </div>
+    <label class="os-check cos-multi" id="lb_multi"><input type="checkbox" id="ck_multi" disabled> Ativos de mais de uma usina deste cliente</label>
+    <div class="os-linha2" id="lin_tipo">
+      <label class="os-campo"><span class="os-lbl">Tipo de equipamento</span>
+        <select id="cb_tipo" disabled><option value="">Todos os tipos</option></select></label>
+      <label class="os-campo"><span class="os-lbl">&nbsp;</span>
+        <span class="cos-busca">{{ icone('search', '#8A93A8', 15) }}<input id="busca" type="search" placeholder="Filtrar ativo por código ou nome…" autocomplete="off"></span></label>
+    </div>
+    <div class="cos-linha-ativos" id="bar_ativos">
+      <span class="os-lbl">Ativos <i>*</i></span><span class="os-cresce"></span>
+      <button type="button" class="os-btn secondary mini" id="b_all">Selecionar todos</button>
+      <button type="button" class="os-btn secondary mini" id="b_none">Limpar</button>
+    </div>
+    <div class="os-tbl-wrap cos-tbl-wrap" id="w_tbl">
+      <table class="os-tbl cos-tbl"><thead><tr><th>Ativo</th></tr></thead><tbody id="tbody"></tbody></table>
+    </div>
+    <div class="os-ajuda" id="sel_lbl">0 ativo(s) marcado(s)</div>
+    <div class="cos-gen" id="gen_note" hidden>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+      <span class="cos-gen-txt"><b>Grid Co. — Emergências e outros pontos</b><small>ativo genérico · usado quando a usina não é cadastrada no Fracttal</small></span>
+      <span class="cos-gen-pin">automático</span>
+    </div>
+  </div>
+
+  {# ── Card 2: Categoria da ocorrência (a "!" com a tabela ANSI só na categoria A) ── #}
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-badge">2</span><span class="os-cardf-t">Categoria da ocorrência</span><span class="os-cresce"></span>
+      <div class="cos-info" id="info_ansi" tabindex="0" aria-describedby="ansi_tip">!<div class="cos-info-tip" id="ansi_tip" role="tooltip"><b>Proteção (ANSI) → motivo</b>
+        <table>{% for c, m in ansi %}<tr><td>{{ c }}</td><td>{{ m }}</td></tr>{% endfor %}</table></div></div></div>
+    <div class="os-seg cos-seg" id="seg_cat" role="group" aria-label="Categoria">{% for c in categorias %}<button type="button" class="os-seg-btn{% if loop.first %} on{% endif %}">{{ c }}</button>{% endfor %}</div>
+    <div id="page_a" class="cos-linha32">
+      <div class="os-campo"><span class="os-lbl">Proteção(ões) que atuaram <i>*</i></span>
+        <div class="cos-chips" id="chips">{% for c in protecoes %}<button type="button" class="cos-chip" data-cod="{{ c }}" aria-pressed="false">{{ c }}</button>{% endfor %}<button type="button" class="cos-chip cos-chip-sem" data-cod="{{ sem_trip }}" aria-pressed="false">{{ sem_trip }}</button></div></div>
+      <label class="os-campo"><span class="os-lbl">Onde atuou <i>*</i></span>
+        <select id="cb_onde">{% for o in onde %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
+    </div>
+    <label class="os-campo" id="page_b" hidden><span class="os-lbl">Falha do equipamento <i>*</i> <small>(o equipamento é o próprio ativo marcado — inversor, cabine, etc.)</small></span>
+      <select id="cb_falha_b">{% for f in falhas_b %}<option value="{{ f }}">{{ f }}</option>{% endfor %}</select></label>
+    <label class="os-campo" id="page_c" hidden><span class="os-lbl">Causa da comunicação <i>*</i></span>
+      <select id="cb_causa_c">{% for c in causas_c %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></label>
+  </div>
+
+  {# ── Card 3 (Ação + permissivo) e Card 4 (Responsável) lado a lado; empilham abaixo de 860 px, como a Linha do app ── #}
+  <div class="cos-linha34">
+    <div class="os-cardf">
+      <div class="os-cardf-h"><span class="os-badge">3</span><span class="os-cardf-t">Ação e permissivo de segurança</span></div>
+      <div class="os-seg cos-seg" id="seg_acao" role="group" aria-label="Ação">{% for a in acoes %}<button type="button" class="os-seg-btn{% if loop.first %} on{% endif %}">{{ a }}</button>{% endfor %}</div>
+      <div class="cos-perm" id="lbl_perm" role="status"></div>
+    </div>
+    <div class="os-cardf">
+      <div class="os-cardf-h"><span class="os-badge">4</span><span class="os-cardf-t">Responsável</span></div>
+      <div class="os-campo"><span class="os-lbl">Requerido por <i>*</i> <small>(digite p/ pesquisar)</small></span>
+        <div class="cos-resp"><select id="cb_resp" data-busca="1" aria-label="Requerido por"><option value="">carregando…</option></select>
+          <button type="button" class="os-btn secondary cos-reload" id="b_resp" title="Recarregar responsáveis" aria-label="Recarregar responsáveis">↻</button></div></div>
+    </div>
+  </div>
+
+  {# ── Card 5: O ativo falhou? (o bloco de falha da verificação) + a linha "Registrada no Fracttal como" ── #}
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-badge">5</span><span class="os-cardf-t">O ativo falhou?</span></div>
+    <label class="os-check"><input type="checkbox" id="ck_falha" checked> O ativo falhou?</label>
+    <div class="cos-falha" id="falha_box">
+      <div class="cos-linha3">
+        <label class="os-campo"><span class="os-lbl">Tipo de falha</span><select id="cb_ftipo" data-busca="1"><option value="">carregando…</option></select></label>
+        <label class="os-campo"><span class="os-lbl">Causa da falha</span><select id="cb_fcausa" data-busca="1"><option value="">carregando…</option></select></label>
+        <label class="os-campo"><span class="os-lbl">Método de detecção</span><select id="cb_fdetec" data-busca="1"><option value="">carregando…</option></select></label>
+      </div>
+      <div class="cos-linha3">
+        <label class="os-campo"><span class="os-lbl">Severidade</span>
+          <select id="cb_fsev">{% for nome, idp in severidades %}<option value="{{ idp }}"{% if idp == sev_padrao %} selected{% endif %}>{{ nome }}</option>{% endfor %}</select></label>
+        <label class="os-campo"><span class="os-lbl">Tipo de dano</span>
+          <select id="cb_fdano">{% for nome, idp in danos %}<option value="{{ idp }}">{{ nome }}</option>{% endfor %}</select></label>
+        <div class="os-campo"><span class="os-lbl">Fora de serviço</span><span class="cos-oos" id="lbl_oos">{{ oos.texto }}</span></div>
+      </div>
+    </div>
+    <span class="os-lbl">Registrada no Fracttal como <small>(clique no verde para trocar)</small></span>
+    <div class="cos-meta" id="prev_meta" title="Clique num valor em verde para trocar">—</div>
+  </div>
+
+  {# ── Card 6: Como vai ficar (montado sozinho) — a prévia vem do servidor, pela regra do cos_spec ── #}
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-badge">6</span><span class="os-cardf-t">Como vai ficar (montado sozinho)</span></div>
+    <label class="os-campo"><span class="os-lbl">Incluir alguma observação <small>(opcional)</small></span>
+      <input id="ed_obs" type="text" placeholder="comentário do operador — entra numa nova linha no fim da observação" autocomplete="off"></label>
+    <span class="os-lbl">Título</span>
+    <div class="cos-mono cos-tit" id="prev_tit">—</div>
+    <span class="os-lbl">Observação</span>
+    <div class="cos-mono cos-obs" id="prev_obs">—</div>
+  </div>
+
+  {# ── Card 7: Evento — por ÚLTIMO. Esquerda: as datas e o "já realizada"; direita: as respostas (aparecem ao marcar) ── #}
+  <div class="os-cardf">
+    <div class="os-cardf-h"><span class="os-badge">7</span><span class="os-cardf-t">Evento</span></div>
+    <div class="cos-evt2">
+      <div class="cos-evt-esq">
+        <div class="os-campo" id="campo_ev"><span class="os-lbl">Data/hora do evento <i>*</i></span>
+          <div class="cos-dt"><input id="dt_ev" type="datetime-local" value="{{ evento }}" max="{{ agora }}" aria-label="Data/hora do evento"
+                 title="Data do evento não aceita futuro — é quando aconteceu."><button type="button" class="os-btn secondary" id="b_agora">Agora</button><span class="cos-oos-curto" id="lbl_oos_ev">{{ oos.curto }}</span></div></div>
+        <label class="os-campo" id="campo_fim"><span class="os-lbl">Data/hora da conclusão <small>(quando resolvido)</small></span>
+          <input id="dt_fim" type="datetime-local" value="{{ conclusao }}"></label>
+        <div class="cos-datas" id="datas_multi" hidden>
+          <div class="cos-datas-h"><span class="os-lbl">Datas/horas do evento (uma OS por linha)</span><span class="os-cresce"></span>
+            <button type="button" class="os-btn secondary" id="b_add_data">+ Adicionar data</button></div>
+          <div class="cos-datas-lista" id="datas_lista"></div>
+        </div>
+        <label class="os-check"><input type="checkbox" id="ck_fin" checked> Esta tarefa já foi realizada?</label>
+      </div>
+      <div class="cos-evt-dir">
+        <div class="cos-fin" id="fin_panel">
+          <div class="cos-fin-r"><span>Enviar para OS:</span>
+            <label><input type="radio" name="fin_dest" id="rb_verif" value="verif"> Verificação</label>
+            <label><input type="radio" name="fin_dest" id="rb_final" value="final" checked> Finalizados</label></div>
+          {# O FinalizarPanel(["Procedimento"]) do app: a caixa existe lá, mas o `_criar` não a lê — as respostas das
+             subtarefas do COS saem montadas pela categoria (cos_web.subtarefas). Fica igual: aparece e não vai. #}
+          <div class="os-lbl">Respostas das subtarefas <small>(opcional)</small></div>
+          <div class="cos-fin-sub">Procedimento</div>
+          <input type="text" id="fin_resp" placeholder="Resposta…" autocomplete="off" aria-label="Procedimento">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cos-rodape">
+    <div class="os-resultado cos-res" id="resultado" hidden><span class="cos-res-txt"></span><button type="button" class="cos-res-x" title="Fechar esta mensagem">fechar</button></div>
+    <div class="cos-botoes">
+      <a class="os-btn secondary" href="/os/">Cancelar</a>
+      <button type="button" class="os-btn secondary" id="b_limpar" title="Limpa todos os campos e volta ao estado de tela recém-aberta">Recomeçar</button>
+      <button type="button" class="os-btn primaria cos-criar" id="btn_criar" disabled>Criar OSs</button>
+    </div>
+    <div class="os-ajuda cos-hint" id="hint" role="status"></div>
+  </div>
+</section>
+<script type="application/json" id="cos_dados">{{ dados|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/os/static/cos.js"></script>{% endblock %}

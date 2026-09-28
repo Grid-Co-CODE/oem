@@ -106,7 +106,8 @@ def test_fechar_a_janela_de_imagens_NAO_perde_a_pagina():
 
 def test_solicitacao_volta_a_dez_quando_a_lista_muda():
     s = _ler("templates/solic.html")
-    assert 'cbTipo.addEventListener("change", function () { limite = PAGINA; pintar(); });' in s
+    # 27/09: o tipo também refiltra os temas — a volta a dez continua sendo o `limite = PAGINA` antes de pintar
+    assert 'cbTipo.addEventListener("change", function () { limite = PAGINA; pintar();' in s
     assert 'busca.addEventListener("input", function () { limite = PAGINA; pintar(); });' in s
     assert "ativos = j.ativos || []; limite = PAGINA; pintar();" in s
 

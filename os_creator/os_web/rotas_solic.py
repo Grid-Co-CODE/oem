@@ -26,9 +26,10 @@ import api
 import solic_spec as sp
 import temas_store as ts
 
+from . import ativo_curto
 from . import solic_web as sw
 from . import tradicional_web as trad
-from .rotas import _conta, exige_sessao
+from .rotas import _conta, _memo, exige_sessao
 
 bp = Blueprint("os_web_solic", __name__, url_prefix="/os")
 
@@ -102,13 +103,21 @@ def api_criar():
     obs = sw.observacao(corpo.get("observacao") or "", corpo.get("tema") or "",
                         corpo.get("tecnico") or "", corpo.get("data_sugerida") or "",
                         corpo.get("subtarefas") or [])
-    res = api.create_solicitacoes_bulk(
-        escolhidos, str(corpo.get("descricao") or "").strip(), corpo.get("classif1"),
-        id_type=corpo.get("grupo") or None, id_type_2=corpo.get("classif2") or None,
-        observation=obs, date_incident=sw.data_brt(corpo.get("data")),
-        is_urgent=bool(corpo.get("urgente")),
-        desc_type_1=corpo.get("classif1_txt") or "", desc_type=corpo.get("grupo_txt") or "",
-        desc_type_2=corpo.get("classif2_txt") or "")
+    desc = str(corpo.get("descricao") or "").strip()
+    campos = dict(id_type=corpo.get("grupo") or None, id_type_2=corpo.get("classif2") or None,
+                  observation=obs, date_incident=sw.data_brt(corpo.get("data")),
+                  is_urgent=bool(corpo.get("urgente")),
+                  desc_type_1=corpo.get("classif1_txt") or "", desc_type=corpo.get("grupo_txt") or "",
+                  desc_type_2=corpo.get("classif2_txt") or "")
+    if sw.MARCA_ATIVO in desc:
+        # "[Ativo] - Motivo" (27/09): uma chamada por ativo, cada uma com o nome DELE no título — a de lote repete a
+        # mesma descrição em todas. As frases do tipo são as do Histórico (mesma memória de 1 h).
+        frases = _memo(("frases_ativo",), 3600, lambda: ativo_curto.frases(api._read_asset_cache() or []))
+        res = []
+        for a in escolhidos:
+            res += api.create_solicitacoes_bulk([a], sw.titulo_do_ativo(desc, a, frases), corpo.get("classif1"), **campos)
+    else:
+        res = api.create_solicitacoes_bulk(escolhidos, desc, corpo.get("classif1"), **campos)
     return jsonify(sw.mensagem_bulk(res))
 
 

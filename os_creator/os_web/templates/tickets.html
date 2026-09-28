@@ -208,9 +208,9 @@
     passo(atual.confirma_1, "Sim, é esta", function () {
       passo(atual.confirma_2, "Apagar mesmo", function () {
         box.innerHTML = '<p class="os-ajuda">apagando…</p>';
-        fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + atual.row + "/excluir",
+        OsCarga.buscar("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + atual.row + "/excluir",
           {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
-           body: JSON.stringify({impressao: atual.impressao})})
+           body: JSON.stringify({impressao: atual.impressao})}, "Excluindo o ticket…")
           .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
           .then(function (x) {
             box.hidden = true;
@@ -229,7 +229,7 @@
     var q = (document.getElementById("tk_vinc_q").value || "").replace(/\D/g, ""), res = document.getElementById("tk_vinc_res");
     if (q.length < 2) { res.innerHTML = '<p class="os-ajuda">digite ao menos 2 números</p>'; return; }
     res.innerHTML = '<p class="os-ajuda">procurando…</p>';
-    fetch("/os/api/tickets/buscar-os?q=" + encodeURIComponent(q), {credentials: "same-origin"})
+    OsCarga.buscar("/os/api/tickets/buscar-os?q=" + encodeURIComponent(q), {credentials: "same-origin"}, "Buscando a OS no Fracttal…")
       .then(function (r) { return r.json(); })
       .then(function (j) {
         var l = j.resultados || [];
@@ -246,7 +246,7 @@
   function escolherOS(folio) {
     var res = document.getElementById("tk_vinc_res");
     res.innerHTML = '<p class="os-ajuda">lendo a OS ' + esc(folio) + "…</p>";
-    fetch("/os/api/tickets/os/" + encodeURIComponent(folio), {credentials: "same-origin"})
+    OsCarga.buscar("/os/api/tickets/os/" + encodeURIComponent(folio), {credentials: "same-origin"}, "Buscando a OS no Fracttal…")
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (j.erro) { res.innerHTML = '<p class="os-erro">' + esc(j.erro) + "</p>"; return; }
@@ -343,9 +343,9 @@
     });
     var b = document.getElementById("tk_salvar"), res = document.getElementById("tk_res");
     b.disabled = true; b.textContent = "gravando…";
-    fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + atual.row + "/salvar",
+    OsCarga.buscar("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + atual.row + "/salvar",
       {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"},
-       body: JSON.stringify({valores: valores, originais: originais})})
+       body: JSON.stringify({valores: valores, originais: originais})}, "Salvando o ticket…")
       .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
       .then(function (x) {
         b.disabled = false; b.textContent = "Salvar";
@@ -361,7 +361,7 @@
     document.querySelectorAll("tr.tk-l").forEach(function (t) { t.classList.remove("on"); });
     if (tr) tr.classList.add("on");
     corpo.innerHTML = '<p class="os-ajuda">Relendo a ocorrência…</p>'; mostrar(true);
-    fetch("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + row, {credentials: "same-origin"})
+    OsCarga.buscar("/os/api/tickets/" + encodeURIComponent(ABA) + "/" + row, {credentials: "same-origin"}, "Abrindo o ticket…")
       .then(function (r) { return r.json(); })
       .then(function (j) { if (j.erro) { corpo.innerHTML = '<p class="os-erro">' + esc(j.erro) + "</p>"; return; } desenhar(j); })
       .catch(function (e) { corpo.innerHTML = '<p class="os-erro">Não consegui carregar: ' + esc(e) + "</p>"; });
