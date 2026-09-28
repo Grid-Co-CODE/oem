@@ -270,9 +270,10 @@ def home():
     if engenharia_web.supervisorio():                   # 27/09: o supervisório da Engenharia ligado no .env
         setores = [dict(s, etiqueta="", portas=[{"rotulo": "Supervisório", "href": "/os/engenharia"}])
                    if s["chave"] == "eng" else s for s in setores]
+    # casca=True: a tela inicial é a CASCA das abas abertas (28/09) — o Início mora nela, as outras telas em abas
     return render_template("home.html", conta=conta, aba="criar", selo=selo, ola=ola, consulta=lancador.CONSULTA,
                            pilulas_ativos=pilulas, setores=setores, tradicional=lancador.TRADICIONAL,
-                           solicitacoes=lancador.SOLICITACOES)
+                           solicitacoes=lancador.SOLICITACOES, casca=True)
 
 
 @bp.route("/buscar")

@@ -159,6 +159,10 @@ body.os-modal-aberto{overflow:hidden}
 .det-badge{display:inline-flex;align-items:center;height:40px;padding:0 14px;border-radius:8px;border:1px solid rgba(166,226,46,.55);background:rgba(166,226,46,.09);color:var(--f-green);font-weight:600;font-size:13px}
 .det-pill{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:12px;background:var(--f-input);border:1px solid var(--f-border);color:#c4cbdb;font-size:13px}
 .det-pill i{color:var(--f-muted);font-style:italic}
+/* celular (28/09): o cabeçalho não quebrava linha — a pílula da solicitação alargava a página para 461 px num telefone de
+   375, e a galeria de anexos (fixa, centrada na página larga) saía cortada à direita */
+@media (max-width:640px){.det-top{flex-wrap:wrap;gap:10px;padding:12px 14px}.det-top .os-cresce{display:none}
+  .det-pill{height:auto;min-height:36px;padding:6px 12px;flex-wrap:wrap}}
 .det-corpo{display:flex;flex-direction:column;gap:14px;padding:18px 22px 22px}
 .det-card{background:var(--f-card);border:1px solid #222c46;border-radius:13px}
 .det-banner{display:flex;align-items:center;gap:14px;padding:16px 18px}

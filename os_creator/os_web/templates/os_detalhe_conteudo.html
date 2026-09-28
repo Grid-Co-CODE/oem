@@ -104,7 +104,7 @@
     <a class="det-b ambar" href="/os/chamados/inspecao?pai={{ d.folio }}" title="Abre a Inspeção de chamados com o ativo, a data do incidente e o responsável desta OS">Abrir chamado</a>
     <button type="button" class="det-b ok" data-acao="concluir" title="Fecha a OS no Fracttal (irreversível — precisa de permissão na sua conta)">Concluir OS</button>
     <button type="button" class="det-b perigo" data-acao="cancelar" title="Cancela a OS no Fracttal (precisa de permissão na sua conta)">Cancelar OS</button>
-    {% if parcial %}<button type="button" class="det-b ghost" data-fechar>Fechar</button>{% else %}<a class="det-b ghost" href="/os/historico">Fechar</a>{% endif %}
+    {% if parcial %}<button type="button" class="det-b ghost" data-fechar>Fechar</button>{% else %}<a class="det-b ghost" href="/os/historico" data-aba-fechar>Fechar</a>{% endif %}
   </footer>
 
   {# ── os diálogos do app, um <template> cada (o JS clona por cima do card) ── #}

@@ -56,7 +56,8 @@ def criar_app(segredo: str | None = None, testing: bool = False) -> Flask:
     )
     app.json.ensure_ascii = False
     app.jinja_env.filters["iniciais"] = lancador.iniciais
-    app.jinja_env.globals.update(icone=lancador.icone, abas=lancador.ABAS)
+    app.jinja_env.globals.update(icone=lancador.icone, abas=lancador.ABAS, abas_secoes=lancador.ABAS_SECOES,
+                                 icone_secao=lancador.ICONE_SECAO)
     app.register_blueprint(bp)
     from . import blueprints as _bps                     # as telas portadas em 13/09: um rotas_<tela>.py cada, registro automático
     for _b in _bps.TODOS():

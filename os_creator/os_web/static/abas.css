@@ -1,0 +1,65 @@
+/* os_creator/os_web/static/abas.css — as abas abertas (Levi, 28/09/2026; o comportamento está no abas.js). A faixa segue
+   o desenho do menu de antes — ícone + texto, o sublinhado verde na ativa —, agora com o X de fechar e o círculo de
+   quem ainda está carregando. */
+
+/* dentro de uma aba: sem o cabeçalho e sem a faixa (a casca já mostra os dois). A classe vem do <head> do base.html,
+   antes de pintar — a tela nunca pisca com o cabeçalho duplicado */
+html.os-embutido .os-header,html.os-embutido .os-sep,html.os-embutido .os-tabs{display:none!important}
+
+/* a casca ocupa a janela: cabeçalho, faixa e, embaixo, o painel da aba ativa, cada um com a sua rolagem */
+html[data-casca="1"] body{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+html[data-casca="1"] .os-header,html[data-casca="1"] .os-sep,html[data-casca="1"] .abas-faixa{flex:none}
+.abas-paineis{flex:1 1 auto;min-height:0;position:relative}
+.aba-painel{position:absolute;inset:0;overflow:auto}
+.aba-painel[hidden]{display:none}
+main.aba-painel{min-height:0}                                     /* o .os-main pede 60vh; aqui quem manda é a caixa */
+.aba-painel iframe{display:block;width:100%;height:100%;border:0;background:#0B1020}
+
+/* a faixa */
+.abas-faixa{align-items:stretch}
+.abas-lista{flex:1 1 auto;min-width:0;display:flex;align-items:stretch;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  scroll-padding-left:130px}                                      /* a aba que vem à vista não para atrás do Início fixo */
+.abas-lista::-webkit-scrollbar{display:none}
+/* o Início fica sempre à mostra, na ponta esquerda: as outras rolam por baixo dele */
+.abas-lista .aba-inicio{flex:none;position:sticky;left:0;z-index:1;background:#090d18}
+.abas-lista .aba-inicio::after{content:"";position:absolute;top:0;bottom:0;right:-18px;width:18px;pointer-events:none;
+  background:linear-gradient(to right,#090d18,rgba(9,13,24,0))}   /* quem passa por baixo some esmaecendo, sem corte seco */
+.abas-lista .aba-inicio:focus-visible{outline:none;box-shadow:inset 0 0 0 2px rgba(143,206,63,.55);border-radius:6px}
+/* a aba não encolhe até virar duas letras: a faixa cheia ROLA (a roda do mouse anda para os lados; a ativa vem à vista) */
+.aba{flex:0 0 auto;position:relative;display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:240px;
+  padding:9px 6px 9px 14px;color:var(--muted2);border-bottom:2px solid transparent;font-weight:500;cursor:pointer;
+  user-select:none;-webkit-user-select:none;outline:none}
+.aba::before{content:"";position:absolute;left:0;top:50%;width:1px;height:18px;margin-top:-9px;background:rgba(255,255,255,.08)}
+.aba.on::before,.aba.on+.aba::before{opacity:0}                   /* o traço some encostado na ativa */
+.aba:hover{color:#c9cfe0}
+.aba.on{color:var(--verde);border-bottom-color:var(--verde)}
+.aba:focus-visible{box-shadow:inset 0 0 0 2px rgba(143,206,63,.55);border-radius:6px}
+.aba-ic{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px}
+.aba-t{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aba-x{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;
+  border-radius:6px;background:transparent;color:inherit;cursor:pointer;opacity:0}
+.aba:hover .aba-x,.aba.on .aba-x,.aba:focus-visible .aba-x{opacity:.7}
+.aba-x:hover{opacity:1;background:rgba(255,255,255,.1);color:#fff}
+@media (hover:none){.aba-x{opacity:.7}}                            /* no toque não existe "passar o mouse" */
+
+/* carregando: o ícone vira um círculo girando; aba nova entra de leve */
+.aba.carregando .aba-ic svg{display:none}
+.aba.carregando .aba-ic::after{content:"";width:12px;height:12px;border-radius:50%;border:2px solid rgba(143,206,63,.25);
+  border-top-color:var(--verde);animation:aba-gira .8s linear infinite}
+@keyframes aba-gira{to{transform:rotate(360deg)}}
+.aba.nova{animation:aba-entra .18s ease-out}
+@keyframes aba-entra{from{opacity:0;transform:translateY(3px)}}
+/* Windows com "efeitos de animação" desligados (o PC do Levi): encurta, não zera — o círculo segue dizendo "carregando" */
+@media (prefers-reduced-motion:reduce){.aba.nova{animation-duration:.08s}.aba.carregando .aba-ic::after{animation-duration:2s}}
+
+/* o painel enquanto a tela não chega: o mesmo círculo do carga.js, dentro da aba (a faixa segue usável) */
+.aba-carga{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;background:#0B1020}
+.aba-carga.espera .carga-caixa{visibility:hidden}                 /* 250 ms: a tela que vem rápido não pisca o círculo */
+.aba-erro{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;background:#0B1020;color:#c4cbdb;font-size:14px}
+.aba-erro p{margin:0}
+.aba-erro-b{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border-radius:10px;border:1px solid #2A3550;
+  color:#fff;text-decoration:none;font-weight:600}
+.aba-erro-b:hover{border-color:var(--verde)}
+
+@media (max-width:640px){.aba{max-width:170px;padding-left:10px}}

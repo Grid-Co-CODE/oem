@@ -137,11 +137,31 @@ def saudacao(hora: int) -> str:
 
 
 # as abas do topo (27/09: a "Solicitação / PCM" saiu — a nova solicitação mora em Solicitações e a fila e o histórico,
-# no setor PCM). A chave "criar" continua sendo a do Início: é ela que as telas passam para acender a aba.
+# no setor PCM). A chave "criar" continua sendo a do Início: é ela que as telas passam para acender a aba. Desde 28/09
+# esta faixa fixa só aparece na tela aberta SOZINHA (sem JavaScript ou com ?solo=1): a tela inicial é a casca das abas
+# abertas (abaixo) e as outras telas moram dentro dela.
 ABAS = [
     {"chave": "criar", "titulo": "Início", "icone": "home", "href": "/os/"},
     {"chave": "hist", "titulo": "Histórico de OS", "icone": "history", "href": "/os/historico"},
 ]
+
+# As abas ABERTAS (Levi, 28/09/2026: "comece só com início, se eu clicar em histórico abre uma aba de histórico, se
+# performance abre uma aba de performance e assim por diante"). Toda tela pertence a um SETOR pelo começo do caminho — o
+# prefixo mais comprido vence (a fila do PCM mora em /os/solicitacao/fila, a nova solicitação em /os/solicitacao). O
+# abas.js decide com esta tabela: link para OUTRO setor abre (ou acende) a aba dele; dentro do mesmo setor a aba segue o
+# link, como uma aba do navegador. Tela nova sem linha aqui vira o setor do 1º pedaço do caminho — nunca some.
+ABAS_SECOES = [
+    ("/os/setor/pcm", "pcm"), ("/os/pcm", "pcm"), ("/os/solicitacao/fila", "pcm"), ("/os/solicitacao/historico", "pcm"),
+    ("/os/solicitacao", "solic"),
+    ("/os/setor/chamados", "chamados"), ("/os/chamados", "chamados"), ("/os/inspecao", "chamados"),
+    ("/os/performance", "perf"), ("/os/tickets", "tickets"), ("/os/historico", "hist"), ("/os/ativos", "ativos"),
+    ("/os/cos", "cos"), ("/os/engenharia", "eng"), ("/os/tradicional", "tradicional"), ("/os/clonar", "clonar"),
+    ("/os/os", "os"), ("/os/buscar", "busca"), ("/os/em-breve", "embreve"),
+]
+# o ícone de cada aba é o do card da tela inicial (a OS aberta, o documento; a busca, a lupa)
+ICONE_SECAO = {"pcm": "calendar", "solic": "clipboard", "chamados": "headset", "perf": "bolt", "tickets": "ticket",
+               "hist": "history", "ativos": "rack", "cos": "stack", "eng": "etm", "tradicional": "file", "clonar": "copy",
+               "os": "doc", "busca": "search", "embreve": "doc"}
 
 # O que cada card/aba faz no app e ainda não faz na web (a página "em breve" explica com estas palavras).
 NO_APP = {

@@ -1,11 +1,31 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR"{% if casca %} data-casca="1"{% endif %}{% if sem_abas %} data-sem-abas="1"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{# As abas abertas (28/09/2026, static/abas.js). Antes de pintar: a tela DENTRO de uma aba perde o cabeçalho e a faixa
+   (a casca já mostra os dois); a tela aberta SOZINHA no navegador — link da Plataforma, favorito, botão do meio — vai
+   para a casca (/os/) com ela numa aba. Ficam fora: a própria casca, o login (que sai da aba e toma a janela: a sessão
+   caiu dentro de uma aba) e o ?solo=1. #}
+{% if sem_abas %}
+{# o login não tem abas nem script na tela (test_os_web_sso); só sai da aba em que a sessão caiu e toma a janela #}
+<script>try { if (window.top !== window.self) window.top.location.href = location.href; } catch (e) {}</script>
+{% else %}
+<script>
+(function () {
+  var h = document.documentElement, dentro;
+  try { dentro = window.top !== window.self; } catch (e) { dentro = true; }
+  if (dentro) { h.classList.add("os-embutido"); return; }
+  if (h.getAttribute("data-casca") === "1") return;
+  if (location.pathname === "/os/" || location.pathname === "/os" || /[?&]solo=1(&|$)/.test(location.search)) return;
+  location.replace("/os/?aba=" + encodeURIComponent(location.pathname + location.search + location.hash));
+})();
+</script>
+{% endif %}
 <title>{% block titulo %}Criar OS{% endblock %} · Grid Co.</title>
 <link rel="icon" href="/os/assets/grid-icon.png">
 <link rel="stylesheet" href="/os/static/os.css">
+<link rel="stylesheet" href="/os/static/abas.css">
 <script src="/os/static/os_busca.js" defer></script>
 <script src="/os/static/carga.js"></script>{# sem defer: as telas usam o OsCarga já na carga #}
 {# se o carga.js não chegar, as buscas seguem sem o círculo — nenhuma tela pode parar por causa dele #}
@@ -35,6 +55,16 @@
 </header>
 <div class="os-sep"></div>
 {% if conta %}
+{% if casca %}
+{# a faixa das abas abertas: começa só com o Início (Levi, 28/09); as outras nascem do clique (abas.js) #}
+<nav class="os-tabs abas-faixa" aria-label="Abas">
+  <div class="abas-lista" id="abas_lista" role="tablist" aria-label="Abas abertas">
+    <a class="os-tab aba-inicio on" id="aba_inicio" href="/os/" role="tab" aria-selected="true" aria-controls="painel_inicio" tabindex="0">{{ icone('home', 'currentColor', 18) }}<span>Início</span></a>
+  </div>
+  <button type="button" class="os-recolher" id="b_topo" title="Recolher / mostrar o topo" aria-label="Recolher ou mostrar o topo">{{ icone('chevup', '#c9cfe0', 18) }}</button>
+</nav>
+{% else %}
+{# a faixa fixa: só na tela aberta sozinha (sem JavaScript ou com ?solo=1) — no resto ela mora dentro de uma aba #}
 <nav class="os-tabs">
   {# `aba_nav` existe para a tela que usa `aba` para outra coisa (Tickets: Trackers/Strings). A aba "Solicitação / PCM"
      saiu em 27/09 (a nova solicitação mora na tela inicial; a fila e o histórico, no setor PCM): as telas dela acendem
@@ -45,6 +75,7 @@
   {% endfor %}
   <button type="button" class="os-recolher" id="b_topo" title="Recolher / mostrar o topo" aria-label="Recolher ou mostrar o topo">{{ icone('chevup', '#c9cfe0', 18) }}</button>
 </nav>
+{% endif %}
 <script>
 document.getElementById("b_topo").addEventListener("click", function () {
   var recolhido = document.body.classList.toggle("os-sem-topo");
@@ -52,9 +83,16 @@ document.getElementById("b_topo").addEventListener("click", function () {
 });
 </script>
 {% endif %}
-<main class="os-main">
+{% if casca %}<div class="abas-paineis" id="abas_paineis">{% endif %}
+<main class="os-main{% if casca %} aba-painel{% endif %}"{% if casca %} id="painel_inicio" role="tabpanel" aria-labelledby="aba_inicio"{% endif %}>
 {% block conteudo %}{% endblock %}
 </main>
+{% if casca %}</div>
+{# o que o abas.js precisa da casca: a tabela dos setores (lancador.ABAS_SECOES) e o ícone de cada um #}
+<script type="application/json" id="abas_secoes">{{ abas_secoes|tojson }}</script>
+<template id="abas_icones">{% for s, nome in icone_secao.items() %}<span data-secao="{{ s }}">{{ icone(nome, 'currentColor', 16) }}</span>{% endfor %}<span data-secao="outra">{{ icone('doc', 'currentColor', 16) }}</span></template>
+{% endif %}
 {% block scripts %}{% endblock %}
+{% if not sem_abas %}<script src="/os/static/abas.js"></script>{% endif %}
 </body>
 </html>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block titulo %}Históricos de OS{% endblock %}
+{% block titulo %}{{ {'atribuidas': 'Atribuídas a mim', 'cos': 'Visão COS'}.get(modo, 'Histórico de OS') }}{% endblock %}
 {% block body_class %}os-form{% endblock %}
 {# HistoricoOS (steps/historico.py) na web, com os mesmos filtros e a mesma divisão de trabalho: Visão, Criado por, Etiqueta,
    Status e Período re-buscam no servidor (o formulário); Cliente, Usina, Tipo de ativo, Tipo de tarefa e a busca são locais

@@ -82,14 +82,23 @@
 .acoes-seta::after{content:"";position:absolute;right:17px;top:61px;width:10px;height:10px;border-top:2px solid var(--f-green);border-right:2px solid var(--f-green);transform:rotate(45deg)}
 .acoes-seta span{position:absolute;left:0;right:0;top:38px;text-align:center;font-size:10px;font-weight:700;color:var(--f-muted)}
 /* anexos (GaleriaDialog: grade de miniaturas 273x205; DocumentosDialog: linha com tag da extensão, Abrir e Baixar) */
-.acoes-dlg-anexos{width:min(980px,96vw)}
+/* 5 fotos por linha (Levi, 28/09): a caixa cresce e a grade tem colunas fixas, descendo com a tela */
+.acoes-dlg-anexos{width:min(1480px,96vw)}
 .acoes-anx-corpo{display:flex;flex-direction:column;gap:12px}
-.acoes-fotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.acoes-fotos{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+@media (max-width:1180px){.acoes-fotos{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:940px){.acoes-fotos{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:680px){.acoes-fotos{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .acoes-foto{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
-.acoes-foto figcaption{color:var(--f-muted);font-size:11.5px;min-height:30px;overflow:hidden}
-.acoes-foto .img{display:block;height:165px;border-radius:10px;overflow:hidden;background:var(--f-input);border:1px solid var(--f-border)}
+.acoes-foto figcaption{color:var(--f-muted);font-size:11.5px;line-height:1.35;min-height:46px;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+/* 4:3 como a miniatura do app (273×205, steps/galeria.py) — a foto do celular do técnico cabe sem cortar a cena */
+.acoes-foto .img{cursor:zoom-in;display:block;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--f-input);border:1px solid var(--f-border)}
 .acoes-foto img{width:100%;height:100%;object-fit:cover;display:block}
 .acoes-foto .img:hover{border-color:var(--f-green)}
+.acoes-foto .img.quebrada{display:flex;align-items:center;justify-content:center;padding:10px;text-align:center;
+  color:var(--f-muted);font-size:11.5px;text-decoration:none}
+.acoes-foto .img.quebrada img{display:none}.acoes-foto .img.quebrada::after{content:"(não consegui baixar a imagem)"}
 .acoes-nota{background:rgba(166,226,46,.05);border:1px solid rgba(166,226,46,.28);border-radius:10px;padding:0 12px;color:#c4cbdb}   /* célula de nota da galeria */
 .acoes-nota summary{padding:11px 0;cursor:pointer;font-size:11.5px;list-style:none}.acoes-nota summary::-webkit-details-marker{display:none}
 .acoes-nota[open]{border-color:rgba(166,226,46,.6)}.acoes-nota pre{white-space:pre-wrap;font:inherit;margin:0 0 12px;color:#e6eaf2}
@@ -98,6 +107,31 @@
 .acoes-ext{width:46px;text-align:center;background:rgba(166,226,46,.12);color:#a3d900;border-radius:6px;padding:3px 0;font-size:10.5px;font-weight:700;flex:none}
 .acoes-doc-t{flex:1;min-width:0;font-size:12.5px;overflow-wrap:anywhere}.acoes-doc-t small{display:block;color:var(--f-muted);font-size:11px}
 .acoes-baixar{color:var(--f-green);font-size:11.5px;text-decoration:none;align-self:flex-end}.acoes-baixar:hover{text-decoration:underline}
+/* ── o carrossel das fotos (28/09): o ImagemViewer do app — z 90, acima da galeria (z 80) ── */
+.visor [hidden]{display:none!important}
+.visor{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;gap:10px;padding:14px 18px 12px;
+  background:rgba(4,7,14,.97);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.visor-palco{flex:1;min-height:0;display:flex;align-items:center;gap:10px}
+.visor-img{flex:1;min-width:0;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
+.visor-img img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.visor-msg{color:var(--f-muted);font-size:13px}
+.visor-lado{flex:none;width:52px;height:88px;border-radius:12px;border:1px solid var(--f-border);background:rgba(255,255,255,.04);
+  color:#fff;font-size:38px;line-height:1;cursor:pointer}
+.visor-lado:hover:not(:disabled){border-color:var(--f-green);color:var(--f-green)}
+.visor-lado:disabled{opacity:.25;cursor:default}
+.visor-cap{color:#e6eaf2;font-size:14px;text-align:center;max-width:1100px;margin:0 auto;overflow-wrap:anywhere}
+.visor-fita{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 6px;justify-content:safe center}
+.visor-mini{flex:none;width:72px;height:54px;padding:0;border-radius:6px;overflow:hidden;border:2px solid transparent;
+  background:var(--f-input);cursor:pointer;opacity:.6}
+.visor-mini img{width:100%;height:100%;object-fit:cover;display:block}
+.visor-mini:hover{opacity:1}.visor-mini.on{border-color:var(--f-green);opacity:1}
+.visor-mini.quebrada img{visibility:hidden}
+.visor-barra{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.visor-barra .det-b{min-height:38px;text-decoration:none}.visor-barra .det-b:disabled{opacity:.35}
+.visor-pos{min-width:80px;text-align:center;color:var(--f-muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.visor-cresce{flex:1}
+@media (max-width:640px){.visor{padding:10px 10px 8px}.visor-lado{display:none}.visor-mini{width:56px;height:42px}
+  .visor-barra{justify-content:center}.visor-cresce{display:none}}
 
 /* ── Fazer a tarefa (Levi, 21/09) ─────────────────────────────────────────────────────────── */
 .acoes-pend-fazer{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}

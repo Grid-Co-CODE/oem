@@ -56,6 +56,7 @@
 
   // ── diálogo: clona o <template data-dlg> do card num overlay ACIMA do modal do Histórico ──
   let aberto = null;
+  let visor = null;                                   // o carrossel das fotos (abrirVisor), por cima de tudo
   // "2026-09-21T14:30" no fuso de quem esta olhando — o <input datetime-local> nao aceita ISO com Z
   function agoraLocal() {
     const t = new Date(); t.setMinutes(t.getMinutes() - t.getTimezoneOffset());
@@ -94,7 +95,14 @@
   }
   // Escape fecha o MEU diálogo, e só ele: o Histórico também escuta Escape no document para fechar o card inteiro —
   // a captura na window chega antes e segura a propagação enquanto um diálogo estiver aberto.
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && aberto) { e.stopPropagation(); e.preventDefault(); aberto.fechar(); } }, true);
+  window.addEventListener('keydown', (e) => {
+    if (visor) {                                        // o carrossel (28/09) por cima da galeria: ele responde primeiro
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); visor.fechar(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.stopPropagation(); e.preventDefault(); visor.ir(e.key === 'ArrowLeft' ? -1 : 1); }
+      return;
+    }
+    if (e.key === 'Escape' && aberto) { e.stopPropagation(); e.preventDefault(); aberto.fechar(); }
+  }, true);
   const hint = (dlg, texto) => { const h = q(dlg.caixa, '[data-hint]'); if (h) h.textContent = texto || ''; };
   const trava = (btn, on, texto) => { btn.disabled = !!on; if (texto !== undefined) btn.textContent = texto; };
   const numero = (v) => /^\d+$/.test(String(v)) ? Number(v) : v;
@@ -291,12 +299,13 @@
     const imgs = itens.filter((x) => x.tipo === 'imagem'), docs = itens.filter((x) => x.tipo === 'documento'), notas = itens.filter((x) => x.tipo === 'nota');
     q(dlg.caixa, '[data-anx-sub]').textContent = (imgs.length + docs.length) + ' arquivo(s) · ' + notas.length + ' nota(s) de texto';
     const corpo = q(dlg.caixa, '[data-anx-corpo]'); corpo.innerHTML = '';
+    corpo._fotos = imgs;                                 // o carrossel anda por elas, na ordem da grade
     if (!itens.length) { corpo.innerHTML = '<div class="acoes-hint">' + esc(vazio) + '</div>'; return; }
     if (imgs.length || notas.length) {
-      corpo.insertAdjacentHTML('beforeend', '<div class="acoes-hint">Clique numa foto para ver em tamanho cheio e salvar · clique numa nota para ler o texto.</div>');
+      corpo.insertAdjacentHTML('beforeend', '<div class="acoes-hint">Clique numa foto para ver em tamanho cheio e passar pelas outras (setas do teclado também) · clique numa nota para ler o texto.</div>');
       corpo.insertAdjacentHTML('beforeend', '<div class="acoes-fotos">'
-        + imgs.map((x) => '<figure class="acoes-foto"><figcaption title="' + esc(x.legenda) + '">' + esc(x.legenda) + '</figcaption>'
-          + '<a class="img" href="' + esc(x.url) + '" target="_blank" rel="noopener"><img src="' + esc(x.url) + '" alt="" loading="lazy"></a>'
+        + imgs.map((x, k) => '<figure class="acoes-foto"><figcaption title="' + esc(x.legenda) + '">' + esc(x.legenda) + '</figcaption>'
+          + '<a class="img" href="' + esc(x.url) + '" target="_blank" rel="noopener" data-foto="' + k + '"><img src="' + esc(x.url) + '" alt="" loading="lazy"></a>'
           + (x.baixar ? '<a class="acoes-baixar" href="' + esc(x.baixar) + '" download="' + esc(x.nome) + '">Baixar</a>' : '') + '</figure>').join('')
         + notas.map((x) => '<details class="acoes-nota"><summary>' + esc(x.legenda || 'nota') + '</summary><pre>' + esc(x.texto || '(nota vazia)') + '</pre></details>').join('')
         + '</div>');
@@ -323,7 +332,109 @@
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.det-anexo[data-acao]')) { e.preventDefault(); e.target.click(); }
   });
 
+  // ── o carrossel das fotos (28/09/2026) — o ImagemViewer do app (steps/galeria.py) ──
+  // Levi: "quando eu clicar na foto quero que abra uma visão das fotos ... basicamente abrindo o Carrossel das fotos".
+  // Por cima da galeria (z 90 > 80): Esc fecha SÓ o carrossel e as setas andam — o `keydown` da janela, na captura,
+  // chega antes do da galeria e do Histórico. Ctrl/Shift/meio-clique na miniatura seguem abrindo a foto em outra aba.
+  // A conta de cada foto, pura (o teste roda no node): o `_carregar` do ImagemViewer — "N de M", Anterior desligado na
+  // 1ª, Próxima na última. O Salvar vai pela rota que renova a URL (/os/api/.../anexo, baixa aqui mesmo); sem ela, a URL
+  // do S3 é de outro domínio, o navegador ignora o `download` e trocaria a página — então abre em outra aba.
+  function estadoVisor(fotos, i) {
+    const x = fotos[i] || {}, n = fotos.length, salvar = x.baixar || x.url || '#';
+    return {pos: (i + 1) + ' de ' + n, titulo: 'Foto ' + (i + 1) + ' de ' + n + (x.legenda ? ' — ' + x.legenda : ''),
+      legenda: x.legenda || '', url: x.url || '', antOff: i <= 0, proxOff: i >= n - 1,
+      salvar, download: x.nome || 'foto.jpg', salvarOutraAba: !/^\//.test(salvar)};
+  }
+  const passoVisor = (i, delta, n) => (i + delta >= 0 && i + delta < n) ? i + delta : i;   // nas pontas, fica
+  const deslize = (dx) => Math.abs(dx) > 50 ? (dx < 0 ? 1 : -1) : 0;   // dedo para a esquerda = próxima; toque curto não anda
+
+  function abrirVisor(fotos, idx, origem) {
+    if (!fotos || !fotos.length) return;
+    if (visor) visor.fechar();
+    const el = document.createElement('div');
+    el.className = 'visor'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+    el.innerHTML = '<div class="visor-palco">'
+      + '<button type="button" class="visor-lado ant" data-v="ant" aria-label="Foto anterior">‹</button>'
+      + '<div class="visor-img"><img alt=""><div class="visor-msg">baixando imagem…</div></div>'
+      + '<button type="button" class="visor-lado prox" data-v="prox" aria-label="Próxima foto">›</button></div>'
+      + '<div class="visor-cap"></div>'
+      + '<div class="visor-fita">' + fotos.map((x, k) => '<button type="button" class="visor-mini" data-i="' + k + '" aria-label="Foto '
+          + (k + 1) + '"><img src="' + esc(x.url) + '" alt="" loading="lazy"></button>').join('') + '</div>'
+      + '<div class="visor-barra"><button type="button" class="det-b ghost" data-v="ant">‹ Anterior</button>'
+      + '<span class="visor-pos"></span><button type="button" class="det-b ghost" data-v="prox">Próxima ›</button>'
+      + '<span class="visor-cresce"></span>'
+      + '<a class="det-b ghost" data-v="salvar">Salvar…</a>'
+      + '<a class="det-b ghost" data-v="aba" target="_blank" rel="noopener">Abrir em outra aba</a>'
+      + '<button type="button" class="det-b ghost" data-v="fechar">Fechar</button></div>';
+    document.body.appendChild(el);
+    const img = q(el, '.visor-img img'), msg = q(el, '.visor-msg'), cap = q(el, '.visor-cap'), pos = q(el, '.visor-pos');
+    const salvar = q(el, '[data-v="salvar"]'), aba = q(el, '[data-v="aba"]');
+    let i = idx;
+    function mostrar() {
+      const st = estadoVisor(fotos, i);
+      el.setAttribute('aria-label', st.titulo);
+      msg.textContent = 'baixando imagem…'; msg.hidden = false; img.hidden = true;
+      img.onload = () => { msg.hidden = true; img.hidden = false; };
+      img.onerror = () => { msg.textContent = '(não consegui baixar a imagem)'; msg.hidden = false; img.hidden = true; };
+      img.src = st.url;
+      if (img.complete && img.naturalWidth) { msg.hidden = true; img.hidden = false; }   // já estava em cache
+      cap.textContent = st.legenda;
+      pos.textContent = st.pos;
+      el.querySelectorAll('[data-v="ant"]').forEach((b) => { b.disabled = st.antOff; });
+      el.querySelectorAll('[data-v="prox"]').forEach((b) => { b.disabled = st.proxOff; });
+      salvar.href = st.salvar; salvar.setAttribute('download', st.download); salvar.target = st.salvarOutraAba ? '_blank' : '';
+      aba.href = st.url || '#';
+      el.querySelectorAll('.visor-mini').forEach((b) => b.classList.toggle('on', Number(b.dataset.i) === i));
+      const mini = q(el, '.visor-mini.on');
+      if (mini) mini.scrollIntoView({block: 'nearest', inline: 'center'});
+      [i - 1, i + 1].forEach((k) => { if (fotos[k] && fotos[k].url) new Image().src = fotos[k].url; });   // a vizinha já vem pronta
+    }
+    function ir(delta) { const novo = passoVisor(i, delta, fotos.length); if (novo !== i) { i = novo; mostrar(); } }
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-v], .visor-mini');
+      if (!b) {                                            // o escuro em volta da foto fecha; a foto em si, não
+        if (e.target === el || e.target.classList.contains('visor-palco') || e.target.classList.contains('visor-img')) visor.fechar();
+        return;
+      }
+      if (b.classList.contains('visor-mini')) { i = Number(b.dataset.i); mostrar(); return; }
+      const v = b.dataset.v;
+      if (v === 'ant') ir(-1); else if (v === 'prox') ir(1); else if (v === 'fechar') visor.fechar();
+    });
+    let x0 = null;                                        // o deslizar do dedo, no celular
+    el.addEventListener('touchstart', (e) => { x0 = e.target.closest('.visor-fita') ? null : e.touches[0].clientX; }, {passive: true});
+    el.addEventListener('touchend', (e) => {
+      if (x0 === null) return;
+      const passo = deslize(e.changedTouches[0].clientX - x0); x0 = null;
+      if (passo) ir(passo);
+    });
+    visor = {ir, fechar() {                              // o foco volta para a miniatura da ÚLTIMA foto vista, não a do clique
+      el.remove(); visor = null;
+      const corpo = origem && origem.closest('[data-anx-corpo]');
+      const alvo = (corpo && corpo.querySelector('a.img[data-foto="' + i + '"]')) || origem;
+      if (alvo && alvo.focus) alvo.focus();
+    }};
+    mostrar();
+    const foco = q(el, '.visor-barra [data-v="prox"]:not(:disabled)') || q(el, '.visor-barra [data-v="fechar"]');
+    if (foco) foco.focus();
+  }
+  // foto que o S3 não entrega (link vencido, arquivo apagado): a miniatura diz isso em vez do ícone partido do navegador.
+  // `error` não sobe pela árvore — só a captura no document pega a de uma <img> criada por innerHTML.
+  document.addEventListener('error', (e) => {
+    const im = e.target;
+    if (!im || im.tagName !== 'IMG') return;
+    const caixa = im.closest('.acoes-foto a.img, .visor-mini');
+    if (caixa) caixa.classList.add('quebrada');
+  }, true);
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('.acoes-foto a.img');
+    if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const corpo = a.closest('[data-anx-corpo]');
+    if (!corpo || !corpo._fotos) return;
+    e.preventDefault();
+    abrirVisor(corpo._fotos, Number(a.dataset.foto), a);
+  });
+
   function arranque() { document.querySelectorAll('.det').forEach(contagem); }   // página cheia: o card já está na tela
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arranque); else arranque();
-  window.OsAcoes = {recarregar, contagem, dialogo};
+  window.OsAcoes = {recarregar, contagem, dialogo, abrirVisor, estadoVisor, passoVisor, deslize};
 })();

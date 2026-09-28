@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{# fora das abas (28/09): o login toma a janela inteira — a sessão que cai dentro de uma aba sai dela aqui #}
+{% set sem_abas = true %}
 {% block titulo %}Entrar — Fracttal{% endblock %}
 {% block conteudo %}
 {# SÓ E-MAIL E SENHA (Levi, 21/09). Saíram daqui duas coisas: o redirecionamento automático para

@@ -138,3 +138,16 @@ diário e grava com o token DELA. Leitura continua direta e aberta.
   (plataforma/túnel fora), `EscritaBloqueada` (aba fora da lista). Todos chegam à tela.
 - Testes: `tests/test_tickets_relay_app.py` (app) e, na raiz do repositório-pai,
   `tests/test_tickets_relay.py` + `test_tickets_relay_rotas.py` (plataforma).
+
+## Web: a tela inicial é a casca das abas (28/09/2026)
+
+O `/os/` do `os_web` é a CASCA: o Início mora nela e toda outra tela abre numa aba viva (um `<iframe>`), com o
+comportamento em `static/abas.js` e o desenho em `static/abas.css`. O que isso muda para quem mexe na web:
+
+- **Tela nova precisa de setor** em `lancador.ABAS_SECOES` (link para OUTRO setor abre aba; dentro do mesmo, a aba segue o
+  link) e de ícone em `ICONE_SECAO` — `tests/test_os_web_abas.py` varre as rotas e acusa a que ficou sem.
+- O rótulo da aba é o `<title>` da tela: telas irmãs precisam de títulos diferentes (as visões do Histórico têm).
+- Toda tela aberta sozinha no navegador vai para a casca (o `<head>` do `base.html`); `?solo=1` abre sem casca. O login
+  (`sem_abas`) fica fora e, se a sessão cair dentro de uma aba, toma a janela inteira.
+- Link que deve abrir aba nova sem ser de outro setor: `target="_blank"`; o "Fechar" que fecha a aba: `data-aba-fechar`.
+- Tela aberta pelo nº e pelo id é a MESMA: o `<link rel="canonical">` (a OS) deixa a casca reaproveitar a aba já aberta.

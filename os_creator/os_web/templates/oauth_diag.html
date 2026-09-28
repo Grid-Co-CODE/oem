@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{# fora das abas (28/09): o login toma a janela inteira — a sessão que cai dentro de uma aba sai dela aqui #}
+{% set sem_abas = true %}
 {% block titulo %}Entrar pela tela do Fracttal{% endblock %}
 {% block conteudo %}
 <section class="os-pagina">

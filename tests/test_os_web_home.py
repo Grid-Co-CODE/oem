@@ -46,13 +46,15 @@ def test_cabecalho_igual_ao_do_app(cli):
     assert 'grid-icon.png' in html                                   # o simbolo do app, servido pela propria area
 
 
-def test_duas_abas_inicio_e_historico(cli):
-    """A aba "Solicitação / PCM" saiu: a nova solicitação mora na tela inicial; a fila e o histórico, no setor PCM."""
+def test_a_faixa_comeca_so_com_o_inicio(cli):
+    """Até 27/09 a faixa tinha duas abas fixas, Início e Histórico de OS. Desde 28/09 a tela inicial é a CASCA das abas
+    abertas (tests/test_os_web_abas.py) e a faixa começa só com o Início (Levi: "comece só com início, se eu clicar em
+    histórico abre uma aba de histórico"); o Histórico se abre pelo cartão dele, como os setores."""
     html = cli.get("/os/").get_data(as_text=True)
-    nav = re.search(r'<nav class="os-tabs">(.*?)</nav>', html, re.S).group(1)
-    assert nav.index("Início") < nav.index("Histórico de OS")
-    assert "Solicitação / PCM" not in nav and 'href="/os/historico"' in nav
-    assert re.search(r'class="os-tab on" href="/os/"', nav)                       # o Início aceso
+    nav = re.search(r'<nav class="os-tabs abas-faixa"[^>]*>(.*?)</nav>', html, re.S).group(1)
+    assert nav.count('role="tab"') == 1 and ">Início<" in nav
+    assert "Histórico de OS" not in nav and "Solicitação / PCM" not in nav
+    assert re.search(r'class="os-tab aba-inicio on" id="aba_inicio" href="/os/"', nav)   # o Início aceso
 
 
 def test_a_ordem_consultar_setores_solicitacoes(cli):
