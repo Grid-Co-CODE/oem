@@ -15,10 +15,10 @@
   const card = (el) => el.closest('.det');
   const anexosCache = new WeakMap();                  // a lista de anexos por card — duas rodadas de RPC, não repetir a cada clique
 
-  async function pedir(url, corpo) {
+  async function pedir(url, corpo, texto) {
     const opt = {credentials: 'same-origin', headers: {'Accept': 'application/json'}};
     if (corpo !== undefined) { opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(corpo); }
-    const r = await OsCarga.buscar(url, opt, 'Gravando no Fracttal…');
+    const r = await OsCarga.buscar(url, opt, texto || 'Gravando no Fracttal…');
     let j = null; try { j = await r.json(); } catch (e) { j = null; }
     if (!r.ok) throw new Error(apiErro(j, r));
     return j || {};
@@ -289,9 +289,43 @@
     const corpo = q(dlg.caixa, '[data-anx-corpo]');
     try {
       let j = anexosCache.get(d);
-      if (!j) { j = await pedir('/os/api/os/' + d.dataset.wid + '/anexos-lista'); anexosCache.set(d, j); }
+      if (!j) { j = await pedir('/os/api/os/' + d.dataset.wid + '/anexos-lista', undefined, 'Abrindo os anexos…'); anexosCache.set(d, j); }
       pintarAnexos(dlg, (j[chave] || {itens: []}).itens || [], vazio);
+      baixarTodos(d, dlg, chave, (j[chave] || {}).baixar || 0);
     } catch (e) { corpo.innerHTML = '<div class="acoes-hint">' + esc('não consegui carregar os anexos: ' + e.message) + '</div>'; }
+  }
+
+  // "Baixar todos (N)" — o do app (steps/galeria.py, steps/documentos.py). Lá grava numa pasta; aqui o servidor junta o
+  // card num .zip com a MESMA arrumação (uma pasta por subtarefa, as notas em .txt) e diz o que não veio. N conta o que
+  // vai no .zip: arquivo, ou nota com texto.
+  function baixarTodos(d, dlg, chave, n) {
+    const b = q(dlg.caixa, '[data-baixar-todos]'); if (!b) return;
+    const rot = 'Baixar todos (' + n + ')';
+    b.textContent = rot; b.hidden = !n;
+    b.onclick = async () => {
+      if (b.disabled) return;
+      trava(b, true, 'Juntando…'); msgAnexos(dlg, '');
+      try {
+        const j = await pedir('/os/api/os/' + d.dataset.wid + '/anexos-zip', {grupo: chave, folio: d.dataset.folio || ''},
+                              'Juntando os anexos num .zip…');
+        const a = document.createElement('a');              // o navegador baixa (o arquivo não passa pela memória da tela)
+        a.href = j.url; a.download = j.nome || '';
+        document.body.appendChild(a); a.click(); a.remove();
+        const falhas = j.falhas || [], total = (j.arquivos || 0) + (j.notas || 0);
+        let txt = total + ' anexo(s) em "' + j.nome + '"';
+        if (falhas.length) {
+          txt += ' · ' + falhas.length + (falhas.length === 1 ? ' não veio' : ' não vieram') + ' (a URL do Fracttal expira; abrir os anexos de novo renova): '
+            + falhas.slice(0, 4).map((f) => f.nome.split('/').pop()).join(', ') + (falhas.length > 4 ? ' e mais ' + (falhas.length - 4) : '')
+            + ' — a lista está no _nao_vieram.txt';
+        }
+        msgAnexos(dlg, txt, falhas.length > 0);
+      } catch (e) { msgAnexos(dlg, 'Não consegui baixar: ' + e.message, true); }
+      finally { trava(b, false, rot); }
+    };
+  }
+  function msgAnexos(dlg, texto, ruim) {
+    const m = q(dlg.caixa, '[data-anx-msg]'); if (!m) return;
+    m.hidden = !texto; m.textContent = texto || ''; m.classList.toggle('ruim', !!ruim);
   }
 
   // GaleriaDialog + DocumentosDialog: fotos e notas de texto juntas (saem da MESMA subtarefa), arquivos com Abrir/Baixar

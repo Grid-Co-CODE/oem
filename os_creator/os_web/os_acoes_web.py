@@ -100,13 +100,21 @@ def anexos_da_os_unicos(anexos_sub, anexos_os) -> list:
             and (fname(a.get("value")) or fname(a.get("url")) or str(a.get("nome") or "")).lower() not in sub_nomes]
 
 
+def tem_arquivo(a) -> bool:
+    """Arquivo = tem a URL pré-assinada OU o caminho no S3 (`value`). Até 28/09 valia só a URL, como no app: o PDF cujo
+    link não veio (o s3_object_get falhou, ou o files_list trouxe só o caminho) aparecia como NOTA, com o caminho do S3
+    por texto, e não dava para baixar. Com o caminho, a rota do Baixar renova o link."""
+    return bool(a.get("url")) or (bool(str(a.get("value") or "").strip()) and not a.get("is_text"))
+
+
 def separar_anexos(itens) -> tuple:
-    """(galeria, documentos, notas) — `_separar_anexos`. Sem URL não há arquivo: é nota de texto. Com URL, quem decide é a
-    EXTENSÃO (`is_image`), nunca o fato de ter URL — a pré-assinada do S3 vem igual para uma foto e para um ZIP (OS 11458)."""
+    """(galeria, documentos, notas) — `_separar_anexos`. Sem arquivo (`tem_arquivo`) é nota de texto. Com arquivo, quem
+    decide é a EXTENSÃO (`is_image`), nunca o fato de ter URL — a pré-assinada do S3 vem igual para uma foto e para um
+    ZIP (OS 11458)."""
     itens = [a for a in (itens or []) if isinstance(a, dict)]
-    imgs = [a for a in itens if a.get("url") and a.get("is_image")]
-    docs = [a for a in itens if a.get("url") and not a.get("is_image")]
-    notas = [a for a in itens if not a.get("url")]
+    imgs = [a for a in itens if tem_arquivo(a) and a.get("is_image")]
+    docs = [a for a in itens if tem_arquivo(a) and not a.get("is_image")]
+    notas = [a for a in itens if not tem_arquivo(a)]
     return imgs, docs, notas
 
 
@@ -119,6 +127,8 @@ def link_baixar(wid, value, nome) -> str:
 def _item(tipo, wid, a, nome, legenda, quem, texto=""):
     url = a.get("url") or None
     value = str(a.get("value") or "").strip()
+    if not url and value and tipo != "nota":          # sem a pré-assinada: a rota renova o link e mostra ali mesmo
+        url = link_baixar(wid, value, nome) + "&abrir=1"
     return {"tipo": tipo, "nome": nome, "url": url, "legenda": legenda, "quem": quem, "texto": texto,
             "ext": ext(nome) if tipo == "documento" else "",
             "baixar": link_baixar(wid, value, nome) if value else url}
@@ -163,9 +173,112 @@ def anexos_web(anexos_sub, anexos_os, wid) -> dict:
     azul = da OS, sem o que já é de subtarefa)."""
     subs = [a for a in (anexos_sub or []) if isinstance(a, dict)]
     uniq = anexos_da_os_unicos(subs, anexos_os)
-    return {"sub": {"itens": itens_subtarefas(subs, wid), "n": len(subs)},
-            "os": {"itens": itens_os(uniq, wid), "n": len(uniq)},
+    # `baixar` = o N do "Baixar todos (N)" de cada card: o que vai para o .zip (arquivo, ou nota com texto)
+    return {"sub": {"itens": itens_subtarefas(subs, wid), "n": len(subs),
+                    "baixar": len(plano_do_zip(itens_para_baixar("sub", subs, anexos_os)))},
+            "os": {"itens": itens_os(uniq, wid), "n": len(uniq),
+                   "baixar": len(plano_do_zip(itens_para_baixar("os", subs, anexos_os)))},
             "n": {"sub": len(subs), "os": len(uniq)}}
+
+
+# ── baixar todos (steps/documentos.py: _limpar_nome, _baixaveis, baixar_em_massa) ─────────────────────────────────────
+# O app grava numa PASTA que a pessoa escolhe (pedido do Levi, 04/09: "só quero conseguir baixar em massa"); a web não
+# escolhe pasta — entrega um .zip com a MESMA arrumação: uma subpasta por subtarefa, a numeração DENTRO de cada uma, a
+# nota de texto como .txt ("é ela que costuma explicar a foto") e o nome repetido (o celular manda tudo como image.jpg)
+# com " (2)". tests/test_os_web_anexos_zip.py roda a função do app numa pasta e compara caminho por caminho.
+def limpar_nome(t, padrao="arquivo") -> str:
+    """Nome que o Windows aceita — `documentos._limpar_nome`: `\\ / : * ? " < > |` viram "_" e o nome não termina em ponto
+    nem em espaço."""
+    t = "".join("_" if c in '\\/:*?"<>|' else c for c in str(t or "")).strip(" .")
+    return (t or padrao)[:120]
+
+
+def itens_para_baixar(grupo, anexos_sub, anexos_os) -> list:
+    """Os anexos de UM card no formato do `baixar_em_massa` ({url, value, nome, descricao, subtarefa, is_text}): 'sub' =
+    os das subtarefas, cada um na pasta da sua; 'os' = os da OS sem os que já são de subtarefa (`_recount`), na raiz."""
+    subs = [a for a in (anexos_sub or []) if isinstance(a, dict)]
+    if grupo == "sub":
+        return [{"url": a.get("url"), "value": str(a.get("value") or "").strip(), "nome": a.get("nome"),
+                 "descricao": a.get("descricao"), "subtarefa": a.get("subtarefa") or "", "is_text": bool(a.get("is_text"))}
+                for a in subs]
+    return [{"url": a.get("url"), "value": str(a.get("value") or "").strip(), "nome": a.get("nome"),
+             "descricao": a.get("desc") or a.get("nome"), "subtarefa": "", "is_text": bool(a.get("is_text"))}
+            for a in anexos_da_os_unicos(subs, anexos_os)]
+
+
+def plano_do_zip(itens) -> list:
+    """[{caminho, tipo ('arquivo' | 'nota'), item, texto}] — o `baixar_em_massa` sem gravar nada. A numeração conta até a
+    nota vazia que fica de fora, como lá. Diferença (mais segura): o arquivo sem URL mas com o caminho no S3 continua
+    arquivo — o app o gravaria como .txt com o caminho; aqui o servidor renova o link (`tem_arquivo`)."""
+    out, usados, n_sub = [], set(), {}
+    for i, d in enumerate(itens or [], 1):
+        if not isinstance(d, dict):
+            continue
+        sub = limpar_nome(d.get("subtarefa") or "", "")
+        pasta = sub + "/" if sub else ""
+        n_sub[sub] = n_sub.get(sub, 0) + 1
+        k = n_sub[sub]
+        if d.get("is_text") or not tem_arquivo(d):
+            txt = str(d.get("descricao") or d.get("value") or "").strip()
+            if txt:
+                out.append({"caminho": pasta + "%02d - %s.txt" % (k, limpar_nome(d.get("nome") or "nota", "nota")),
+                            "tipo": "nota", "item": d, "texto": txt})
+            continue
+        base = limpar_nome(d.get("nome") or "anexo_%d" % i)
+        cam = pasta + "%02d - %s" % (k, base)
+        raiz, extensao = os.path.splitext(cam)
+        j = 2
+        while cam.lower() in usados:
+            cam = "%s (%d)%s" % (raiz, j, extensao)
+            j += 1
+        usados.add(cam.lower())
+        out.append({"caminho": cam, "tipo": "arquivo", "item": d, "texto": ""})
+    return out
+
+
+_JA_COMPRIMIDO = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".zip", ".rar", ".7z", ".gz", ".mp4", ".mov", ".pdf", ".docx",
+                  ".xlsx", ".pptx")
+TETO_ZIP = 250 * 1024 * 1024
+NAO_VIERAM = "_nao_vieram.txt"
+
+
+def montar_zip(destino, plano, baixar, teto=TETO_ZIP, mapa=map) -> dict:
+    """Grava o .zip em `destino` seguindo o `plano`. `baixar(item) -> bytes` e `mapa` (o `ex.map` de um executor, para
+    baixar em paralelo) são injetáveis — o teste roda sem rede. Um arquivo que falha NÃO derruba o lote (a URL
+    pré-assinada expira; se o décimo morrer, os outros dezenove valem): vai para o _nao_vieram.txt, e a tela conta.
+    → {arquivos, notas, falhas: [(caminho, motivo)], bytes}"""
+    import zipfile
+
+    def _um(p):
+        if p["tipo"] == "nota":
+            return p, p["texto"].encode("utf-8"), None
+        try:
+            dados = baixar(p["item"])
+        except Exception as e:                        # noqa: BLE001 — um arquivo que falha não derruba o lote
+            return p, None, (str(e) or type(e).__name__)[:160]
+        return p, dados, (None if dados else "veio vazio")
+
+    arquivos = notas = total = 0
+    falhas = []
+    with zipfile.ZipFile(destino, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for p, dados, erro in mapa(_um, plano):
+            if erro:
+                falhas.append((p["caminho"], erro))
+                continue
+            if total + len(dados) > teto:
+                falhas.append((p["caminho"], "o .zip passou de %d MB" % (teto // (1024 * 1024))))
+                continue
+            leve = p["caminho"].lower().endswith(_JA_COMPRIMIDO)      # foto e ZIP já vêm comprimidos: só guardar
+            zf.writestr(p["caminho"], dados, compress_type=zipfile.ZIP_STORED if leve else zipfile.ZIP_DEFLATED)
+            total += len(dados)
+            if p["tipo"] == "nota":
+                notas += 1
+            else:
+                arquivos += 1
+        if falhas:
+            zf.writestr(NAO_VIERAM, ("Estes anexos não vieram (a URL do Fracttal expira; abrir os anexos de novo renova):\n\n"
+                                     + "\n".join("· %s — %s" % f for f in falhas) + "\n").encode("utf-8"))
+    return {"arquivos": arquivos, "notas": notas, "falhas": falhas, "bytes": total}
 
 
 # ── fluxo (steps/os_fluxo.py) ───────────────────────────────────────────────────────────────────────────

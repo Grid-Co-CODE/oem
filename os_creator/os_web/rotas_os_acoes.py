@@ -8,13 +8,19 @@ antes de escrever e recarrega o fragmento do card (`/os/os/<wid>?parcial=1`) ao 
 `app_errorhandler` do rotas.py (sessão morta → 401 com `login`; recusa → 502 com a mensagem)."""
 from __future__ import annotations
 import mimetypes
+import os
+import secrets
+import tempfile
+import threading
+import time
 from urllib.parse import quote
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_file, session
 
 import api
 
 from . import os_acoes_web as regra
+from . import rotas as _rotas
 from . import tradicional_web as trad
 from .rotas import exige_sessao
 
@@ -55,13 +61,27 @@ def api_fluxo(wid):
     return jsonify(regra.fluxo_web(api.fluxo_da_os(wid, 0) or {}, api.fmt_data_br))
 
 
+def _email() -> str:
+    return str((session.get("conta") or {}).get("email") or "").strip().lower()
+
+
+_LISTA_TTL = 180
+
+
+def _anexos_da_os(wid, forcar=False):
+    """(subs, oss) — as duas chamadas do `_carregar` do card (get_os_subtarefa_anexos + get_os_anexos), guardadas 3 min
+    POR PESSOA. A lista sempre vem nova (`forcar`); quem reaproveita é o "Baixar todos" logo depois de abrir os anexos:
+    cada arquivo de subtarefa custa um s3_object_get, e o limite do Fracttal é de 200/min para a EMPRESA inteira."""
+    return _rotas._memo(("anexos", _email(), int(wid)), _LISTA_TTL,
+                        lambda: (api.get_os_subtarefa_anexos(wid) or [], api.get_os_anexos(wid) or []), forcar=forcar)
+
+
 @bp.route("/api/os/<int:wid>/anexos-lista")
 @exige_sessao
 def api_anexos_lista(wid):
     """Imagens, documentos e notas dos dois cards (verde = das subtarefas, azul = da OS), já com a URL pré-assinada que o
     api resolve e o link que a renova — as duas chamadas do `_carregar` do card (get_os_subtarefa_anexos + get_os_anexos)."""
-    subs = api.get_os_subtarefa_anexos(wid) or []
-    oss = api.get_os_anexos(wid) or []
+    subs, oss = _anexos_da_os(wid, forcar=True)
     return jsonify(regra.anexos_web(subs, oss, wid))
 
 
@@ -83,9 +103,105 @@ def api_anexo_baixar(wid):
     dados = api.baixar_imagem(url)                                   # FracttalError sobe → 502 JSON
     tipo = mimetypes.guess_type(nome)[0] or "application/octet-stream"
     ascii_ = nome.encode("ascii", "ignore").decode() or "anexo"
+    # abrir=1: mostra ali mesmo (o PDF no leitor do navegador, a foto na galeria) — o link do anexo que veio sem a
+    # pré-assinada (os_acoes_web._item); sem ele, baixa
+    modo = "inline" if request.args.get("abrir") else "attachment"
     return Response(dados, mimetype=tipo, headers={
-        "Content-Disposition": 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (ascii_.replace('"', ""), quote(nome, safe="")),
+        "Content-Disposition": '%s; filename="%s"; filename*=UTF-8\'\'%s' % (modo, ascii_.replace('"', ""), quote(nome, safe="")),
         "Cache-Control": "private, no-store"})
+
+
+# ── baixar todos (steps/galeria.py, steps/documentos.py: "Baixar todos (N)") ─────────────────────────────────────────
+# Dois passos: o POST junta tudo num .zip no disco e responde quantos vieram e quais não; o GET entrega o arquivo. Num
+# passo só a contagem se perderia — o proxy da Plataforma só repassa alguns cabeçalhos —, e um .zip grande ficaria
+# inteiro na memória do navegador. O .zip vale 10 minutos, só para quem o pediu.
+_ZIPS: dict = {}
+_ZIPS_LOCK = threading.Lock()
+_ZIP_TTL = 600
+
+
+def _pasta_zips() -> str:
+    p = os.path.join(tempfile.gettempdir(), "os_web_zips")
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+def _varrer_zips(agora: float):
+    """Tira os .zip vencidos (os da memória e os que sobraram no disco de um reinício)."""
+    with _ZIPS_LOCK:
+        for t, z in list(_ZIPS.items()):
+            if agora - z["criado"] > _ZIP_TTL:
+                _ZIPS.pop(t, None)
+    try:
+        pasta = _pasta_zips()
+        for n in os.listdir(pasta):
+            cam = os.path.join(pasta, n)
+            if n.endswith(".zip") and agora - os.path.getmtime(cam) > _ZIP_TTL:
+                os.remove(cam)
+    except OSError:
+        pass                                                         # arquivo ainda sendo entregue: fica para a próxima
+
+
+def _baixar_anexo(item) -> bytes:
+    """Os bytes de um anexo pela pré-assinada da lista; vencida (ou sem ela), renova pelo caminho no S3 e tenta de novo."""
+    url = item.get("url")
+    if url:
+        try:
+            return api.baixar_imagem(url)
+        except api.FracttalError:
+            if not item.get("value"):
+                raise
+    novo = api.s3_get_url(item.get("value")) if item.get("value") else None
+    if not novo:
+        raise api.FracttalError("o Fracttal não renovou o link")
+    return api.baixar_imagem(novo)
+
+
+@bp.route("/api/os/<int:wid>/anexos-zip", methods=["POST"])
+@exige_sessao
+def api_anexos_zip(wid):
+    """Junta os anexos de UM card (grupo 'sub' = das subtarefas, 'os' = da OS) num .zip com a arrumação do app:
+    `regra.plano_do_zip` (= baixar_em_massa) + `regra.montar_zip`, baixando 6 de cada vez com o contexto da sessão."""
+    c = _corpo()
+    grupo = str(c.get("grupo") or "")
+    if grupo not in ("sub", "os"):
+        return _erro("Escolha os anexos: das subtarefas ou da OS.")
+    folio = "".join(ch for ch in str(c.get("folio") or "") if ch.isdigit())[:12] or str(int(wid))
+    subs, oss = _anexos_da_os(wid)
+    plano = regra.plano_do_zip(regra.itens_para_baixar(grupo, subs, oss))
+    if not plano:
+        return _erro("Não há anexos para baixar neste card.", 404)
+    agora = time.time()
+    _varrer_zips(agora)
+    token = secrets.token_urlsafe(18)
+    caminho = os.path.join(_pasta_zips(), token + ".zip")
+    with api._ExecutorComContexto(max_workers=6) as ex:
+        r = regra.montar_zip(caminho, plano, _baixar_anexo, mapa=ex.map)
+    if not (r["arquivos"] + r["notas"]):
+        try:
+            os.remove(caminho)
+        except OSError:
+            pass
+        return _erro("Nenhum anexo veio do Fracttal (a URL expira: abra os anexos de novo e tente outra vez).", 502)
+    nome = "OS %s - anexos %s.zip" % (folio, "das subtarefas" if grupo == "sub" else "da OS")
+    with _ZIPS_LOCK:
+        _ZIPS[token] = {"caminho": caminho, "nome": nome, "wid": int(wid), "email": _email(), "criado": agora}
+    return jsonify({"ok": True, "nome": nome, "url": "/os/api/os/%d/anexos-zip/%s" % (int(wid), token),
+                    "arquivos": r["arquivos"], "notas": r["notas"], "bytes": r["bytes"],
+                    "falhas": [{"nome": n, "motivo": m} for n, m in r["falhas"]]})
+
+
+@bp.route("/api/os/<int:wid>/anexos-zip/<token>")
+@exige_sessao
+def api_anexos_zip_baixar(wid, token):
+    with _ZIPS_LOCK:
+        z = _ZIPS.get(str(token))
+    if (not z or z["wid"] != int(wid) or z["email"] != _email() or time.time() - z["criado"] > _ZIP_TTL
+            or not os.path.exists(z["caminho"])):
+        return _erro("Este .zip venceu (vale 10 minutos) — clique de novo em Baixar todos.", 404)
+    resp = send_file(z["caminho"], mimetype="application/zip", as_attachment=True, download_name=z["nome"], max_age=0)
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
 
 
 @bp.route("/api/os/<int:wid>/etiquetas")
