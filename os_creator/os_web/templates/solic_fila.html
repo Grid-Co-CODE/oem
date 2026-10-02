@@ -72,7 +72,9 @@
   function mostrarPainel(sim) { painel.hidden = !sim; grade.classList.toggle("com-painel", !!sim); }
   var painel = document.getElementById("painel"), corpo = document.getElementById("p_corpo"),
       tit = document.getElementById("p_titulo"), so_leitura = "{{ ver }}" !== "pendente";
-  var PESSOAS = [{% for p in pessoas %}{id: {{ p.id_account|tojson }}, nome: {{ p.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
+  {# o id do responsável é o id_personnel do api.get_responsaveis (= id_responsible da OS, como no app). Até 02/10 aqui
+     estava p.id_account — campo da lista de CONTAS do Histórico, que esta lista não tem — e a Fila caía em 500 #}
+  var PESSOAS = [{% for p in pessoas if p.id_personnel %}{id: {{ p.id_personnel|tojson }}, nome: {{ p.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
   var ETQ = [{% for e in etiquetas %}{id: {{ e.id|tojson }}, nome: {{ e.description|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
   var TIPOS = {{ tipos|tojson }}, CL1 = {{ cl1|tojson }}, CL2 = {{ cl2|tojson }};
   var STATUS = [{% for i, cod, rot in status_cat %}{cod: {{ cod|tojson }}, rot: {{ rot|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
