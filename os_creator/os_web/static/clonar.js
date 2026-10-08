@@ -160,10 +160,8 @@
     if (falhas.length) resultado(nOk + ' atualizada(s). Sem modelo correspondente (' + falhas.length + '):\n- ' + falhas.slice(0, 12).join('\n- ') + (falhas.length > 12 ? '\n…' : ''), false);
   });
 
-  // ── responsável: filtro por nome ──
-  $('resp_busca').addEventListener('input', e => {
-    const q = e.target.value.toLowerCase(); [...$('cb_resp').options].forEach(o => { if (o.value) o.hidden = q && !o.textContent.toLowerCase().includes(q); });
-  });
+  // ── responsável: a busca é a comum do os_busca (data-busca no <select>), sem acento e sem caixa — Levi, 08/10/2026:
+  // "conseguir digitar no responsável na criação de OS". O filtro próprio daqui (que escondia <option>) saiu com a caixa dele.
 
   // ── criar ──
   $('btn_criar').addEventListener('click', async () => {

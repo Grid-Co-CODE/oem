@@ -22,6 +22,7 @@ import threading
 import requests
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import contextlib
 import contextvars
 from dotenv import load_dotenv
 
@@ -118,6 +119,28 @@ class _ExecutorComContexto(ThreadPoolExecutor):
 
     def submit(self, fn, /, *args, **kwargs):
         return super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
+
+
+# Leitura ENXUTA (Levi, 08/10/2026: "o carregamento de: Acompanhamento de chamados e a tela que abre quando clica na
+# OS está demorando"): dentro de `with enxuta(...)`, as leituras pulam o que a tela que chamou não mostra.
+#   "vinculos": `get_os_detalhes` sem a 2ª leva (solicitação, OS pai e cancelamento saem ''): 2 pedidos a menos;
+#   "url":      `get_os_anexos` e `get_os_subtarefa_anexos` sem a URL pré-assinada (um s3_object_get por arquivo).
+# Por CONTEXTO, e não por argumento: as rotas da web chamam estas funções com um argumento só, e os testes do oem as
+# trocam por `lambda wid: ...` — um argumento novo quebraria todos. As threads do `_ExecutorComContexto` herdam.
+_ENXUTA = contextvars.ContextVar("api_leitura_enxuta", default=frozenset())
+
+
+@contextlib.contextmanager
+def enxuta(*cortes):
+    tok = _ENXUTA.set(_ENXUTA.get() | frozenset(cortes))
+    try:
+        yield
+    finally:
+        _ENXUTA.reset(tok)
+
+
+def _cortado(nome: str) -> bool:
+    return nome in _ENXUTA.get()
 
 
 
@@ -1514,13 +1537,14 @@ def list_minhas_os(modo: str = "criadas", id_account=None, id_label=None,
     `progresso(feito, total)` (opcional) é chamado a cada pedido ao Fracttal que termina — as páginas da listagem e os
     lotes do meta das tarefas. É o que desenha o círculo de carga do Histórico web (Levi, 27/09: "no período de
     carregamento poderia ter um círculo mostrando o progresso"). O total só se sabe depois da 1ª página."""
-    idp, idacc = _current_user_ids()
+    # quem é o logado só quando o filtro é dele: "TODOS" (o Acompanhamento de chamados, a Visão COS) não usa, e a
+    # primeira busca da pessoa no processo lia o pessoal inteiro do Fracttal só para isso (08/10/2026)
     todos = False
     if modo == "atribuidas":
-        prop, val = "id_assigned_user", idp
+        prop, val = "id_assigned_user", _current_user_ids()[0]
     else:                                   # criadas / Histórico Geral
         prop = "id_created_by"
-        if id_account is None:    val = idacc            # default: logado
+        if id_account is None:    val = _current_user_ids()[1]     # default: logado
         elif id_account == "TODOS": val, todos = None, True
         else:                     val = id_account
     if not todos and val is None:
@@ -1653,13 +1677,12 @@ def list_minhas_os_pagina(modo: str = "criadas", id_account=None, id_label=None,
     items_description, os dois voltaram total=10272 (tudo).
 
     → {'linhas': [...], 'total': N no servidor, 'tem_mais': bool}."""
-    idp, idacc = _current_user_ids()
-    todos = False
+    todos = False                           # quem é o logado só quando o filtro é dele (ver `list_minhas_os`)
     if modo == "atribuidas":
-        prop, val = "id_assigned_user", idp
+        prop, val = "id_assigned_user", _current_user_ids()[0]
     else:
         prop = "id_created_by"
-        if id_account is None:      val = idacc
+        if id_account is None:      val = _current_user_ids()[1]
         elif id_account == "TODOS": val, todos = None, True
         else:                       val = id_account
     if not todos and val is None:
@@ -1943,16 +1966,58 @@ def buscar_os_pai(termo="", limit=50) -> list:
     return out
 
 
+def _cabecalho_os(id_work_order) -> dict:
+    """O cabeçalho da WO (work_order_details_new): etiquetas, quem criou, OS pai. {} se o Fracttal recusar."""
+    try:
+        rd = _rpc_call(RPC_WO_DETAILS, {"id": id_work_order, "get_iso_codes": False})
+    except FracttalError:
+        return {}
+    det = rd.get("data") if isinstance(rd, dict) else rd
+    return det[0] if isinstance(det, list) and det else (det if isinstance(det, dict) else {})
+
+
+def _folio_da_os_pai(pai_id) -> str:
+    """O nº (wo_folio) da OS mãe pelo id dela. '' se o Fracttal recusar."""
+    return str(_cabecalho_os(pai_id).get("wo_folio") or "").strip()
+
+
+def _juntos(tarefas: dict) -> dict:
+    """{nome: (função, *args)} → {nome: resultado}, as funções ao mesmo tempo (no contexto da pessoa, ver
+    `_ExecutorComContexto`). Uma só roda aqui mesmo, sem thread. Erro sobe como subiria na chamada direta."""
+    if not tarefas:
+        return {}
+    if len(tarefas) == 1:
+        (nome, (fn, *args)), = tarefas.items()
+        return {nome: fn(*args)}
+    with _ExecutorComContexto(max_workers=len(tarefas)) as ex:
+        futuros = {nome: ex.submit(fn, *args) for nome, (fn, *args) in tarefas.items()}
+        return {nome: f.result() for nome, f in futuros.items()}
+
+
 def get_os_detalhes(id_work_order) -> dict:
     """Detalhe de UMA OS p/ o histórico. → {'folio','descricao','tipo','event_date','responsavel',
-    'notas','subtarefas':[{'descricao','feito','tipo','resposta'}]}. event_date/notas da tarefa;
-    subtarefas (descrição + tipo + resposta dada) vêm dos form items; responsavel = atribuído da OS."""
-    rt = _rpc_call(RPC_WO_TASKS, {"id_work_order": id_work_order, "sort": []})
-    tasks = rt.get("data") if isinstance(rt, dict) else rt
-    tasks = tasks if isinstance(tasks, list) else []
-    rf = _rpc_call(RPC_WO_FORMIT, {"id_work_order": id_work_order})
-    items = rf.get("data") if isinstance(rf, dict) else rf
-    items = items if isinstance(items, list) else []
+    'notas','subtarefas':[{'descricao','feito','tipo','resposta','id_tarefa','id_form_item'}],'tarefas':[…]}.
+    event_date/notas da tarefa; subtarefas (descrição + tipo + resposta dada) vêm dos form items, uma vez cada,
+    agrupadas pela tarefa na ordem de `tarefas` (ver `ordem`); responsavel = atribuído da OS.
+
+    Os pedidos vão em DUAS LEVAS PARALELAS (Levi, 08/10/2026: "a tela que abre quando clica na OS está demorando um
+    pouco para carregar"). Eram até cinco, um atrás do outro. Tarefas, subtarefas e cabeçalho não dependem um do
+    outro e vão juntos; a solicitação, a OS pai e o motivo do cancelamento dependem só deles e vão juntos depois.
+    São os mesmos pedidos de antes, e a resposta é a mesma. Com o Fracttal falso a 300 ms por pedido, o card caiu de
+    1,5 s para 0,6 s.
+
+    Dentro de `enxuta("vinculos")` a 2ª leva fica de fora (solicitação, OS pai e cancelamento: '' nos três). Serve a
+    quem não mostra esses campos: a tela do Acompanhamento de chamados e a conferência antes de gravar o ticket. São
+    2 pedidos a menos na cota da empresa por abertura."""
+    vinculos = not _cortado("vinculos")
+    def _lista(metodo, params):
+        r = _rpc_call(metodo, params)
+        d = r.get("data") if isinstance(r, dict) else r
+        return d if isinstance(d, list) else []
+    lev1 = _juntos({"tasks": (_lista, RPC_WO_TASKS, {"id_work_order": id_work_order, "sort": []}),
+                    "items": (_lista, RPC_WO_FORMIT, {"id_work_order": id_work_order}),
+                    "det": (_cabecalho_os, id_work_order)})
+    tasks, items = lev1["tasks"], lev1["items"]
     t0 = tasks[0] if tasks else {}
     notas = []
     for t in tasks:                                  # junta note + task_note de todas as tarefas
@@ -1960,8 +2025,23 @@ def get_os_detalhes(id_work_order) -> dict:
             v = str(t.get(k) or "").strip()
             if v and v.lower() != "none" and v not in notas:
                 notas.append(v)
-    subtarefas = []
-    for it in sorted(items, key=lambda x: x.get("order_number") or 0):
+    # A ORDEM das subtarefas é a da TAREFA e, dentro dela, o `order_number` (Levi, 08/10/2026: "quando a OS tem mais que
+    # uma tarefa está duplicando as subtarefas"). O `order_number` recomeça em 1 em cada tarefa (REST, OS 8709: 13
+    # tarefas, cada uma de 1 a n), e a ordem só por ele intercalava as tarefas: na OS de 8 tarefas com o mesmo checklist
+    # (a coleta de geração, uma por inversor), a 1ª pergunta saía 8 vezes seguidas e depois a 2ª. Subtarefa de tarefa
+    # que não veio vai para o fim, sem sumir. E cada tarefa e cada form item entram UMA vez, pelo id: o REST não repete,
+    # o RPC daqui não deu para conferir, e a barra e o "X de Y" do Concluir contam esta lista.
+    ordem = {}
+    for i, t in enumerate(tasks):
+        if t.get("id") is not None:
+            ordem.setdefault(t.get("id"), i)
+    subtarefas, vistos = [], set()
+    for it in sorted(items, key=lambda x: (ordem.get(x.get("id_work_order_task"), len(tasks)),
+                                           x.get("order_number") or 0)):
+        fid = it.get("id_work_orders_tasks_form_items")
+        if fid is not None and fid in vistos:
+            continue
+        vistos.add(fid)
         desc = str(it.get("description") or "").strip()
         if not desc:
             continue
@@ -1982,34 +2062,34 @@ def get_os_detalhes(id_work_order) -> dict:
                            "tipo_id": tid})
     code0 = (t0.get("code_item") or "").strip() or _extrai_code(str(t0.get("items_description") or ""))
     ativo0 = (str(t0.get("items_description") or "").split("{")[0]).strip()[:60] or code0
-    # cabeçalho da WO (sempre) → responsável + quem criou + solicitação ligada
-    det = {}
-    try:
-        rd = _rpc_call(RPC_WO_DETAILS, {"id": id_work_order, "get_iso_codes": False})
-        det = rd.get("data") if isinstance(rd, dict) else rd
-        det = det[0] if isinstance(det, list) and det else (det if isinstance(det, dict) else {})
-    except FracttalError:
-        det = {}
+    # cabeçalho da WO (sempre, na 1ª leva) → responsável + quem criou + solicitação ligada
+    det = lev1["det"]
     resp = _nome_atribuido(tasks) or _nome_atribuido([det])
-    if not resp:
-        ids = _ids_atribuido(list(tasks) + [det])
-        nm = _personnel_nome_por_id() if ids else {}
-        nomes = [nm.get(i) for i in ids if nm.get(i)]
-        resp = " / ".join(dict.fromkeys(nomes)) if nomes else ""
+    ids = [] if resp else _ids_atribuido(list(tasks) + [det])
     criado_por = str(det.get("created_by") or det.get("creation_user")
                      or det.get("accounts_name") or t0.get("created_by") or "").strip()
-    solic = _solicitacao_da_os(id_work_order, det, t0)
     # OS pai (id_parent_wo → folio da OS mãe). Só ~15% das OS têm; resolve o número só quando existe.
-    os_pai = ""
     pai_id = det.get("id_parent_wo") or t0.get("id_parent_wo")
-    if pai_id:
-        try:
-            rp = _rpc_call(RPC_WO_DETAILS, {"id": pai_id, "get_iso_codes": False})
-            dp = rp.get("data") if isinstance(rp, dict) else rp
-            dp = dp[0] if isinstance(dp, list) and dp else (dp if isinstance(dp, dict) else {})
-            os_pai = str(dp.get("wo_folio") or "").strip()
-        except FracttalError:
-            os_pai = ""
+    # CANCELAMENTO: só busca quando a OS está cancelada (status 4). É uma chamada REST a mais, e
+    # cobrá-la em toda abertura de card seria pagar por 96% de OS que não precisam.
+    cancelada = (det.get("id_status_work_order") or t0.get("id_status_work_order")) == 4
+    # a 2ª leva: o que depende do cabeçalho e da tarefa, tudo ao mesmo tempo
+    lev2 = {}
+    if ids:
+        lev2["nomes"] = (_personnel_nome_por_id,)
+    if vinculos:
+        lev2["solic"] = (_solicitacao_da_os, id_work_order, det, t0)
+        if pai_id:
+            lev2["pai"] = (_folio_da_os_pai, pai_id)
+        if cancelada:
+            lev2["canc"] = (cancelamento_da_os, t0.get("wo_folio"))
+    lev2 = _juntos(lev2)
+    if ids:
+        nm = lev2["nomes"] or {}
+        nomes = [nm.get(i) for i in ids if nm.get(i)]
+        resp = " / ".join(dict.fromkeys(nomes)) if nomes else ""
+    solic = lev2.get("solic", "")
+    os_pai = lev2.get("pai", "")
     # data de conclusão (OS finalizada) — nomes variam; tenta os prováveis na tarefa e no cabeçalho
     data_fim = None
     for src in (t0, det):
@@ -2042,12 +2122,9 @@ def get_os_detalhes(id_work_order) -> dict:
                 "duracao": str(t.get("duration") or "").strip(),
                 "gatilho": decodifica_gatilho(t.get("trigger_description")),
                 "nota": str(t.get("task_note") or t.get("note") or "").strip()}
-               for t in tasks]
-    # CANCELAMENTO: só busca quando a OS está cancelada (status 4). É uma chamada REST a mais, e
-    # cobrá-la em toda abertura de card seria pagar por 96% de OS que não precisam.
-    canc = {"motivo": "", "nota": ""}
-    if (det.get("id_status_work_order") or t0.get("id_status_work_order")) == 4:
-        canc = cancelamento_da_os(t0.get("wo_folio"))
+               for i, t in enumerate(tasks)
+               if t.get("id") is None or ordem.get(t.get("id")) == i]     # a mesma tarefa uma vez (ver `ordem`)
+    canc = lev2.get("canc") or {"motivo": "", "nota": ""}
     return {"folio": t0.get("wo_folio"),
             "cancel_motivo": canc["motivo"], "cancel_nota": canc["nota"],
             "descricao": str(t0.get("tasks_description") or "").strip(),
@@ -2081,7 +2158,11 @@ def get_os_detalhes_por_folio(folio) -> dict:
 
 
 def _label_id(nome: str):
-    """id da etiqueta pelo nome (case-insensitive). None se não existir no Fracttal."""
+    """id da etiqueta pelo nome (case-insensitive). None se não existir no Fracttal.
+
+    Sem cópia guardada DE PROPÓSITO (08/10/2026): nas listas por etiqueta (Acompanhamento de chamados, Performance)
+    é este o primeiro pedido, e é ele que acusa a sessão morta. A listagem engole o erro de cada página
+    (`_fetch_page`), e com o id guardado a sessão morta virava um quadro vazio em vez de voltar ao login."""
     alvo = str(nome or "").strip().lower()
     for l in (get_labels() or []):
         if str(l.get("description") or "").strip().lower() == alvo:
@@ -2489,21 +2570,24 @@ def _ids_tarefas_da_os(id_work_order) -> list:
     def _add(v):
         if v and v not in tids:
             tids.append(v)
-    try:
-        rt = _rpc_call(RPC_WO_TASKS, {"id_work_order": id_work_order, "sort": []})
-        for t in (rt.get("data") if isinstance(rt, dict) else rt) or []:
-            if isinstance(t, dict):
-                _add(t.get("id_work_order_task") or t.get("id_task") or t.get("id"))
-    except Exception:
-        pass
-    try:
-        ri = _rpc_call(RPC_WO_IMAGES, {"id_work_order": id_work_order,
-            "sort": [{"property": "order_number", "direction": "asc"}]})
-        for d in (ri.get("data") if isinstance(ri, dict) else ri) or []:
-            if isinstance(d, dict):
-                _add(d.get("id_work_order_task") or d.get("id_task"))
-    except Exception:
-        pass
+
+    def _ler(metodo, params):
+        try:
+            r = _rpc_call(metodo, params)
+        except Exception:
+            return []
+        d = r.get("data") if isinstance(r, dict) else r
+        return d if isinstance(d, list) else []
+    # as duas listas ao mesmo tempo (08/10/2026): uma não depende da outra; a ordem dos ids é a de antes
+    lidas = _juntos({"tarefas": (_ler, RPC_WO_TASKS, {"id_work_order": id_work_order, "sort": []}),
+                     "imagens": (_ler, RPC_WO_IMAGES, {"id_work_order": id_work_order,
+                                                       "sort": [{"property": "order_number", "direction": "asc"}]})})
+    for t in lidas["tarefas"]:
+        if isinstance(t, dict):
+            _add(t.get("id_work_order_task") or t.get("id_task") or t.get("id"))
+    for d in lidas["imagens"]:
+        if isinstance(d, dict):
+            _add(d.get("id_work_order_task") or d.get("id_task"))
     return tids
 
 
@@ -2542,13 +2626,28 @@ def get_os_anexos(id_work_order) -> list:
     """Anexos ligados às TAREFAS da OS (a aba 'Anexos' da tarefa no Fracttal — prints da criação via
     Performance/PCM, notas etc.). São por `id_work_order_task`. Inclui ARQUIVOS (imagem/PDF) E notas de
     TEXTO (sem arquivo). Resolve a URL pré-assinada das imagens p/ a galeria. Separados por usuário.
-    → [{'value','nome','user','url','is_image','is_text','desc','raw'}]."""
+    → [{'value','nome','user','url','is_image','is_text','desc','raw'}].
+
+    Dentro de `enxuta("url")` não resolve a URL pré-assinada (um s3_object_get por imagem): é o que basta para CONTAR
+    os anexos no card da OS, que antes pagava a URL de cada foto só para mostrar um número (08/10/2026). As listas de
+    cada tarefa vão ao mesmo tempo; a ordem é a de antes."""
+    com_url = not _cortado("url")
     out, vistos = [], set()
-    for tid in _ids_tarefas_da_os(id_work_order):
+
+    def _arquivos(tid):
         try:
-            res = _rpc_call(RPC_WO_FILES, {"page": 1, "limit": 200, "start": 0, "is_tree": False,
-                                           "node": None, "id_work_order_task": tid})
+            return _rpc_call(RPC_WO_FILES, {"page": 1, "limit": 200, "start": 0, "is_tree": False,
+                                            "node": None, "id_work_order_task": tid})
         except Exception:
+            return None
+    tids = _ids_tarefas_da_os(id_work_order)
+    if len(tids) > 1:
+        with _ExecutorComContexto(max_workers=min(8, len(tids))) as ex:
+            respostas = list(ex.map(_arquivos, tids))
+    else:
+        respostas = [_arquivos(t) for t in tids]
+    for res in respostas:
+        if res is None:
             continue
         for d in (res.get("data") if isinstance(res, dict) else res) or []:
             if not isinstance(d, dict):
@@ -2577,7 +2676,7 @@ def get_os_anexos(id_work_order) -> list:
             out.append({"value": val, "nome": nome, "user": user, "url": url,
                         "is_image": is_image, "is_text": is_text, "desc": desc, "raw": d})
     # imagens que só têm o CAMINHO → busca a URL pré-assinada (em paralelo) p/ a galeria abrir
-    faltam = [a for a in out if a.get("is_image") and not a.get("url") and a.get("value")]
+    faltam = [a for a in out if a.get("is_image") and not a.get("url") and a.get("value")] if com_url else []
     if faltam:
         try:
             with _ExecutorComContexto(max_workers=8) as ex:
@@ -2596,7 +2695,10 @@ def get_os_subtarefa_anexos(id_work_order) -> list:
     """Anexos ligados às SUBTAREFAS (form items) de UMA OS. Busca por (id_work_order_task, id_form_item)
     em cada subtarefa com num_attachments>0. type=1 = arquivo (value=caminho S3 → resolve URL pré-assinada);
     type=3 = nota de texto. Cada anexo carrega a subtarefa de origem.
-    → [{'url','thumb','descricao','nome','value','subtarefa','is_image','is_text','raw'}]."""
+    → [{'url','thumb','descricao','nome','value','subtarefa','is_image','is_text','raw'}].
+
+    Dentro de `enxuta("url")` não resolve a URL pré-assinada de cada arquivo: só para CONTAR (ver `get_os_anexos`)."""
+    com_url = not _cortado("url")
     try:
         rf = _rpc_call(RPC_WO_FORMIT, {"id_work_order": id_work_order})
     except FracttalError:
@@ -2652,7 +2754,7 @@ def get_os_subtarefa_anexos(id_work_order) -> list:
                 out.append({"url": None, "thumb": None, "descricao": legenda or att_desc or val,
                             "nome": att_desc or val or "nota", "value": "", "subtarefa": sub_desc,
                             "is_image": False, "is_text": True, "raw": d})
-    arquivos = [a for a in out if not a["is_text"] and a["value"]]   # resolve URL pré-assinada (S3)
+    arquivos = [a for a in out if not a["is_text"] and a["value"]] if com_url else []   # resolve URL pré-assinada (S3)
     if arquivos:
         try:
             with _ExecutorComContexto(max_workers=8) as ex:

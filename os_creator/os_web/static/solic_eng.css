@@ -1,0 +1,46 @@
+/* os_creator/os_web/static/solic_eng.css — a Nova solicitação para a Engenharia (06/10/2026). O resto vem do os.css (o
+   molde da Performance); aqui só o que é desta tela: o Urgente em vermelho, a caixa do problema, a linha marcada e, desde
+   08/10, a escolha "uma OS por ativo / uma OS com todos" e os anexos. */
+.eng-urgente{display:flex;align-items:center;gap:10px;width:max-content;max-width:100%;padding:8px 12px;border-radius:10px;
+  border:1px solid rgba(245,118,107,.45);background:rgba(245,118,107,.07);color:#f5766b;cursor:pointer}
+.eng-urgente input{accent-color:#f5766b;width:18px;height:18px;margin:0}
+.eng-urgente small{color:#e7a39c}
+#eng.eng-e-urgente .eng-urgente{background:rgba(245,118,107,.18);border-color:#f5766b}
+#eng.eng-e-urgente #dt_prog{border-color:#f5766b!important}
+/* a data programada só se lê (Levi, 06/10: "não deve ser possível editar"): a cara do campo, sem ser campo */
+.eng-data{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:10px;border:1px dashed var(--f-border);
+  background:rgba(255,255,255,.02);color:#cfd6e4;font-size:13px;font-variant-numeric:tabular-nums;cursor:default}
+.eng-prob textarea{min-height:110px;resize:vertical;font-family:inherit}
+#eng .os-tbl tr[data-id]{cursor:pointer}
+#eng .os-tbl tr.sel td{background:rgba(166,226,46,.06)}
+
+/* uma OS por ativo × uma OS com todos os ativos (08/10): duas opções lado a lado; a escolhida em verde. O #eng vence o
+   `body.os-form input` do os.css, que daria ao rádio a altura e a borda de um campo de texto. */
+.eng-modo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.eng-modo-op{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--f-border);border-radius:10px;
+  background:var(--f-input);cursor:pointer;min-width:0}
+.eng-modo-op:hover{border-color:#39456a}
+.eng-modo-op.on{border-color:var(--f-green);background:rgba(166,226,46,.08)}
+#eng .eng-modo-op input{width:16px;height:16px;padding:0;margin:2px 0 0;border:none;background:none;accent-color:var(--f-green);flex:none}
+.eng-modo-op b{display:block;color:#fff;font-size:13px}
+.eng-modo-op small{display:block;color:var(--f-muted);font-size:11.5px;margin-top:2px}
+@media (max-width:640px){.eng-modo{grid-template-columns:1fr}}
+/* o .js esconde os dois blocos quando o servidor ainda é o de antes (até o reinício depois da sincronia) */
+.eng-modo[hidden],.eng-anexos[hidden]{display:none}
+
+/* anexos (08/10): a lista do que vai subir, com o tipo, o tamanho e o "tirar" */
+.eng-anexos-linha{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.eng-anexo-lista{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.eng-anexo-lista[hidden]{display:none}
+.eng-anexo-lista li{display:flex;align-items:center;gap:10px;min-width:0;padding:6px 6px 6px 10px;border:1px solid var(--f-border);
+  border-radius:10px;background:var(--f-input);color:#fff;font-size:12.5px}
+.eng-anexo-ext{flex:none;min-width:38px;text-align:center;padding:2px 6px;border-radius:6px;background:rgba(166,226,46,.12);
+  color:var(--f-green);font-size:10.5px;font-weight:700;letter-spacing:.3px}
+.eng-anexo-nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eng-anexo-tam{flex:none;color:var(--f-muted);font-variant-numeric:tabular-nums}
+.eng-anexo-x{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--f-border);background:transparent;
+  color:var(--f-muted);font-size:16px;line-height:1;cursor:pointer}
+.eng-anexo-x:hover{color:#fff;border-color:#43547a}
+/* recusa do navegador (tipo, tamanho, quantidade): âmbar, como o aviso da busca — é atenção, não erro */
+.eng-aviso{font-size:11.5px;line-height:1.35;color:#f3d99b}
+.eng-aviso[hidden]{display:none}

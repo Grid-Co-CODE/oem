@@ -14,6 +14,12 @@
   <div class="os-topo-linha">
     <a class="os-btn secondary os-voltar" href="/os/">&larr; Início</a>
     <span class="os-head-titulo">Nova solicitação</span>
+    <span class="os-cresce"></span>
+    {# 06/10: duas portas — o PCM recebe a solicitação (esta tela); a Engenharia recebe a OS direto (solic_eng.html) #}
+    <div class="os-seg" role="tablist" aria-label="Para quem é a solicitação">
+      <a class="os-seg-btn on" role="tab" aria-selected="true" href="/os/solicitacao">PCM</a>
+      <a class="os-seg-btn" role="tab" aria-selected="false" href="/os/solicitacao/engenharia">Engenharia</a>
+    </div>
   </div>
 
   <div class="os-cardf">
@@ -64,7 +70,7 @@
       <label class="os-cell"><span class="os-lbl">Data Programada (Sugestão)</span>
         <input type="datetime-local" id="dt_sug" value="{{ sugerida }}"></label>
       <label class="os-cell"><span class="os-lbl">Técnico sugerido</span>
-        <select id="cb_tec"><option value="">— nenhum —</option>{% for p in pessoas %}<option value="{{ p.name }}">{{ p.name }}</option>{% endfor %}</select></label>
+        <select id="cb_tec" data-busca="1"><option value="">— nenhum —</option>{% for p in pessoas %}<option value="{{ p.name }}">{{ p.name }}</option>{% endfor %}</select></label>
     </div>
     <label class="os-check" style="margin-top:10px"><input type="checkbox" id="ck_urg"> Urgente</label>
   </div>

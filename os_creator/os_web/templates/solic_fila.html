@@ -105,7 +105,7 @@
       corpo.innerHTML = h; mostrarPainel(true); return;
     }
     h += '<div class="os-hist-grid" style="grid-template-columns:1fr 1fr">'
-      + '<label class="os-cell"><span class="os-lbl">Responsável <span class="os-req">obrigatório</span></span><select id="p_resp"><option value="">— selecione —</option>' + opcoes(PESSOAS, "id", "nome", "") + "</select></label>"
+      + '<label class="os-cell"><span class="os-lbl">Responsável <span class="os-req">obrigatório</span></span><select id="p_resp" data-busca="1"><option value="">— selecione —</option>' + opcoes(PESSOAS, "id", "nome", "") + "</select></label>"
       + '<label class="os-cell"><span class="os-lbl">Tipo de tarefa</span><select id="p_tipo">' + opcoes(TIPOS, "description", "description", {{ tipo_padrao|tojson }}) + "</select></label>"
       + '<label class="os-cell"><span class="os-lbl">Classificação 1 da OS</span><select id="p_c1">' + opcoes(CL1, "description", "description", {{ classif1_padrao|tojson }}) + "</select></label>"
       + '<label class="os-cell"><span class="os-lbl">Classificação 2 da OS</span><select id="p_c2"><option value="">{{ nenhuma }}</option>' + opcoes(CL2, "description", "description", "") + "</select></label>"

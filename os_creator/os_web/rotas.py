@@ -182,13 +182,21 @@ def login_fracttal_volta():
 def os_anexos_contagem(wid):
     """Contagem dos anexos da OS para os dois cards do detalhe (verde = das subtarefas, azul = da OS), como a janela do app:
     o anexo que ja e de uma subtarefa nao conta de novo na OS (`_os_uniq` do steps/os_detalhe.py). Vem depois do detalhe,
-    por fetch, porque sao duas chamadas RPC a mais e o card tem de abrir na hora; falha aqui vira '—', nunca erro."""
+    por fetch, porque sao duas chamadas RPC a mais e o card tem de abrir na hora; falha aqui vira '—', nunca erro.
+
+    Para CONTAR não precisa da URL pré-assinada de cada arquivo (Levi, 08/10/2026: "a tela que abre quando clica na OS
+    está demorando"): era um s3_object_get por foto, na cota da empresa, só para mostrar um número. A chave da conta é
+    o caminho do arquivo, que vem sem a URL, então o número é o mesmo. As duas listas vão ao mesmo tempo."""
     from flask import jsonify
     def chave(a):
         return str(a.get("value") or a.get("url") or a.get("nome") or "").lower()
+    def contar(ler):
+        with api.enxuta("url"):
+            return ler(wid) or []
     try:
-        subs = api.get_os_subtarefa_anexos(wid) or []
-        oss = api.get_os_anexos(wid) or []
+        with api._ExecutorComContexto(max_workers=2) as ex:
+            f_subs, f_oss = ex.submit(contar, api.get_os_subtarefa_anexos), ex.submit(contar, api.get_os_anexos)
+            subs, oss = f_subs.result(), f_oss.result()
     except api.FracttalError as e:
         if sessao.morta() or isinstance(e, api.SessionExpired):
             raise

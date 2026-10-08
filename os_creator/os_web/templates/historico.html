@@ -7,9 +7,13 @@
    ignorando filtros e período. O tipo de tarefa já vem na lista (27/09: antes a tela buscava de novo, em lotes de 60,
    o que o servidor já tinha). Os rótulos ficam FORA dos cards, numa grade de 4 colunas, e a busca por texto fica colada
    na tabela (Levi, 27/09). #}
+{# Toda lista de marcar com 6 opções ou mais (a de Usina sempre) ganha, do os_busca.js, uma caixa de busca no topo, sem
+   acento e sem caixa (Levi, 08/10/2026: "conseguir digitar o nome da usina no filtro do histórico"). A busca só esconde
+   linhas; o filtro continua sendo o das caixas marcadas, com o mesmo valor de antes. Lista curta fica sem a caixa.
+   A de Usina leva data-busca="1" para ter a caixa mesmo com menos de 6 (catálogo fora do ar e período curto). #}
 {% macro multi(nome, rotulo, todos, opcoes, marcados, local, extra) -%}
 <span class="hf-lbl">{{ rotulo }}</span>
-<details class="os-multi hf-multi" data-nome="{{ nome }}"{% if local %} data-local="1"{% endif %}>
+<details class="os-multi hf-multi" data-nome="{{ nome }}"{% if local %} data-local="1"{% endif %}{% if nome == 'usina' %} data-busca="1"{% endif %}>
   <summary><span class="os-multi-txt" data-todos="{{ todos }}">{{ todos }}</span></summary>
   <div class="os-multi-lista">
     {% for o in opcoes %}<label{% if extra and extra.get(o) is not none %} data-cliente="{{ extra.get(o) }}"{% endif %}><input type="checkbox"{% if not local %} name="{{ nome }}"{% endif %} value="{{ o }}"{% if o in marcados %} checked{% endif %}> {{ o }}</label>{% endfor %}

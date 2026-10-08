@@ -33,6 +33,7 @@ body.os-form textarea:focus{outline:none;border-color:var(--f-green)}
 .trad-pessoas{min-height:130px;max-height:220px}
 .trad-pessoa{padding:5px 8px;border-radius:4px;cursor:pointer;color:var(--txt);font-size:13px}
 .trad-pessoa:hover{background:var(--f-card)}.trad-pessoa.on{background:rgba(166,226,46,.16);color:var(--f-green)}
+.trad-vazio{padding:6px 8px;color:var(--f-muted);font-size:12.5px}   /* a busca do responsável sem ninguém (08/10/2026) */
 #fin{display:flex;flex-direction:column;gap:6px}#fin[hidden]{display:none}
 .trad-finpanel{background:var(--card);border:1px solid var(--f-border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
 .trad-finpanel[hidden]{display:none}

@@ -21,7 +21,6 @@
 .cl-baixo{align-items:stretch}
 .cl-chk{display:inline-flex;align-items:center;gap:8px;color:var(--f-muted);font-size:13px;margin-top:6px}
 .cl-chk input{accent-color:var(--f-green)}
-.cl-filtro{margin-bottom:6px}
 #resultado.ok{border-color:rgba(166,226,46,.5)}
 #resultado.erro{border-color:rgba(245,118,107,.6);color:#f5a49c}
 #clonar textarea{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;color:#fff;padding:8px 10px;font:inherit;font-size:13px;width:100%;resize:vertical;min-height:104px}

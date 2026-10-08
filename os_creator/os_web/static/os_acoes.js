@@ -90,6 +90,9 @@
     const dlg = {caixa, fechar() { fundo.remove(); if (aberto === dlg) aberto = null; }};
     fundo.addEventListener('click', (e) => { if (e.target === fundo || e.target.closest('[data-fechar]')) dlg.fechar(); });
     aberto = dlg;
+    // a busca do os_busca entra JÁ, e não só quando o observador dele acordar: o foco abaixo cai nela, e não num <select>
+    // que ele embrulharia logo depois, tirando o foco (Levi, 08/10/2026: "conseguir digitar no responsável")
+    if (window.OsBusca) window.OsBusca.aplicar(caixa);
     const foco = caixa.querySelector('select, input, textarea, button:not([data-fechar])'); if (foco) foco.focus();
     return dlg;
   }
@@ -101,6 +104,10 @@
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.stopPropagation(); e.preventDefault(); visor.ir(e.key === 'ArrowLeft' ? -1 : 1); }
       return;
     }
+    // com a lista da busca aberta (trocar responsável), o 1º Esc é dela: fecha a lista e volta o texto; o 2º fecha o
+    // diálogo. Antes o Esc fechava o diálogo inteiro com a lista aberta (revisão de 08/10/2026, "digitar no responsável")
+    const t = e.target;
+    if (e.key === 'Escape' && aberto && t && t.matches && t.matches('.osb-in[aria-expanded="true"]') && aberto.caixa.contains(t)) return;
     if (e.key === 'Escape' && aberto) { e.stopPropagation(); e.preventDefault(); aberto.fechar(); }
   }, true);
   const hint = (dlg, texto) => { const h = q(dlg.caixa, '[data-hint]'); if (h) h.textContent = texto || ''; };

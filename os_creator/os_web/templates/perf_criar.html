@@ -62,8 +62,11 @@
 
   <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">4</span><span class="os-cardf-t">Responsável e datas</span></div>
     <div class="os-linha2">
-      <label class="os-campo"><span class="os-lbl">Responsável <i>*</i> <button type="button" class="os-recarrega" id="b_resp" title="recarregar a lista">↻</button></span>
-        <select id="cb_resp"><option value="">carregando…</option></select></label>
+      {# digitável (Levi, 08/10/2026: "conseguir digitar no responsável na criação de OS"): o os_busca põe a busca por
+         cima do <select>, que continua guardando o id_personnel que vai ao servidor. O for= é de propósito: sem ele, o
+         clique no texto "Responsável" acionava o ↻ (o 1º controle dentro do rótulo) e apagava a escolha feita. #}
+      <label class="os-campo" for="cb_resp"><span class="os-lbl">Responsável <i>*</i> <small>(digite p/ pesquisar)</small> <button type="button" class="os-recarrega" id="b_resp" title="recarregar a lista">↻</button></span>
+        <select id="cb_resp" data-busca="1"><option value="">carregando…</option></select></label>
       <label class="os-campo"><span class="os-lbl">Data do evento</span><input id="dt_prog" type="datetime-local" value="{{ agora }}"></label>
       <label class="os-campo"><span class="os-lbl">Programada para</span><input id="dt_exec" type="datetime-local" value="{{ programada }}"></label>
     </div>

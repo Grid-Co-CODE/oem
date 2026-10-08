@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block titulo %}Solicitação à Engenharia{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/solic_eng.css">{% endblock %}
+{% block conteudo %}
+{# A Nova solicitação para a ENGENHARIA (Levi, 06/10/2026): o molde da Performance > Geração e ETM > ETM, liberado para
+   todos os ativos. Cria uma OS por ativo ou, desde 08/10, uma OS com todos os ativos (uma atividade por ativo), atribuída
+   a alguém da Engenharia e com anexos — as regras estão no solic_eng_web.py. #}
+<section class="os-pagina" id="eng" data-agora="{{ agora }}" data-dias="{{ dias }}" data-dias-urgente="{{ dias_urgente }}"
+         data-anexo-max="{{ anexo_max }}" data-anexo-mb="{{ anexo_mb }}" data-anexo-total-mb="{{ anexo_total_mb }}"
+         data-anexo-envios="{{ anexo_envios }}" data-anexo-envios-mb="{{ anexo_envios_mb }}" data-anexo-aceitar="{{ anexo_aceitar }}">
+  <div class="os-topo-linha">
+    <a class="os-btn secondary os-voltar" href="/os/">&larr; Início</a>
+    <span class="os-head-titulo">Nova solicitação</span>
+    <span class="os-cresce"></span>
+    <div class="os-seg" role="tablist" aria-label="Para quem é a solicitação">
+      <a class="os-seg-btn" role="tab" aria-selected="false" href="/os/solicitacao">PCM</a>
+      <a class="os-seg-btn on" role="tab" aria-selected="true" href="/os/solicitacao/engenharia">Engenharia</a>
+    </div>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">1</span><span class="os-cardf-t">Ativo</span></div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Cliente <i>*</i></span>
+        <select id="cb_cli"><option value="">— Selecione o cliente —</option>{% for c in clientes %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></label>
+      <label class="os-campo"><span class="os-lbl">Usina <i>*</i></span>
+        <select id="cb_usi"><option value="">— Selecione a usina —</option>{% for u in usinas %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="os-linha2">
+      <label class="os-campo"><span class="os-lbl">Filtrar <small>(opcional)</small></span>
+        <input id="busca" type="search" placeholder="Filtrar ativo por código ou nome…" disabled></label>
+      <label class="os-campo"><span class="os-lbl">Tipo de ativo <small>(dá para escrever)</small></span>
+        <select id="cb_tipo" data-busca="1" disabled><option value="">Todos os tipos</option></select></label>
+    </div>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">2</span><span class="os-cardf-t">Ativos</span></div>
+    <div class="os-linha-ativos">
+      <span class="os-lbl">Ativos <i>*</i> <small id="lb_ativos">(marque um ou vários — cada um vira uma OS)</small></span>
+      <span class="os-cresce"></span>
+      <button type="button" class="os-btn secondary mini" id="b_all" disabled>Selecionar todos</button>
+      <button type="button" class="os-btn secondary mini" id="b_none" disabled>Limpar</button>
+    </div>
+    {# Uma OS por ativo (o padrão, como era) ou uma OS só, com uma atividade por ativo (Levi, 08/10/2026: "Agrupar ativos
+       em atividades por OS"). Antes da tabela, que numa usina grande tem centenas de linhas: a escolha fica à vista. #}
+    <div class="eng-modo" role="radiogroup" aria-label="Como criar as OS">
+      <label class="eng-modo-op on"><input type="radio" name="eng_modo" value="por_ativo" checked>
+        <span><b>Uma OS por ativo</b><small>cada ativo marcado vira uma OS</small></span></label>
+      <label class="eng-modo-op"><input type="radio" name="eng_modo" value="agrupada">
+        <span><b>Uma OS com todos os ativos</b><small>uma atividade por ativo, todas na mesma OS</small></span></label>
+    </div>
+    <div class="os-tbl-wrap">
+      <table class="os-tbl" id="tbl">
+        <thead><tr><th class="c-chk"></th><th>Ativo</th><th>Tipo</th></tr></thead>
+        <tbody id="tbody"><tr class="vazio"><td colspan="3">Selecione a usina para carregar os ativos.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="os-ajuda" id="sel_lbl">0 marcado(s)</div>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">3</span><span class="os-cardf-t">O pedido</span></div>
+    <span class="os-lbl">Nome da OS <i>*</i> <small>— {{ sub_descricao }}</small></span>
+    <div class="os-prefix"><span class="os-chip" id="chip_prefixo">[Ativo]&nbsp;&nbsp;-</span>
+      <input id="ed_desc" type="text" maxlength="160" placeholder="{{ sub_descricao }}" aria-label="{{ sub_descricao }}"></div>
+    <div class="os-ajuda" id="preview">O prefixo [Ativo] entra automático em cada OS.</div>
+    <label class="os-campo eng-prob"><span class="os-lbl">{{ rotulo_problema }} <i>*</i></span>
+      <textarea id="ta_prob" rows="5" placeholder="{{ rotulo_problema }}: o que está acontecendo, desde quando, o que já foi visto…"></textarea></label>
+    {# Anexos (Levi, 08/10/2026: "Engenharia poder anexar arquivos"): sobem depois de a OS existir, em cada OS criada. Os
+       limites vêm do servidor (solic_eng_web.py), que confere tudo de novo antes de criar qualquer OS. #}
+    <div class="os-campo eng-anexos">
+      <span class="os-lbl">Anexos <small>(opcional)</small></span>
+      <div class="eng-anexos-linha">
+        <button type="button" class="os-btn secondary mini" id="b_anexar" aria-controls="anexo_lista">Adicionar arquivos</button>
+        <input id="anexo_in" type="file" multiple accept="{{ anexo_aceitar }}" hidden>
+        <span class="os-ajuda" id="anexo_regras">Até {{ anexo_max }} arquivos, {{ anexo_mb }} MB cada e {{ anexo_total_mb }} MB no total — cada anexo vai para cada OS criada.</span>
+      </div>
+      <div class="os-ajuda">Tipos aceitos: {{ anexo_tipos }}.</div>
+      <ul class="eng-anexo-lista" id="anexo_lista" hidden></ul>
+      <div class="eng-aviso" id="hint_anexo" role="status" hidden></div>
+    </div>
+  </div>
+
+  <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">4</span><span class="os-cardf-t">Responsável e datas</span></div>
+    <div class="os-linha2">
+      {# digitável (Levi, 08/10/2026), como o tipo de ativo acima: o valor continua sendo o id_personnel da <option> #}
+      <label class="os-campo"><span class="os-lbl">Responsável da Engenharia <i>*</i> <small>(digite p/ pesquisar)</small></span>
+        <select id="cb_resp" data-busca="1" disabled><option value="">carregando…</option></select></label>
+      {# a data do EVENTO se edita, como na ETM (Levi, 06/10: "tem que ter data do evento"); padrão: agora #}
+      <label class="os-campo"><span class="os-lbl">Data do evento <i>*</i></span>
+        <input id="dt_evento" type="datetime-local" value="{{ evento }}"></label>
+      {# a PROGRAMADA não se edita (Levi, 06/10): a tela só mostra; quem põe a data é o servidor, na hora de criar #}
+      <div class="os-campo"><span class="os-lbl">Data programada <small id="lb_prazo">(automática: {{ dias }} dias a partir da criação)</small></span>
+        <div id="dt_prog" class="eng-data" aria-live="polite">{{ programada }}</div></div>
+    </div>
+    <label class="eng-urgente"><input type="checkbox" id="ck_urg">
+      <span><b>Urgente</b> <small>— a data programada passa a ser {{ dias_urgente }} dias a partir da criação</small></span></label>
+    <div class="os-ajuda" id="hint_resp"></div>
+    <div class="os-rodape">
+      <span class="os-ajuda" id="hint_criar"></span>
+      <span class="os-cresce"></span>
+      <button type="button" class="os-btn primaria" id="btn_criar">Criar OS</button>
+    </div>
+    <div class="os-resultado" id="resultado" hidden></div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/os/static/solic_eng.js"></script>{% endblock %}

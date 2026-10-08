@@ -52,9 +52,11 @@ def nota_pode_editar(status_id, n_tarefas: int):
 
 def tarefas_sem_fim(tarefas) -> list:
     """Títulos das tarefas SEM data de fim — o lado 'antes' do double check (`_concluir_os`): sai do que o card já
-    carregou, sem ida extra ao servidor."""
-    return [str(t.get("titulo") or t.get("ativo") or "(tarefa sem título)") for t in (tarefas or [])
-            if isinstance(t, dict) and not str(t.get("fim") or "").strip()]
+    carregou, sem ida extra ao servidor. O título é o do `rotulos_tarefas`: com 8 tarefas de mesmo título, o aviso
+    repetia a mesma frase (08/10/2026)."""
+    rot = rotulos_tarefas(tarefas)
+    return [rot.get(t.get("id")) or str(t.get("titulo") or t.get("ativo") or "(tarefa sem título)")
+            for t in (tarefas or []) if isinstance(t, dict) and not str(t.get("fim") or "").strip()]
 
 
 def mensagem_concluida(folio, chk) -> tuple:
@@ -315,6 +317,80 @@ def fluxo_web(fx: dict, fmt) -> dict:
             "cadeia": cadeia, "vazio": len(cadeia) <= 1, "aviso": str(fx.get("aviso") or "")}
 
 
+# ── as TAREFAS da OS no card (Levi, 08/10/2026) ─────────────────────────────────────────────────────────────────────────
+# "Nas OSs que aparecem no OS Creator Web quando a OS tem mais que uma tarefa está duplicando as subtarefas e não
+# aparecendo as tarefas, tem que dividir por tarefa quando clicar!". A lista corrida juntava as subtarefas de todas as
+# tarefas: numa OS de tarefas com o mesmo checklist (a coleta de geração, uma por inversor) a mesma pergunta saía uma vez
+# por tarefa, sem dizer de qual. Com mais de uma tarefa, o card mostra AS TAREFAS e cada uma abre as subtarefas DELA: é o
+# seletor de tarefa do app (steps/os_detalhe.py), em lista.
+SEM_TAREFA = "Subtarefas sem tarefa identificada"
+
+
+def situacao_tarefa(t: dict) -> tuple:
+    """(rótulo, classe do semáforo no os.css) pela execução registrada na tarefa: com fim, Finalizada; só com início,
+    Iniciada; sem os dois, Não iniciada. São as datas que o card já lê (`inicio`/`fim`), sem pedido a mais."""
+    t = t or {}
+    if str(t.get("fim") or "").strip():
+        return "Finalizada", "ok"
+    if str(t.get("inicio") or "").strip():
+        return "Iniciada", "and"
+    return "Não iniciada", "nao"
+
+
+def rotulos_tarefas(tarefas) -> dict:
+    """{id da tarefa: o nome que a distingue das outras da MESMA OS}. É o título; quando o título se repete (o mesmo plano
+    em vários ativos: 8 tarefas "Coleta de dados de geração"), leva o ativo junto — o seletor do app põe o ativo pelo
+    mesmo motivo. Sem título nem ativo, "Tarefa N" pela posição na OS."""
+    lista = [t for t in (tarefas or []) if isinstance(t, dict) and t.get("id") is not None]
+    nomes = [str(t.get("titulo") or t.get("ativo") or "").strip() for t in lista]
+    out = {}
+    for i, (t, nome) in enumerate(zip(lista, nomes), 1):
+        ativo = str(t.get("ativo") or "").strip()
+        if not nome:
+            nome = "Tarefa %d" % i
+        elif nomes.count(nome) > 1 and ativo and ativo != nome:
+            nome = "%s · %s" % (nome, ativo)
+        out.setdefault(t.get("id"), nome)
+    return out
+
+
+def subtarefas_por_tarefa(d: dict) -> list:
+    """As tarefas do card com as subtarefas de cada uma, na ordem das tarefas: [{id, n, titulo, ativo, tipo, programada,
+    inicio, fim, situacao, sit, subtarefas, feitas, total}]. [] quando a OS tem uma tarefa só: aí fica a lista direta.
+
+    Cada subtarefa vai para a tarefa DELA (`id_tarefa` = `id` da tarefa, o join conferido ao vivo na OS 8709: 45 de 45) e
+    para uma só: a tarefa que viesse repetida não ganha as subtarefas de novo. A que não casa com tarefa nenhuma vai num
+    grupo no fim (`n` None), para nada sumir da conta."""
+    d = d or {}
+    subs = [s for s in (d.get("subtarefas") or []) if isinstance(s, dict)]
+    por = {}
+    for s in subs:
+        por.setdefault(s.get("id_tarefa"), []).append(s)
+    grupos, usadas = [], set()
+    for t in (d.get("tarefas") or []):
+        if not isinstance(t, dict) or (t.get("id") is not None and t.get("id") in usadas):
+            continue
+        tid = t.get("id")
+        ss = por.get(tid, []) if tid is not None else []
+        if tid is not None:
+            usadas.add(tid)
+        situacao, sit = situacao_tarefa(t)
+        n = len(grupos) + 1
+        ativo = str(t.get("ativo") or "").strip()
+        grupos.append({"id": tid, "n": n, "titulo": str(t.get("titulo") or "").strip() or ativo or "Tarefa %d" % n,
+                       "ativo": ativo, "tipo": str(t.get("tipo") or "").strip(), "programada": t.get("programada"),
+                       "inicio": t.get("inicio"), "fim": t.get("fim"), "situacao": situacao, "sit": sit,
+                       "subtarefas": ss, "feitas": sum(1 for s in ss if s.get("feito")), "total": len(ss)})
+    if len(grupos) < 2:
+        return []
+    soltas = [s for s in subs if s.get("id_tarefa") is None or s.get("id_tarefa") not in usadas]
+    if soltas:
+        grupos.append({"id": None, "n": None, "titulo": SEM_TAREFA, "ativo": "", "tipo": "", "programada": None,
+                       "inicio": None, "fim": None, "situacao": "", "sit": "", "subtarefas": soltas,
+                       "feitas": sum(1 for s in soltas if s.get("feito")), "total": len(soltas)})
+    return grupos
+
+
 # ── "fazer a tarefa" antes de concluir (Levi, 21/09/2026) ───────────────────────────────────
 # O pedido: "se tiver tarefa pendente tem que dar a opção de fazer a tarefa". Até aqui a web só
 # sabia AVISAR quais subtarefas ficariam pendentes; para preenchê-las a pessoa tinha de sair para o
@@ -333,12 +409,10 @@ def tarefas_pendentes(d: dict) -> list:
     """[{id_tarefa, titulo, n_pendentes}] — as tarefas da OS que ainda têm subtarefa em branco.
 
     Agrupa por `id_tarefa` porque uma OS de preventiva pode ter treze: oferecer "fazer a tarefa"
-    sem dizer QUAL faria a pessoa preencher o checklist da tarefa errada."""
+    sem dizer QUAL faria a pessoa preencher o checklist da tarefa errada. Pelo mesmo motivo o título
+    é o `rotulos_tarefas`: com 8 tarefas de mesmo título, os botões saíam iguais (08/10/2026)."""
     d = d or {}
-    titulos = {}
-    for t in (d.get("tarefas") or []):
-        if isinstance(t, dict) and t.get("id") is not None:
-            titulos[t.get("id")] = str(t.get("titulo") or t.get("ativo") or "").strip()
+    titulos = rotulos_tarefas(d.get("tarefas"))
     por = {}
     for s_ in (d.get("subtarefas") or []):
         if not isinstance(s_, dict) or s_.get("feito"):

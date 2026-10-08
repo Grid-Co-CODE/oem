@@ -1,7 +1,8 @@
 {# Detalhe da OS — cópia da janela do OS Creator (steps/os_detalhe.py; prints do Levi, 13/09/2026): cabeçalho com Nº + badge do
    tipo + pílula da Solicitação; banner do ativo; datas/pessoas (com avatar) ao lado de DURAÇÃO TOTAL + etiqueta; TÍTULO e NOTAS
    em caixa; SUBTAREFAS com barra de progresso e uma linha-card por subtarefa (checkbox, chip do tipo, seta — o clique abre a
-   resposta); ANEXOS DA OS em dois cards (verde = das subtarefas, azul = da OS; a contagem chega depois, por /anexos);
+   resposta), ou, numa OS de várias tarefas, as TAREFAS e as subtarefas de cada uma dentro dela (08/10/2026); ANEXOS DA OS em
+   dois cards (verde = das subtarefas, azul = da OS; a contagem chega depois, por /anexos);
    REGISTRO NO FRACTTAL; rodapé fixo com as ações nas cores do original. Usado pela página cheia (os_detalhe.html) e pelo card
    sobreposto do Histórico (parcial=1).
 
@@ -16,6 +17,16 @@
 {% set dur = duracao(d.event_date, d.data_fim) %}
 {% set nota_regra = acoes_nota_regra(d, status) %}
 {% set sem_fim = acoes_sem_fim(d) %}
+{# `is defined`: a cópia chega ao 5090 (e ao 5070) sem reiniciar o serviço. O template que ainda não estava na memória é
+   lido do disco, mas o Python segue o antigo, sem estas duas funções: sem a guarda, o card daria erro até reiniciar;
+   com ela, fica a lista direta de antes (08/10/2026) #}
+{% set grupos = acoes_grupos_tarefas(d) if acoes_grupos_tarefas is defined else [] %}
+{% set n_tarefas = grupos|selectattr('n')|list|length %}
+{% set rotulo = acoes_rotulos_tarefas(d) if grupos and acoes_rotulos_tarefas is defined else {} %}
+{% macro subtarefa(s) %}<details class="det-sub{% if s.feito %} feito{% endif %}"{% if s.id_form_item %} data-fid="{{ s.id_form_item }}"{% endif %}>
+      <summary><span class="det-chk">{% if s.feito %}✓{% endif %}</span><span class="det-sub-t">{{ s.descricao }}</span>{% if s.tipo %}<span class="det-kind">{{ s.tipo }}</span>{% endif %}<span class="det-chev">›</span></summary>
+      <div class="det-ans{% if not s.resposta %} vazia{% endif %}">{{ s.resposta or 'Sem resposta registrada.' }}</div>
+    </details>{% endmacro %}
 <section class="det" data-wid="{{ wid }}" data-folio="{{ d.folio }}" data-status="{{ status }}">
   {% if parcial %}<link rel="stylesheet" href="/os/static/os_acoes.css">{% endif %}
   <header class="det-top">
@@ -67,21 +78,36 @@
     <div class="det-box det-pre" data-nota-leitura>{{ d.notas or '—' }}</div>
     <textarea class="acoes-ta" data-nota-editor placeholder="Observação da OS…" hidden>{{ d.notas or '' }}</textarea>
 
+    {# OS de VÁRIAS tarefas (Levi, 08/10/2026: "está duplicando as subtarefas e não aparecendo as tarefas, tem que dividir
+       por tarefa quando clicar!"): a lista corrida juntava as subtarefas de todas, e a mesma pergunta saía uma vez por
+       tarefa (a coleta de geração em 8 inversores = 8 vezes seguidas), sem dizer de qual era; as tarefas ficavam numa
+       tabela solta depois. Agora cada TAREFA é uma linha (título, ativo, situação, feitas de quantas) que abre as
+       subtarefas DELA — o seletor de tarefa do app (steps/os_detalhe.py), em lista. <details>: o clique, o Enter e o Espaço
+       abrem, sem JS. A barra e o "X de Y" são da OS inteira, cada subtarefa uma vez. Com uma tarefa só, a lista direta. #}
+    {% if grupos %}
+    <div class="det-sec-line"><span class="det-sec">TAREFAS ({{ n_tarefas }})</span><span class="det-ajuda">clique na tarefa para ver as subtarefas dela</span><span class="os-cresce"></span>
+      <span class="det-pill-ok">{{ n_feitas }} de {{ n_sub }} subtarefas concluídas</span></div>
+    <div class="det-prog"><div class="det-prog-f{% if n_sub and not completo %} parcial{% endif %}" style="width:{{ pct }}%"></div></div>
+    {% for g in grupos %}
+    <details class="det-tarefa{% if g.total and g.feitas == g.total %} feito{% endif %}" data-tarefa="{% if g.n %}{{ g.id if g.id is not none else '' }}{% else %}sem-tarefa{% endif %}">
+      <summary><span class="det-tarefa-n">{{ g.n or '—' }}</span>
+        <span class="det-tarefa-t"><b>{{ g.titulo }}</b>{% if g.ativo and g.ativo != g.titulo %}<small>{{ g.ativo }}</small>{% endif %}</span>
+        {% if g.n %}<span class="det-situ {{ g.sit }}">{{ g.situacao }}</span>{% endif %}
+        <span class="det-tarefa-c{% if g.total and g.feitas == g.total %} ok{% elif g.feitas %} parcial{% endif %}">{% if g.total %}{{ g.feitas }} de {{ g.total }} concluídas{% else %}sem subtarefas{% endif %}</span>
+        <span class="det-chev">›</span></summary>
+      <div class="det-tarefa-corpo">
+        {% if g.n %}<p class="det-tarefa-info">Tipo <b>{{ g.tipo or '—' }}</b><span class="det-dot">·</span>Programada <b>{{ fmt(g.programada) if g.programada else '—' }}</b>{% if g.inicio or g.fim %}<span class="det-dot">·</span>Execução <b>{{ fmt(g.inicio) if g.inicio else '—' }} → {{ fmt(g.fim) if g.fim else 'em aberto' }}</b>{% endif %}</p>{% endif %}
+        {% for s in g.subtarefas %}{{ subtarefa(s) }}{% else %}<div class="det-ajuda">Sem subtarefas nesta tarefa.</div>{% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+    {% else %}
     <div class="det-sec-line"><span class="det-sec">SUBTAREFAS</span><span class="det-ajuda">clique para ver a resposta</span><span class="os-cresce"></span>
       <span class="det-pill-ok">{{ n_feitas }} de {{ n_sub }} concluídas</span></div>
     <div class="det-prog"><div class="det-prog-f{% if n_sub and not completo %} parcial{% endif %}" style="width:{{ pct }}%"></div></div>
     {% for s in d.subtarefas %}
-    <details class="det-sub{% if s.feito %} feito{% endif %}">
-      <summary><span class="det-chk">{% if s.feito %}✓{% endif %}</span><span class="det-sub-t">{{ s.descricao }}</span>{% if s.tipo %}<span class="det-kind">{{ s.tipo }}</span>{% endif %}<span class="det-chev">›</span></summary>
-      <div class="det-ans{% if not s.resposta %} vazia{% endif %}">{{ s.resposta or 'Sem resposta registrada.' }}</div>
-    </details>
+    {{ subtarefa(s) }}
     {% else %}<div class="det-ajuda">Sem subtarefas.</div>{% endfor %}
-
-    {% if d.tarefas and d.tarefas|length > 1 %}
-    <div class="det-sec">TAREFAS ({{ d.tarefas|length }})</div>
-    <div class="det-card det-tbl-wrap"><table class="os-tbl"><thead><tr><th>Tarefa</th><th>Ativo</th><th>Tipo</th><th>Programada</th><th>Início</th><th>Fim</th></tr></thead><tbody>
-      {% for t in d.tarefas %}<tr><td>{{ t.titulo }}</td><td>{{ t.ativo }}</td><td>{{ t.tipo }}</td><td class="c-data">{{ fmt(t.programada) }}</td><td class="c-data">{{ fmt(t.inicio) }}</td><td class="c-data">{{ fmt(t.fim) }}</td></tr>{% endfor %}
-    </tbody></table></div>
     {% endif %}
 
     <div class="det-sec">ANEXOS DA OS</div>
@@ -96,7 +122,7 @@
   </div>
 
   <footer class="det-foot">
-    <span class="det-ajuda">{{ n_sub }} subtarefa(s)</span><span class="os-cresce"></span>
+    <span class="det-ajuda">{{ n_sub }} subtarefa(s){% if grupos %} em {{ n_tarefas }} tarefas{% endif %}</span><span class="os-cresce"></span>
     <a class="det-b verde" href="/os/clonar?folio={{ d.folio }}">{{ icone('copy', '#0B1020', 16) }}Clonar esta OS</a>
     <button type="button" class="det-b verde" data-acao="fluxo" title="Mostra esta OS encadeada com as outras — pais, filhas e todo o histórico do ativo">{{ icone('branch', '#0B1020', 16) }}Fluxo</button>
     {# o chamado nasce de uma OS de TESTE (29/07): o botão abre a Inspeção de chamados com o ativo, a data do incidente e o
@@ -112,7 +138,7 @@
   <template data-dlg="responsavel">
     <div class="acoes-t">Trocar o responsável da OS {{ d.folio }}</div>
     {% if d.responsavel and d.responsavel != '—' %}<div class="acoes-s">Hoje está com <b>{{ d.responsavel }}</b>.</div>{% endif %}
-    <select data-resp-sel><option value="">carregando o pessoal…</option></select>
+    <select data-resp-sel data-busca="1" aria-label="Responsável"><option value="">carregando o pessoal…</option></select>
     <div class="acoes-hint" data-hint></div>
     <div class="acoes-bts"><button type="button" class="det-b ghost" data-fechar>Cancelar</button><button type="button" class="det-b verde" data-conf="responsavel" disabled>Atribuir</button></div>
   </template>
@@ -144,7 +170,9 @@
     {% if pendentes %}
     <div class="acoes-pend">
       <div class="acoes-pend-t">{{ pendentes|length }} subtarefa{{ 's' if pendentes|length > 1 }} que fica{{ 'm' if pendentes|length > 1 }} pendente{{ 's' if pendentes|length > 1 }}:</div>
-      <ul>{% for s in pendentes[:6] %}<li>{{ s.descricao }}{% if s.tipo %} <span class="acoes-pend-k">{{ s.tipo }}</span>{% endif %}</li>{% endfor %}</ul>
+      {# numa OS de várias tarefas, a pendência diz de QUAL tarefa é (08/10/2026): na OS de tarefas iguais, a lista era a
+         mesma frase seis vezes #}
+      <ul>{% for s in pendentes[:6] %}<li>{{ s.descricao }}{% if s.tipo %} <span class="acoes-pend-k">{{ s.tipo }}</span>{% endif %}{% if rotulo.get(s.id_tarefa) %} <span class="acoes-pend-k">· {{ rotulo.get(s.id_tarefa) }}</span>{% endif %}</li>{% endfor %}</ul>
       {% if pendentes|length > 6 %}<div class="acoes-pend-m">e mais {{ pendentes|length - 6 }}</div>{% endif %}
       {# FAZER A TAREFA, em vez de so avisar (Levi, 21/09). Ate aqui o dialogo dizia o que ficaria
          pendente e o unico caminho era sair para o Fracttal — e na saida o que mais se perdia era

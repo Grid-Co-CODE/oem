@@ -57,9 +57,10 @@
       <label class="cl-chk"><input type="checkbox" id="chk_etiq" disabled> <span id="chk_etiq_txt">Clonar etiquetas</span></label>
     </div>
     <div class="os-cardf"><div class="os-cardf-h">{{ icone('user', '#A6E22E', 18) }}<span class="os-cardf-t">Responsável</span></div>
+      {# uma caixa só, a busca comum do os_busca (Levi, 08/10/2026: "conseguir digitar no responsável"); até 08/10 havia
+         um "filtrar pelo nome" separado do <select>, e com a busca por cima ficavam duas caixas #}
       <label class="os-campo"><span class="os-lbl">Responsável <i>*</i> <small>(digite p/ pesquisar)</small></span>
-        <input id="resp_busca" type="search" placeholder="filtrar pelo nome" class="cl-filtro">
-        <select id="cb_resp"><option value="">— selecione —</option>{% for p in pessoas %}<option value="{{ p.id_personnel }}">{{ p.name or p.code }}</option>{% endfor %}</select></label>
+        <select id="cb_resp" data-busca="1"><option value="">— selecione —</option>{% for p in pessoas %}<option value="{{ p.id_personnel }}">{{ p.name or p.code }}</option>{% endfor %}</select></label>
     </div>
   </div>
 

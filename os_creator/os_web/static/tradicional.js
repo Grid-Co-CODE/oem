@@ -258,12 +258,36 @@
     } catch (e) { pessoas = null; respBusca.placeholder = '⚠ ' + e.message; }
     filtrarPessoas();
   }
+  // Levi, 08/10/2026 ("conseguir digitar no responsável na criação de OS"): a busca daqui casa como a comum do
+  // os_busca.js — sem acento, sem caixa, palavra por palavra ("joao" acha "João"; antes só achava "joão") — e as setas e
+  // o Enter escolhem sem largar o teclado. O Enter só ESCOLHE: quem gera as OS continua sendo o botão.
+  const casaNome = (nome, txt) => (window.OsBusca ? window.OsBusca.casa(nome, txt)
+    : String(nome || '').toLowerCase().includes(String(txt || '').trim().toLowerCase()));
+  const pessoasVisiveis = () => (pessoas || []).filter((p) => casaNome(p.name, respBusca.value));
   function filtrarPessoas() {
-    const txt = (respBusca.value || '').trim().toLowerCase();
-    respLista.innerHTML = (pessoas || []).filter((p) => !txt || String(p.name || '').toLowerCase().includes(txt))
-      .map((p) => '<div class="trad-pessoa' + (pessoaSel && pessoaSel.id_personnel === p.id_personnel ? ' on' : '') + '" data-id="' + esc(p.id_personnel) + '">' + esc(p.name) + '</div>').join('');
+    const txt = (respBusca.value || '').trim();
+    respLista.innerHTML = pessoasVisiveis()
+      .map((p) => '<div class="trad-pessoa' + (pessoaSel && pessoaSel.id_personnel === p.id_personnel ? ' on' : '') + '" data-id="' + esc(p.id_personnel) + '">' + esc(p.name) + '</div>').join('')
+      || (pessoas && txt ? '<div class="trad-vazio">Ninguém com “' + esc(txt) + '”.</div>' : '');
+    const on = respLista.querySelector('.trad-pessoa.on');            // a escolhida fica à vista quando as setas a movem
+    if (on) {
+      const r = on.getBoundingClientRect(), c = respLista.getBoundingClientRect();
+      if (r.top < c.top) respLista.scrollTop -= c.top - r.top;
+      else if (r.bottom > c.bottom) respLista.scrollTop += r.bottom - c.bottom;
+    }
   }
   respBusca.oninput = filtrarPessoas;
+  respBusca.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
+    e.preventDefault();
+    const vis = pessoasVisiveis();
+    if (!vis.length) return;
+    let k = vis.findIndex((p) => pessoaSel && p.id_personnel === pessoaSel.id_personnel);
+    if (e.key !== 'Enter') k = k < 0 ? 0 : Math.max(0, Math.min(vis.length - 1, k + (e.key === 'ArrowDown' ? 1 : -1)));
+    else if (k < 0) k = 0;
+    pessoaSel = vis[k];
+    filtrarPessoas(); bGerar.disabled = !pessoaSel;
+  });
   respLista.addEventListener('click', (ev) => {
     const el = ev.target.closest('.trad-pessoa'); if (!el) return;
     pessoaSel = (pessoas || []).find((p) => String(p.id_personnel) === el.dataset.id) || null;

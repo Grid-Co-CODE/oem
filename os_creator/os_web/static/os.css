@@ -90,6 +90,9 @@ body.os-form textarea::placeholder,body.os-form input::placeholder{color:var(--f
 .os-seg{display:inline-flex;border:1px solid var(--f-border);border-radius:10px;overflow:hidden}
 .os-seg-btn{background:var(--f-input);color:var(--f-muted);border:none;padding:8px 14px;font-weight:600;cursor:pointer}
 .os-seg-btn.on{background:rgba(166,226,46,.16);color:var(--f-green)}
+a.os-seg-btn{display:inline-flex;align-items:center;text-decoration:none}   /* a escolha PCM | Engenharia da Nova solicitação */
+/* no celular a linha do topo QUEBRA em vez de cortar: com o PCM | Engenharia, 375 px cortavam o "Engenharia" (06/10) */
+@media (max-width:640px){.os-topo-linha{flex-wrap:wrap}}
 .os-linha-ativos{display:flex;align-items:center;gap:6px}
 .os-tbl-wrap{overflow-x:auto}
 .os-tbl{width:100%;border-collapse:separate;border-spacing:0;background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;font-size:12px;color:#fff}
@@ -148,7 +151,9 @@ body.os-modal-aberto{overflow:hidden}
 .os-modal{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:30px 16px}
 .os-modal-fundo{position:absolute;inset:0;background:rgba(4,7,14,.68)}
 .os-modal-card{position:relative;z-index:1;width:min(1020px,96vw);max-height:90vh;overflow:auto;background:var(--f-bg);border:1px solid var(--f-border);border-radius:16px;box-shadow:0 26px 70px rgba(0,0,0,.55)}
-.os-modal-x{position:absolute;top:12px;right:14px;z-index:2;width:34px;height:34px;border-radius:17px;border:1px solid var(--f-border);background:var(--f-card);color:var(--muted2);font-size:20px;line-height:1;cursor:pointer;transition:color .15s,border-color .15s}
+/* z-index 4: acima do cabeçalho fixo do card (.det-top, 3), que guarda o lugar dele (padding-right:58px) e o cobria —
+   o X não aparecia nem respondia ao clique (visto em 08/10/2026, ao abrir o card no Quadro da equipe do Nexus) */
+.os-modal-x{position:absolute;top:12px;right:14px;z-index:4;width:34px;height:34px;border-radius:17px;border:1px solid var(--f-border);background:var(--f-card);color:var(--muted2);font-size:20px;line-height:1;cursor:pointer;transition:color .15s,border-color .15s}
 .os-modal-x:hover{color:var(--verde);border-color:var(--verde)}
 /* ── Detalhe da OS: cópia da janela do app (steps/os_detalhe.py). Paleta --f-* = a do app; borda de card #222c46 ── */
 .det{display:flex;flex-direction:column;min-height:100%;background:var(--f-bg);color:#fff;font-size:13.5px}
@@ -205,7 +210,37 @@ body.os-modal-aberto{overflow:hidden}
 .det-chev{color:var(--f-muted);font-size:22px;line-height:1;transition:transform .15s}.det-sub[open] .det-chev{transform:rotate(90deg)}
 .det-ans{margin:0 16px 14px 52px;background:var(--f-card);border:1px solid #222c46;border-radius:10px;padding:10px 13px;color:#c4cbdb;white-space:pre-wrap;font-size:13px}
 .det-ans.vazia{color:#6a7488;font-style:italic}
-.det-tbl-wrap{padding:8px}
+/* TAREFAS da OS (Levi, 08/10/2026: "tem que dividir por tarefa quando clicar!"): numa OS de várias tarefas, cada tarefa é
+   um <details> que abre as subtarefas DELA. A linha quebra no celular (375 px sem rolagem lateral): o título fica com a
+   1ª linha, a situação e a contagem descem. Situação no semáforo: verde Finalizada, âmbar Iniciada, cinza Não iniciada.
+   Só o filho direto (>): a seta e o resumo das subtarefas de dentro seguem as regras do .det-sub. */
+.det-tarefa{background:var(--f-card);border:1px solid #222c46;border-radius:12px;margin-top:-4px}
+.det-tarefa>summary{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:12px 16px;cursor:pointer;list-style:none;color:#fff;border-radius:12px}
+.det-tarefa>summary::-webkit-details-marker{display:none}
+.det-tarefa>summary:focus-visible{outline:2px solid var(--f-green);outline-offset:2px}
+.det-tarefa[open]{border-color:rgba(166,226,46,.55)}
+.det-tarefa[open]>summary{border-bottom:1px solid #222c46;border-radius:12px 12px 0 0}
+.det-tarefa-n{width:26px;height:26px;border-radius:13px;flex:none;display:inline-flex;align-items:center;justify-content:center;background:var(--f-input);border:1px solid var(--f-border);color:#c4cbdb;font-size:12px;font-weight:700}
+.det-tarefa.feito .det-tarefa-n{background:var(--f-green);border-color:var(--f-green);color:var(--f-ink)}
+.det-tarefa-t{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.det-tarefa-t b{font-size:14px;font-weight:600;color:#fff}.det-tarefa-t small{font-size:12px;color:var(--f-muted)}
+.det-situ,.det-tarefa-c{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;border:1px solid var(--f-border);background:var(--f-input);font-size:11.5px;font-weight:600;white-space:nowrap}
+.det-situ.ok{color:var(--f-green);border-color:rgba(166,226,46,.45);background:rgba(166,226,46,.10)}
+.det-situ.and{color:#eb8b57;border-color:rgba(235,139,87,.45);background:rgba(235,139,87,.10)}
+.det-situ.nao{color:var(--f-muted)}
+.det-tarefa-c{color:#c4cbdb}.det-tarefa-c.ok{color:var(--f-green)}.det-tarefa-c.parcial{color:#eb8b57}
+.det-tarefa>summary>.det-chev{margin-left:auto}.det-tarefa[open]>summary>.det-chev{transform:rotate(90deg)}
+.det-tarefa-corpo{display:flex;flex-direction:column;gap:8px;padding:12px}
+.det-tarefa-corpo .det-sub{margin-top:0}
+.det-tarefa-info{margin:0;color:#c4cbdb;font-size:12.5px;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}.det-tarefa-info b{color:var(--f-green);font-weight:600}
+/* no celular, a subtarefa dentro da tarefa perdia a largura para as margens das duas caixas: a descrição longa virava uma
+   coluna de uma palavra por linha (ensaio a 375 px). Menos margem; a descrição fica com a 1ª linha e o tipo e a seta
+   descem juntos para a 2ª, alinhados ao texto. */
+@media (max-width:640px){.det-tarefa>summary{padding:10px 12px}.det-tarefa-corpo{padding:8px}
+  .det-tarefa-corpo .det-sub summary{flex-wrap:wrap;gap:8px 10px;padding:12px}
+  .det-tarefa-corpo .det-sub-t{flex:1 1 calc(100% - 40px);min-width:0;overflow-wrap:anywhere}
+  .det-tarefa-corpo .det-kind{margin-left:32px}
+  .det-tarefa-corpo .det-sub summary>.det-chev{margin-left:auto}.det-tarefa-corpo .det-ans{margin:0 12px 12px}}
 .det-anexo{display:flex;align-items:center;gap:14px;padding:16px 18px}
 .det-anexo.v{border-color:rgba(166,226,46,.7)}
 .det-anexo-t{flex:1}.det-anexo-t b{color:#fff;font-size:15px}
@@ -278,6 +313,24 @@ body.os-modal-aberto{overflow:hidden}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .osb-op:hover,.osb-op.on{background:rgba(166,226,46,.16);color:#eaf3d6}
 .osb-vazio{padding:8px 10px;color:var(--muted);font-size:12.5px}
+/* Levi, 08/10/2026 ("conseguir digitar no responsável"; "digitar o nome da usina no filtro do histórico"): o texto que
+   não é de nenhuma opção volta e a tela diz por quê, em âmbar (atenção, não erro); o campo desligado parece desligado;
+   e a lista de marcar do Histórico ganha a busca no topo, parada enquanto a lista rola. */
+.osb-in:disabled{opacity:.5;cursor:not-allowed}
+.osb-aviso{margin-top:5px;font-size:11.5px;line-height:1.35;color:#f3d99b}
+.osb-aviso[hidden]{display:none}
+/* no diálogo do card (trocar responsável) a lista entra NO FLUXO: o diálogo rola (overflow-y:auto) e cortaria uma lista
+   solta por cima, deixando 2 nomes à vista */
+.acoes-dlg .osb-lista{position:static;margin-top:4px;max-height:min(280px,40vh);box-shadow:none}
+.os-multi-lista .osm-busca{position:sticky;top:-6px;z-index:1;display:block;width:100%;box-sizing:border-box;height:34px;
+  margin:-6px 0 6px;padding:0 10px;background:var(--f-input);border:1px solid var(--f-border);border-radius:8px;
+  color:#fff;font-size:13px;box-shadow:0 0 0 6px var(--f-card)}
+.os-multi-lista .osm-busca:focus{outline:none;border-color:var(--f-green)}
+.os-multi-lista .osm-busca::placeholder{color:var(--f-muted)}
+.os-multi-lista label.osm-fora{display:none}
+.os-multi-lista label.on{background:rgba(166,226,46,.16)}
+.osm-vazio{padding:6px 8px;color:var(--f-muted);font-size:12.5px}
+.osm-vazio[hidden]{display:none}
 
 /* caixa "Gerar ticket automaticamente" e a quantidade por ativo (Levi, 21/09) */
 .os-tk{display:flex;align-items:center;gap:8px;color:#cfd6e4;font-size:13px;cursor:pointer}
