@@ -6,20 +6,20 @@ conteúdo do OS Creator. Ver o `__init__.py` do pacote.
 Para que serve
 ──────────────
 Hoje o chamado nasce torto: o técnico anexa uma foto (às vezes borrada) da plaqueta e mais nada, e
-a Singrid tem de garimpar número de série e sintomas na OS para conseguir abrir o ticket no
-fabricante. A regra que a Ana fixou na reunião de 29/07 é que **todo chamado nasce de uma OS de
+a analista de chamados tem de garimpar número de série e sintomas na OS para conseguir abrir o ticket no
+fabricante. A regra que a gestão de chamados fixou na reunião de 29/07 é que **todo chamado nasce de uma OS de
 teste** — é teste que se apresenta ao fabricante. Então o jeito de consertar é qualificar a OS de
 teste: o supervisor/COS diz ativo e marca, e as subtarefas já descem pedindo exatamente o que
 aquele fabricante exige no formulário dele.
 
 Fonte de cada campo
 ───────────────────
-Os 9 documentos de processo da Singrid, em
+Os 9 documentos de processo da analista de chamados, em
 `4. O&M/11.Pré-Operação/2. Controle/13. Gestão de Chamados/02. Processos de Abertura e
 Acompanhamento` (Axial, Canadian Solar, Convert, Huawei, Hukseflux, STI, Soltec, Sungrow, Trina).
 Só entra aqui o que o CAMPO tem de coletar. O que é trabalho de escritório — NF com CFOP 5915/6915,
 declaração de não contribuinte, planilha SPA da Huawei, formulário RM.R05 da Sigma, endereço de
-remessa — fica de fora de propósito: é da Singrid, não do técnico, e poluiria a OS dele.
+remessa — fica de fora de propósito: é da analista de chamados, não do técnico, e poluiria a OS dele.
 
 Complementa o `chamado_spec.py`, que descreve o outro lado (os campos do diálogo de abertura do
 chamado). Um mesmo dado pode aparecer nos dois: aqui é o técnico QUE COLETA, lá é quem ABRE.
@@ -47,7 +47,7 @@ def _s(desc, tipo="texto", obrig=True, anexo=False, opcoes=None, chave="", so_pa
 
     `chave` é o campo do `chamado_spec` que esta resposta alimenta. É o que fecha o ciclo: quando
     a inspeção terminar, o diálogo "Abrir chamado" lê as respostas do técnico por essa chave e já
-    nasce preenchido — que é exatamente o trabalho manual que a Singrid faz hoje no Claude.
+    nasce preenchido — que é exatamente o trabalho manual que a analista de chamados faz hoje no Claude.
 
     `so_para` limita a pergunta a certos blocos de ativo. Existe porque a mesma MARCA atende ativos
     diferentes: a STI faz tracker, NCU e RSU, e as perguntas de componente/TCU/painel PV só fazem
@@ -58,7 +58,7 @@ def _s(desc, tipo="texto", obrig=True, anexo=False, opcoes=None, chave="", so_pa
 
 
 # ── 1. base: vale para qualquer ativo e qualquer marca ────────────────────────────────────────
-# A 1ª pergunta é a validação que a Ana pede em toda OS de teste: o ativo está REALMENTE em falha?
+# A 1ª pergunta é a validação que a gestão de chamados pede em toda OS de teste: o ativo está REALMENTE em falha?
 # Se voltou sozinho, não há chamado — e a OS morre aqui, o que já é uma resposta útil.
 #
 # O NÚMERO DE SÉRIE NÃO ENTRA AQUI de propósito. Ele é do bloco do tipo de ativo, porque a
@@ -163,7 +163,7 @@ POR_FABRICANTE = {
     # digitalpower.huawei.com — o formulário tem uma caixa própria para "menos de 7 dias",
     # que a Huawei trata à parte
     # "menos de 7 dias" saiu da mão do técnico: o app calcula (ver `derivados`) e o chamado
-    # recalcula no dia em que a Singrid abrir. Sobra nada específico da Huawei aqui.
+    # recalcula no dia em que a analista de chamados abrir. Sobra nada específico da Huawei aqui.
     "Huawei": [],
     # plataforma STI: stepper Projeto → Equipamento → Ações → Evidências. A etapa "Equipamento"
     # pede o COMPONENTE (Gateway/Motor/NCU/TCU/RSU) e, se for TCU, MAC + ID Modbus; a etapa "Ações"
@@ -349,7 +349,7 @@ def derivados(tipo_ativo: str, event_date, hoje=None) -> dict:
       - `data_falha`  = a data do incidente da própria OS;
       - `unidades`    = 1 quando o ativo é um inversor (é sempre um);
       - `menos_7d`    = calculado da data do incidente. **Recalcula toda vez que é chamado** — por
-        isso é função e não valor gravado: a Singrid abre o chamado dias depois, e a resposta muda.
+        isso é função e não valor gravado: a analista de chamados abre o chamado dias depois, e a resposta muda.
 
     ⚠️ Ressalva registrada: no formulário da Huawei esse campo é sobre a IDADE DO EQUIPAMENTO
     (instalação recente, tratada como DOA), não sobre há quanto tempo a falha ocorreu. Calculando

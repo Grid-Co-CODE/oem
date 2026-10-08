@@ -1,7 +1,7 @@
 """Regras dos CHAMADOS de garantia (abertura junto ao fabricante). PURO: sem Qt, sem rede — só
-dados e strings. Espelha os 9 processos documentados pela Singrid em
+dados e strings. Espelha os 9 processos documentados pela analista de chamados em
 `13. Gestão de Chamados/02. Processos de Abertura e Acompanhamento` e o combinado da reunião de
-23/07 (Ana Patrícia + Singrid + Levi):
+23/07 (gestão de chamados + analista de chamados + Levi):
 
   - Quem ABRE o chamado é o supervisor, no card da própria OS — não a equipe de chamados. Antes
     ele só colava a etiqueta CHAMADOS e avisava por WhatsApp, e a informação chegava incompleta.
@@ -19,14 +19,14 @@ FABRICANTES = ["Axial", "Brametal", "Canadian Solar", "Convert", "Huawei", "Huks
 
 # Aparecem com VOLUME REAL na planilha de chamados mas ainda não têm processo escrito
 # (SolarEdge 44 dos 566). Ficam disponíveis com os campos comuns — vale pedir o documento pra
-# Singrid, aí saem daqui e ganham CAMPOS_EXTRA.
+# analista de chamados, aí saem daqui e ganham CAMPOS_EXTRA.
 FABRICANTES_SEM_DOC = ["SolarEdge", "Growatt", "Solplanet", "WEG"]
 TODOS_FABRICANTES = FABRICANTES + FABRICANTES_SEM_DOC
 
 # De quem o chamado está esperando. É o vocabulário REAL da planilha e responde "a quem cobrar" —
 # eixo diferente do STATUS (que diz em que etapa da garantia está). Nos 317 em aberto:
 # Fabricante 151 · Cliente 72 · Supervisor 25 · Pré-Operação 16 — ou seja, 113 estão travados
-# do NOSSO lado, não no fabricante. Sem isso a Singrid não sabe atrás de quem correr.
+# do NOSSO lado, não no fabricante. Sem isso a analista de chamados não sabe atrás de quem correr.
 ESPERANDO = ["Fabricante", "Cliente", "Supervisor", "Pré-Operação",
              "Equipe de campo", "Ninguém — ação nossa"]
 ESPERANDO_PADRAO = ESPERANDO[0]
@@ -37,8 +37,8 @@ CANAL = {
     # CLONES (28/07): o PACOTE DE INFORMAÇÃO é o mesmo do fabricante de origem, mas o CANAL não
     # foi documentado — e canal é contato real, não se deduz por semelhança. Fica dito na tela
     # para ninguém abrir chamado da Romiotto no e-mail da Sigma Sensors por engano.
-    "Brametal":       "Canal ainda não documentado — confirmar com a Singrid (processo espelhado no da STI)",
-    "Romiotto":       "Canal ainda não documentado — confirmar com a Singrid (processo espelhado no da Hukseflux)",
+    "Brametal":       "Canal ainda não documentado — confirmar com a analista de chamados (processo espelhado no da STI)",
+    "Romiotto":       "Canal ainda não documentado — confirmar com a analista de chamados (processo espelhado no da Hukseflux)",
     "Canadian Solar": "E-mail service.latam@csisolar.com + evidências no Google Drive",
     "Convert":        "Formulário de garantia (Valmont) — brazil_services@valmont.com em cópia",
     "Huawei":         "Portal Digital Power — não precisa de login pra abrir",
@@ -79,7 +79,7 @@ def _c(chave, rotulo, tipo="texto", obrig=True, dica="", opcoes=None):
 
 
 # Exigido pelos NOVE — é o pacote mínimo que o supervisor entrega "mastigado" pra equipe de
-# chamados (pedido literal da Singrid na reunião: "quando chegasse pra mim, com todas as
+# chamados (pedido literal da analista de chamados na reunião: "quando chegasse pra mim, com todas as
 # informações que eu precisaria pra abrir").
 CAMPOS_COMUNS = [
     _c("serial", "Número de série", dica="do equipamento com falha"),
@@ -97,7 +97,7 @@ CAMPOS_EXTRA = {
         _c("op_desde", "Equipamento em operação desde", "data", obrig=False,
            dica="marca o caso de menos de 7 dias, que a Huawei trata à parte"),
         # calculado pelo app a partir da data do incidente e RECALCULADO toda vez que este diálogo
-        # abre — a Singrid abre o chamado dias depois da inspeção e a resposta muda (Levi, 30/07).
+        # abre — a analista de chamados abre o chamado dias depois da inspeção e a resposta muda (Levi, 30/07).
         _c("menos_7d", "Menos de 7 dias?", "lista", obrig=False, opcoes=["Sim", "Não"],
            dica="calculado pela data do incidente; confira antes de enviar"),
     ],
@@ -164,7 +164,7 @@ CAMPOS_EXTRA = {
 # CLONES de processo (28/07, pedido do Levi). Apontam para a MESMA lista da origem, de propósito:
 # se um campo mudar lá, o clone acompanha em vez de divergir em silêncio. O equipamento é do mesmo
 # tipo dos dois lados — Romiotto ~ sensor/estação como a Hukseflux; Brametal ~ tracker como a STI.
-# Quando a Singrid entregar o processo escrito de cada um, é aqui que a lista própria entra.
+# Quando a analista de chamados entregar o processo escrito de cada um, é aqui que a lista própria entra.
 CAMPOS_EXTRA["Romiotto"] = CAMPOS_EXTRA["Hukseflux"]
 CAMPOS_EXTRA["Brametal"] = CAMPOS_EXTRA["STI"]
 
@@ -192,7 +192,7 @@ def campos(fabricante) -> list:
 
 def faltando(fabricante, dados) -> list:
     """Rótulos dos campos OBRIGATÓRIOS ainda vazios — o botão de criar usa isso pra travar.
-    É o que impede a informação de chegar incompleta e virar o 'loop de coleta' que a Ana
+    É o que impede a informação de chegar incompleta e virar o 'loop de coleta' que a gestão de chamados
     quis evitar."""
     d = dados or {}
     out = []
@@ -217,7 +217,7 @@ def motivo_titulo(fabricante, dados=None) -> str:
 
 def subtarefas(fabricante, dados=None) -> list:
     """Subtarefas rastreáveis da OS de chamado. São as etapas que existem nos NOVE processos
-    (a Ana pediu: 'pensa num padrão, algumas etapas que existem em todas'); o que é específico
+    (a gestão de chamados pediu: 'pensa num padrão, algumas etapas que existem em todas'); o que é específico
     de um fabricante fica no bloco de texto da observação.
     → [{'descricao','tipo','opcoes','valor'}] — a tela converte pro formato do Fracttal."""
     d = dados or {}

@@ -8,7 +8,7 @@ ninguém cria na mão. Quando o técnico fecha a inspeção do chamado no App de
 da equipe de chamados — com as respostas do técnico na NOTA e UMA subtarefa: o nº do ticket aberto no fornecedor.
 
 AS TRÊS COLUNAS saem da própria OS, sem estado paralelo em lugar nenhum:
-    Chegaram       em processo e a subtarefa do ticket ainda vazia — é a fila da Singrid
+    Chegaram       em processo e a subtarefa do ticket ainda vazia — é a fila da analista de chamados
     Ticket aberto  a subtarefa do ticket preenchida — o chamado está com o fornecedor
     Finalizados    a OS concluída (ou em verificação), nos últimos 90 dias
 Cancelada fica fora do quadro (e é contada, para ninguém achar que sumiu).
@@ -150,7 +150,7 @@ def marca_do_titulo(titulo: str) -> str:
 
 def menos_7d(data_falha: str, hoje: dt.datetime) -> dict:
     """"Menos de 7 dias" RECALCULADO hoje. A nota congela o que valia no fechamento da inspeção; o formulário da Huawei
-    pergunta no dia em que a Singrid abre o ticket (13926: a nota diz Sim, nove dias depois já é Não)."""
+    pergunta no dia em que a analista de chamados abre o ticket (13926: a nota diz Sim, nove dias depois já é Não)."""
     try:
         f = dt.datetime.strptime(str(data_falha or "").strip()[:16], "%d/%m/%Y %H:%M")
     except ValueError:

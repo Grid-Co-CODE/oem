@@ -1,6 +1,6 @@
 # tests/test_chamados_obs_store.py
 """As observações da equipe de chamados no banco (27/09/2026): uma linha por observação, só POST, com a data e a hora
-do SERVIDOR — "essas observações vão salvar o dia que a Singrid escreveu"."""
+do SERVIDOR — "essas observações vão salvar o dia que a analista de chamados escreveu"."""
 import datetime as dt
 import json
 

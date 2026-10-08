@@ -2254,7 +2254,7 @@ def create_os_analise(asset: dict, id_responsible, resp_code="", resp_name="",
     TIPO 'Administrativa' + classificação 'Programada / Elétrica' (Levi, 03/08): é trabalho de
     escritório, igual às OS de ETM, e agora sai idêntico a elas no Fracttal. Antes nascia como
     'Inspeção' e sem classificação nenhuma. O que vai a CAMPO é a OS FILHA que a análise gera —
-    o exemplo da Ana na reunião ("a Gabi fechou o card dela e abriu cinco verificações em campo").
+    o exemplo da gestão de chamados na reunião ("a analista fechou o card dela e abriu cinco verificações em campo").
     A classificação é resolvida pelo NOME no catálogo (`_classif_ids`), porque a lista é editável
     dentro do Fracttal e id fixo quebraria na primeira edição.
 
@@ -2369,7 +2369,7 @@ def tickets_os3_em_massa(ids, max_workers: int = 8) -> dict:
     """O nº do ticket de VÁRIAS OS de acompanhamento de chamado (a OS 3), em paralelo → {id: ticket}.
 
     A OS 3 nasce no servidor do App de Campo com UMA subtarefa — "Nº do ticket ou protocolo aberto no fabricante" — e é
-    ela que diz em que coluna do quadro do Acompanhamento a OS está (Levi, 27/09: "OSs que chegam, que a Singrid já
+    ela que diz em que coluna do quadro do Acompanhamento a OS está (Levi, 27/09: "OSs que chegam, que a analista de chamados já
     escreveu número de tickets e OSs finalizadas"). Casa pelo texto ("ticket" ou "protocolo") e não pela frase exata:
     a frase mora no código do App, e uma vírgula mudada lá não pode esvaziar a coluna aqui.
 
@@ -4306,7 +4306,7 @@ def cancelamento_da_os(folio) -> dict:
     (`work_orders/10559/`) em ~0,2 s, sem paginar.
 
     QUEM CANCELOU NÃO EXISTE em lugar nenhum. Todos os campos de pessoa do registro são outra
-    coisa: `created_by` é quem abriu (conferido na 10533 — Juliana abriu, o cancelamento é
+    coisa: `created_by` é quem abriu (conferido na 10533 — uma analista abriu, o cancelamento é
     anônimo), `user_assigned`/`personnel_description` é o responsável, `requested_by` é o
     solicitante. Não há "cancelado por". Se um dia precisar, sai da bitácora do Fracttal web.
 
@@ -5504,7 +5504,7 @@ def fechar_execucoes_abertas(id_work_order_task) -> dict:
 
     Caso real que trouxe esta função (OS 10215, 29/07): o Levi tentou concluir quatro vezes e a OS
     não fechava, sem erro nenhum na tela. A tarefa tinha DUAS execuções — a dele, encerrada, e uma
-    da **Ana Barros** aberta desde o dia anterior (`IN_PROGRESS`, `final_date` nulo). O
+    de **outra pessoa** aberta desde o dia anterior (`IN_PROGRESS`, `final_date` nulo). O
     `work_orders_recalculate` roda com `verify_work_in_progress: True` e recusa fechar OS com
     trabalho em andamento.
 
@@ -5608,7 +5608,7 @@ def finalizar_execucao_os(id_work_order, id_work_order_task) -> dict:
 LABEL_CHAMADOS = "CHAMADOS"
 # A inspeção NÃO leva CHAMADOS. O fluxo que o Levi fechou em 30/07 tem TRÊS OS:
 #   religamento do COS → INSPEÇÃO (esta) → OS de chamado.
-# Como o painel da Singrid é montado pela etiqueta CHAMADOS, dar essa etiqueta à inspeção faria a
+# Como o painel da analista de chamados é montado pela etiqueta CHAMADOS, dar essa etiqueta à inspeção faria a
 # OS entrar na fila dela antes de o técnico ter ido a campo. "Chamado Garantia" (id 4821) já
 # existia no Fracttal e estava sem uso nenhum (0 OS) — diz "isto caminha para uma garantia" sem
 # ser a fila do chamado.
@@ -5740,7 +5740,7 @@ def codigos_os_recentes(dias: int = 30) -> list:
 def respostas_inspecao(id_work_order) -> dict:
     """Respostas do técnico na OS de inspeção, indexadas pela CHAVE do `chamado_spec`.
 
-    É o que faz o diálogo "Abrir chamado" nascer preenchido: a Singrid deixa de garimpar serial e
+    É o que faz o diálogo "Abrir chamado" nascer preenchido: a analista de chamados deixa de garimpar serial e
     sintoma na OS. Casa pela DESCRIÇÃO da subtarefa, que é o único elo entre o form item gravado no
     Fracttal e o modelo do `chamado_insp_spec` — o Fracttal não guarda a chave.
     → {chave: resposta} só com o que foi respondido."""
@@ -5763,7 +5763,7 @@ def respostas_inspecao(id_work_order) -> dict:
         if v:
             out[ch] = v
     # o que o app SABE, sem ter perguntado ao técnico: data da falha, nº de unidades e o
-    # "menos de 7 dias". Recalculado AGORA, não na criação da OS — a Singrid abre o chamado dias
+    # "menos de 7 dias". Recalculado AGORA, não na criação da OS — a analista de chamados abre o chamado dias
     # depois e a resposta muda (pedido do Levi, 30/07).
     try:
         det = get_os_detalhes(id_work_order) or {}

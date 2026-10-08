@@ -1,6 +1,6 @@
 # os_creator/os_web/rotas_acomp.py
 """Acompanhamento de chamados — a porta do card de Chamados que faltava (Levi, 27/09/2026: "uma espécie de kanban
-mostrando OSs que chegam, que a Singrid já escreveu número de tickets e OSs finalizadas! Ao clicar na OS abre uma tela
+mostrando OSs que chegam, que a analista de chamados já escreveu número de tickets e OSs finalizadas! Ao clicar na OS abre uma tela
 onde ela vê todas as informações do chamado daquele ativo e pode escrever observações").
 
 DE ONDE VEM CADA COISA — nada aqui inventa estado:
@@ -370,7 +370,7 @@ def api_finalizar(folio):
     _esquecer(wid)
     # O card da OS avisa em vermelho quando a conclusão fica SEM data de fim — lá é defeito (o cronômetro não foi usado
     # numa OS de campo). Aqui é o esperado: ninguém executa a OS administrativa, e a data que vale é a da finalização,
-    # que vai para o banco logo abaixo. Dizer isso é melhor que assustar a Singrid a cada chamado fechado.
+    # que vai para o banco logo abaixo. Dizer isso é melhor que assustar a analista de chamados a cada chamado fechado.
     chk = (res or {}).get("data_fim") if isinstance(res, dict) else None
     sem_fim = bool((chk or {}).get("sem_fim")) if isinstance(chk, dict) else False
     nota = _anotar(folio, "Chamado finalizado", "finalizado", det)

@@ -3,7 +3,7 @@
 `os_creator`, aba `chamados_obs`, UMA LINHA POR OBSERVAÇÃO.
 
 Pedido do Levi em 27/09/2026: "ao clicar na OS abre uma tela onde ela vê todas as informações do chamado daquele ativo
-e pode escrever observações, essas observações vão salvar o dia que a Singrid escreveu".
+e pode escrever observações, essas observações vão salvar o dia que a analista de chamados escreveu".
 
 POR QUE NÃO NA NOTA DA OS: a nota da OS 3 é a cópia das respostas do técnico, montada pelo servidor do App (até 3.800
 caracteres, de onde se abre o ticket no fornecedor). Misturar o diário ali estragaria as duas coisas — e editar a nota

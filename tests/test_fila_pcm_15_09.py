@@ -18,7 +18,7 @@ RELATO_LONGO = (
 
 def _solicitacao(relato):
     return {"id_code": 3608, "usina": "Tupi Paulista 1 e 2", "ativo": "Estrutura Trackers",
-            "criado_por": "Singrid Vieira", "data": "2026-09-11 10:00:00", "status": "Pendente",
+            "criado_por": "Pessoa Exemplo", "data": "2026-09-11 10:00:00", "status": "Pendente",
             "cor_status": "#01C0DD", "descricao_full": "Chamado de garantia",
             "observacao": relato + "\n\n" + sp.bloco({"tema": "tracker_chamado"})}
 

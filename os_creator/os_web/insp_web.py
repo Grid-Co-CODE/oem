@@ -126,7 +126,7 @@ def marcas(a, tipo: str, cat: list) -> dict:
     aviso = ""
     if sugerida and sugerida not in lista:
         aviso = ("O ativo é %s, que ainda não tem processo de chamado documentado — escolha a marca "
-                 "correta ou fale com a Singrid." % sugerida)
+                 "correta ou fale com a analista de chamados." % sugerida)
         sugerida = ""
     return {"marcas": lista, "sugerida": sugerida, "aviso": aviso}
 

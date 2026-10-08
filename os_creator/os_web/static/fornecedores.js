@@ -122,7 +122,7 @@
     if (sd.length) {
       h += '<div class="cf-lh sep"><span class="lbl">Sem processo escrito</span></div>' + sd.map(function (m) {
         return '<button type="button" class="li sd" data-sem="' + H(m) + '"><div class="li-n">' + H(m) + "</div>" +
-               '<div class="li-m">só a base e o bloco do tipo · pedir o documento à Singrid</div></button>';
+               '<div class="li-m">só a base e o bloco do tipo · pedir o documento à analista de chamados</div></button>';
       }).join("");
     }
     alvo.innerHTML = h;
