@@ -52,7 +52,9 @@ body.cham :focus-visible{outline:2px solid var(--gr);outline-offset:2px}
 .kpi .val.r{color:var(--rd-t)}.kpi .val.a{color:var(--am-t)}.kpi .val.g{color:var(--ok-t)}
 .kpi .val.pq{font:600 15px/1.3 var(--font)}
 .kpi .val.mono{font:600 15px/1.3 var(--mono)}
-.kpi .note{font-size:11.5px;line-height:1.35;color:var(--fa);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* a nota no --mu, o mesmo tom da faixa do Quadro da equipe da Engenharia (Levi, 08/10/2026: "padronizar a estética"):
+   o --fa dava 3,5:1, abaixo dos 4,5:1 */
+.kpi .note{font-size:11.5px;line-height:1.35;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .kpi .note b{color:var(--tx);font-weight:600}
 @media (max-width:980px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:14px}.kpi:nth-child(3){padding-left:0;border-left:0}}
 
@@ -75,36 +77,71 @@ body.cham .filtros option{color:var(--tx);background:var(--sf)}
 .aviso.err{border-left-color:var(--rd)}
 .aviso b{font-weight:600}
 
-/* o quadro: três colunas, o fio da cor do estado no cabeçalho, cards chapados e baixos */
-.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:start}
+/* o quadro (08/10/2026): a estética do Quadro da equipe da Engenharia do Nexus. Levi: "Precisamos padronizar a estética
+   para que coisas parecidas não pareçam completamente diferentes, nesse caso gostei mais da estética do da engenharia
+   porém o card de KPIS eu gostei mais do de chamados" (a faixa de números acima fica como estava). Espelha o `kb-*` de
+   nexus/static/engenharia.css (o Nexus é a referência do desenho) com a paleta daqui, porque o OS Creator não carrega o
+   CSS do Nexus e roda sozinho no 5090. A coluna é um cartão com a faixa da cor no topo, o título e a pílula da contagem;
+   o cartão tem o nº da OS em verde, o estado no canto, o ativo em negrito, a linha de onde, as etiquetas e o responsável.
+   Cor = semáforo: a faixa da coluna diz a fila (vermelho = esperando ticket, âmbar = com o fornecedor, verde =
+   finalizado); o fio à esquerda e o estado no canto dizem a idade (a régua de `acomp_web.urgencia`). Texto miúdo é o
+   --mu, e não o --fa: o --fa no cartão dava 3,5:1 (abaixo dos 4,5:1). */
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 @media (max-width:1000px){.board{grid-template-columns:minmax(0,1fr)}}
-.col{display:flex;flex-direction:column;min-width:0}
+.col{display:flex;flex-direction:column;min-width:0;background:var(--sf);border:1px solid var(--ln);border-radius:14px}
 .cr{--c:var(--rd)}.ca{--c:var(--am)}.cg{--c:var(--ok)}
-.col-h{display:flex;align-items:baseline;gap:9px;padding:0 2px 8px;border-bottom:2px solid var(--c);margin-bottom:10px}
-.col-h b{font:600 13px var(--font);color:#fff}
-.col-h span{font-size:11.5px;color:var(--fa)}
-.col-h em{margin-left:auto;font:700 17px/1 var(--font);color:#fff;font-style:normal;font-variant-numeric:tabular-nums}
-.cards{display:flex;flex-direction:column;gap:8px}
-.card{display:block;background:var(--sf);border:1px solid var(--ln);border-left:3px solid var(--c);border-radius:8px;padding:11px 13px;
-  text-decoration:none;color:inherit;transition:border-color .14s ease,background .14s ease}
-.card:hover{background:var(--sf2);border-color:var(--ln2);border-left-color:var(--c)}
-.card .l1{display:flex;align-items:center;gap:8px;min-width:0}
-.card .os{font:700 14.5px/1.2 var(--font);color:#fff;font-variant-numeric:tabular-nums}
-.card .meta{font-size:11.5px;color:var(--fa);white-space:nowrap}
-.card .ct{font:500 13px/1.35 var(--font);color:var(--tx);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card .l3{display:flex;align-items:baseline;gap:10px;margin-top:2px;font-size:12px;color:var(--mu);min-width:0}
-.card .l3 .loc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.card .forn{margin-left:auto;font-weight:600;color:var(--tx);white-space:nowrap}
-.card .tk{display:inline-block;font:500 12px var(--mono);color:var(--am-t);margin-top:7px}
-.card .dono{font-size:11.5px;color:var(--am-t);margin-top:4px}
-.card.fim{opacity:.75}.card.fim:hover{opacity:1}
+.col-h{display:flex;align-items:center;gap:8px;min-width:0;padding:12px 14px;border-bottom:1px solid var(--ln);
+  border-radius:13px 13px 0 0;box-shadow:inset 0 3px 0 var(--c)}
+.col-h h2,.col-h b{margin:0;font:700 13.5px/1.3 var(--font);color:#fff;white-space:nowrap}
+.col-h em{font:700 12px/18px var(--font);font-style:normal;padding:0 8px;border-radius:999px;background:var(--sf3);color:var(--mu);
+  font-variant-numeric:tabular-nums}
+.col-h span{margin-left:auto;min-width:0;font-size:11.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a coluna rola por dentro, como na Engenharia: as três ficam lado a lado com o cabeçalho à vista. No celular (uma coluna
+   embaixo da outra) quem rola é a página: rolagem dentro de rolagem prende o dedo. */
+.cards{display:grid;gap:10px;align-content:start;padding:10px;max-height:72vh;overflow-y:auto}
+@media (max-width:1000px){.cards{max-height:none;overflow:visible}}
+.card{display:grid;gap:7px;min-width:0;padding:12px 12px 10px;border-radius:12px;background:var(--sf2);border:1px solid var(--ln);
+  box-shadow:inset 3px 0 0 var(--k,var(--ln2));text-decoration:none;color:inherit;transition:border-color .14s ease,background .14s ease}
+.card:hover{background:var(--sf3);border-color:var(--ln2)}
+.card.k-r{--k:var(--rd)}.card.k-a{--k:var(--am)}.card.k-g,.card.fim{--k:var(--ok)}
+.card.fim{opacity:.85}.card.fim:hover,.card.fim:focus-visible{opacity:1}
+.k-cab{display:flex;align-items:center;gap:8px;min-width:0}
+.k-os{font:700 12px/1.3 var(--mono);color:var(--gr-t);font-variant-numeric:tabular-nums;white-space:nowrap}
+.k-tit{font:600 13.5px/1.35 var(--font);color:#fff;overflow-wrap:anywhere}
+.k-onde{min-width:0;font-size:12px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k-etq{display:flex;flex-wrap:wrap;gap:4px}
+.k-chip{display:inline-flex;align-items:center;gap:5px;padding:1px 8px 1px 6px;border-radius:999px;font:600 10.5px/16px var(--font);
+  color:var(--mu);background:var(--sf);border:1px solid var(--ln);white-space:nowrap}
+.k-chip::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--d,var(--fa))}
+.k-forn{color:var(--tx)}
+.k-tk{--d:var(--am);font-family:var(--mono);color:var(--am-t)}
+.k-pe{display:flex;align-items:center;gap:8px;min-width:0;font-size:11.5px;color:var(--mu)}
+.k-av{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;font:800 11px/1 var(--font);
+  color:#0b1020;background:var(--av,#c7cede)}
+.k-av0{--av:#7fb8ff}.k-av1{--av:#4fd1c5}.k-av2{--av:#e88fb4}.k-av3{--av:#c7cede}   /* acomp_web.cor_avatar */
+.k-quem{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.k-fora{color:var(--am-t)}
+.card .dono{font-size:11.5px;color:var(--am-t)}
 .tag{display:inline-block;font:700 10px/1.4 var(--font);letter-spacing:.05em;text-transform:uppercase;border-radius:5px;
   padding:2px 7px;white-space:nowrap}
-.card .tag{margin-left:auto}
+/* no cartão o estado é texto colorido, como o "atrasada 10 d" da Engenharia; a pílula fica para o topo da tela do chamado */
+.card .tag{margin-left:auto;padding:0;border-radius:0;background:none;font:700 11px/1.3 var(--font);letter-spacing:0;text-transform:none}
 .u-r{background:var(--rd-tint);color:var(--rd-t)}.u-a{background:var(--am-tint);color:var(--am-t)}
 .u-m{background:rgba(255,255,255,.06);color:var(--mu)}.u-g{background:var(--ok-tint);color:var(--ok-t)}
 .vazio{border:1px dashed var(--ln2);border-radius:8px;padding:16px;font-size:12.5px;color:var(--fa);text-align:center}
+.cards .vazio{margin:4px 4px 6px;padding:0;border:0;border-radius:0;text-align:left;color:var(--mu)}
 .rodape{margin-top:18px;font-size:12px;color:var(--fa)}
+/* o cartão de antes: o CSS vem do disco na hora, mas o acomp.html de antes fica na memória do 5090 e do 5070 até
+   reiniciarem (Jinja sem auto_reload). Sai no primeiro ajuste depois do reinício. */
+.card .l1{display:flex;align-items:center;gap:8px;min-width:0}
+.card .os{font:700 12px/1.3 var(--mono);color:var(--gr-t)}
+.card .meta{font-size:11.5px;color:var(--mu);white-space:nowrap}
+.card .ct{font:600 13.5px/1.35 var(--font);color:#fff}
+.card .l3{display:flex;align-items:baseline;gap:10px;min-width:0;font-size:12px;color:var(--mu)}
+.card .l3 .loc{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .forn{margin-left:auto;font-weight:600;color:var(--tx);white-space:nowrap}
+.card .tk{font:500 12px var(--mono);color:var(--am-t)}
+.col>.vazio{margin:4px 14px 14px;padding:0;border:0;text-align:left;color:var(--mu)}
 
 /* ── a tela do chamado ── (`.ac-det`, e não `.det`: o os.css já tem `.det` — o card de detalhe da OS) */
 .conf{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--am-tint);border:1px solid rgba(240,181,61,.35);

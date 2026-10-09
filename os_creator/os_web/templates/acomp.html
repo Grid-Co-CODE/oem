@@ -7,26 +7,37 @@
 {% block conteudo %}
 {# O quadro da equipe de chamados (Levi, 27/09/2026 — 3ª rodada, aprovada: escuro navy, limpo, com o topo numa linha só e a
    faixa de números baixa; a clara "ficou muito branco" e a parte de cima "ocupava boa parte da tela"). As colunas saem da
-   PRÓPRIA OS de acompanhamento — sem ticket, com ticket, finalizada; regra em acomp_web.py, filtros no acomp.js. #}
+   PRÓPRIA OS de acompanhamento — sem ticket, com ticket, finalizada; regra em acomp_web.py, filtros no acomp.js.
+   Desde 08/10/2026 as colunas e os cartões têm a estética do Quadro da equipe da Engenharia do Nexus (Levi: "Precisamos
+   padronizar a estética para que coisas parecidas não pareçam completamente diferentes, nesse caso gostei mais da
+   estética do da engenharia porém o card de KPIS eu gostei mais do de chamados"): a faixa de números fica como estava.
+   O cartão: o nº da OS e o estado no topo, o ativo, onde (código · cliente · usina), as etiquetas (fornecedor, tipo de
+   ativo, inspeção de origem, ticket) e o responsável. O cartão inteiro é o link do chamado, como antes. #}
 {% macro cartao(c) -%}
 {% set cls = {'chegou': 'cr', 'ticket': 'ca', 'fim': 'cg'}[c.col] %}
-<a class="card {{ cls }}{% if c.col == 'fim' %} fim{% endif %}" href="/os/chamados/acompanhamento/{{ c.folio }}" title="{{ c.tempo }}"
+{% set titulo = c.ativo_nome or c.code or '—' %}
+{% set onde = [c.code if c.code != titulo else '', c.local]|select|join(' · ') %}
+<a class="card {{ cls }} k-{{ c.urg }}{% if c.col == 'fim' %} fim{% endif %}" href="/os/chamados/acompanhamento/{{ c.folio }}" title="{{ c.tempo }}"
    data-marca="{{ c.marca }}" data-cliente="{{ c.cliente }}" data-tipo="{{ c.tipo }}" data-equipe="{{ '1' if c.da_equipe else '0' }}" data-busca="{{ c.busca }}">
-  <div class="l1"><span class="os">{{ c.folio }}</span>{% if c.inspecao %}<span class="meta">inspeção {{ c.inspecao }}</span>{% endif %}
-    {% if c.tempo_curto %}<span class="tag u-{{ c.urg }}">{{ c.tempo_curto }}</span>{% endif %}</div>
-  <div class="ct">{{ c.ativo_nome or c.code or '—' }}</div>
-  <div class="l3"><span class="loc">{{ c.local or '—' }}</span>{% if c.marca %}<span class="forn">{{ c.marca }}</span>{% endif %}</div>
-  {% if c.ticket %}<span class="tk">Ticket {{ c.ticket }}</span>{% endif %}
-  {% if not c.da_equipe and c.responsavel %}<div class="dono">no nome de {{ c.responsavel }}</div>{% endif %}
+  <div class="k-cab"><span class="k-os">OS {{ c.folio }}</span>{% if c.tempo_curto %}<span class="tag u-{{ c.urg }}">{{ c.tempo_curto }}</span>{% endif %}</div>
+  <div class="k-tit">{{ titulo }}</div>
+  {% if onde %}<div class="k-onde">{{ onde }}</div>{% endif %}
+  {% if c.marca or c.tipo or c.inspecao or c.ticket %}<div class="k-etq">
+    {%- if c.marca %}<span class="k-chip k-forn">{{ c.marca }}</span>{% endif %}
+    {%- if c.tipo %}<span class="k-chip">{{ c.tipo }}</span>{% endif %}
+    {%- if c.inspecao %}<span class="k-chip">inspeção {{ c.inspecao }}</span>{% endif %}
+    {%- if c.ticket %}<span class="k-chip k-tk">Ticket {{ c.ticket }}</span>{% endif %}</div>{% endif %}
+  {% if c.responsavel %}<div class="k-pe"><span class="k-av k-av{{ c.cor }}" aria-hidden="true">{{ c.responsavel|iniciais }}</span>
+    <span class="k-quem{% if not c.da_equipe %} k-fora{% endif %}">{% if not c.da_equipe %}no nome de {% endif %}{{ c.responsavel }}</span></div>{% endif %}
   {% if c.ticket_nao_lido %}<div class="dono">não consegui ler o ticket desta OS agora</div>{% endif %}
 </a>
 {%- endmacro %}
 {% macro coluna(cls, chave, nome, sub, vazio) -%}
-<div class="col {{ cls }}" data-col="{{ chave }}">
-  <div class="col-h"><b>{{ nome }}</b><span>{{ sub }}</span><em data-n>{{ q.n[chave] }}</em></div>
-  <div class="cards">{% for c in q.colunas[chave] %}{{ cartao(c) }}{% endfor %}</div>
-  <div class="vazio{% if q.colunas[chave] %} oculto{% endif %}" data-vazio>{{ vazio }}</div>
-</div>
+<section class="col {{ cls }}" data-col="{{ chave }}">
+  <header class="col-h"><h2>{{ nome }}</h2><em data-n>{{ q.n[chave] }}</em><span>{{ sub }}</span></header>
+  <div class="cards">{% for c in q.colunas[chave] %}{{ cartao(c) }}{% endfor %}
+    <p class="vazio{% if q.colunas[chave] %} oculto{% endif %}" data-vazio>{{ vazio }}</p></div>
+</section>
 {%- endmacro %}
 <section class="ac" id="acomp">
   <div class="ac-head">

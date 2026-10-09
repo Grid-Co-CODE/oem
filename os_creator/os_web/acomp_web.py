@@ -236,6 +236,15 @@ def urgencia(col: str, n: int | None) -> str:
     return "r" if n >= 16 else ("a" if n >= 8 else "m")
 
 
+CORES_AVATAR = 4     # as cores do avatar do responsável (chamados.css, .k-av0 a .k-av3)
+
+
+def cor_avatar(nome: str) -> int:
+    """A cor do avatar do responsável no cartão: a mesma pessoa tem sempre a mesma, como no Quadro da equipe da
+    Engenharia do Nexus. Soma das letras e não `hash()`, que muda a cada processo (a cor trocaria a cada reinício)."""
+    return sum(map(ord, _norm(nome))) % CORES_AVATAR if _norm(nome) else 0
+
+
 def cartao(l: dict, ticket, ultima_obs: str, hoje: dt.datetime, finalizado: str = "") -> dict:
     """Uma linha da lista do Fracttal + o ticket + a última observação → o que o card e a tela precisam.
 
@@ -260,17 +269,25 @@ def cartao(l: dict, ticket, ultima_obs: str, hoje: dt.datetime, finalizado: str 
          # nunca sairia da coluna dos 90 dias
          "fim": fim.strftime("%d/%m") if fim else "", "dias_fim": dias(fim or chegou, hoje),
          "responsavel": " ".join(str(l.get("atribuido_a") or "").split()), "da_equipe": da_equipe(l)}
+    c["cor"] = cor_avatar(c["responsavel"])
+    # `tempo_curto` é o estado no canto do cartão, no jeito do Quadro da equipe da Engenharia do Nexus ("atrasada 10 d",
+    # "fechada 02/10"). Levi, 08/10/2026: "Precisamos padronizar a estética para que coisas parecidas não pareçam
+    # completamente diferentes". A frase inteira continua em `tempo` (o title do cartão e a tela do chamado).
     if col == "chegou":
         c["tempo"], c["urg"] = _quando_txt(d_chegou, "chegou"), urgencia(col, d_chegou)
-        # a etiqueta do card: a coluna já diz "esperando ticket", o número basta
-        c["tempo_curto"] = "" if d_chegou is None else ("hoje" if d_chegou == 0 else
-                                                        ("1 dia" if d_chegou == 1 else "%d dias" % d_chegou))
+        # a coluna já diz "esperando ticket": a idade basta
+        c["tempo_curto"] = "" if d_chegou is None else ("hoje" if d_chegou == 0 else "%d d" % d_chegou)
     elif col == "ticket":
         c["tempo"], c["urg"] = _quando_txt(d_sem, "ticket"), urgencia(col, d_sem)
-        c["tempo_curto"] = c["tempo"].replace("há ", "")
+        c["tempo_curto"] = "" if d_sem is None else ("atualizado hoje" if d_sem == 0 else "%d d sem atualização" % d_sem)
     else:
         c["tempo"], c["urg"] = ("em %s" % c["fim"]) if c["fim"] else "", "m"
-        c["tempo_curto"] = c["tempo"]
+        if col == "":
+            c["tempo_curto"] = "cancelado"
+        elif c["status_id"] == 2:                     # finalizado pela tela, esperando a verificação no Fracttal
+            c["tempo_curto"] = ("em verificação %s" % c["fim"]) if c["fim"] else "em verificação"
+        else:
+            c["tempo_curto"] = ("fechado %s" % c["fim"]) if c["fim"] else "fechado"
     c["busca"] = _norm(" ".join(str(x or "") for x in (c["folio"], c["inspecao"], c["os_campo"], c["code"],
                                                           c["ativo_nome"], c["cliente"], c["usina"], marca,
                                                           c["ticket"], c["responsavel"])))
