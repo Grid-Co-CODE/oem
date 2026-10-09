@@ -659,6 +659,100 @@ def historico_meta():
     return jsonify({str(k): v for k, v in meta.items()})
 
 
+# ── o card da OS começa a ser lido antes do clique (Levi, 09/10/2026: "teria como utilizarmos essas requisições de forma
+# mais inteligente?") ───────────────────────────────────────────────────────────────────────────────────────────────
+# O mouse que PARA em cima de um cartão (Quadro da equipe da Engenharia do Nexus, Acompanhamento de chamados) pede o
+# detalhe da OS por trás (`/os/api/os/<id>/preparar`); o clique que vem depois pega essa leitura, ou espera a que já está
+# em curso, em vez de começar do zero no Fracttal. As regras são pela confiabilidade e pela cota da empresa (200/min):
+# - vale PREPARO_S e UMA vez: o clique seguinte lê de novo (o card mostra o que a pessoa acabou de mudar);
+# - toda gravação numa OS (POST com o id dela) joga fora o que foi lido antes (`_gravou_esquece_preparo`);
+# - teto por pessoa e no total, por minuto: passar o mouse pelo quadro inteiro não vira rajada no Fracttal (no pior caso,
+#   12 leituras de ~5 pedidos por minuto, somando todo mundo);
+# - com a sessão DA PESSOA no Fracttal (`sessao.contexto`): a thread nasce sem o contexto da requisição.
+PREPARO_S = 30
+PREPARO_PESSOA_MIN = 6
+PREPARO_TOTAL_MIN = 12
+_PREPARO: dict = {}                # (pessoa, wid, modo) -> (quando, Future)
+_PREPARO_PEDIDOS: list = []        # (quando, pessoa) dos pedidos aceitos no último minuto, para o teto
+_PREPARO_LOCK = threading.Lock()
+_PREPARO_EXEC = None               # nasce no 1º pedido: teste e desktop não abrem threads à toa
+
+
+def _executor_preparo():
+    global _PREPARO_EXEC
+    with _PREPARO_LOCK:
+        if _PREPARO_EXEC is None:
+            from concurrent.futures import ThreadPoolExecutor
+            _PREPARO_EXEC = ThreadPoolExecutor(max_workers=3, thread_name_prefix="os-web-preparo")
+        return _PREPARO_EXEC
+
+
+def preparar(pessoa, wid, modo: str = "card") -> bool:
+    """Começa a ler, por trás, o detalhe da OS `wid` para `pessoa`. O modo "chamado" lê enxuto (a tela de um chamado não
+    mostra solicitação nem OS pai: 2 pedidos a menos). False se já está pronto ou lendo, ou se passou do teto."""
+    agora = time.monotonic()
+    chave = (pessoa, int(wid), modo)
+    jwt, email = sessao.jwt_atual(), sessao.email_atual()
+
+    def ler():
+        with sessao.contexto(jwt, email):
+            if modo == "chamado":
+                with api.enxuta("vinculos"):
+                    return api.get_os_detalhes(int(wid)) or {}
+            return api.get_os_detalhes(int(wid)) or {}
+    executor = _executor_preparo()
+    with _PREPARO_LOCK:
+        for k in [k for k, (t, _f) in _PREPARO.items() if agora - t > PREPARO_S]:
+            _PREPARO.pop(k, None)
+        if chave in _PREPARO:
+            return False
+        _PREPARO_PEDIDOS[:] = [(t, p) for t, p in _PREPARO_PEDIDOS if agora - t < 60]
+        if (len(_PREPARO_PEDIDOS) >= PREPARO_TOTAL_MIN
+                or sum(1 for _t, p in _PREPARO_PEDIDOS if p == pessoa) >= PREPARO_PESSOA_MIN):
+            return False
+        _PREPARO_PEDIDOS.append((agora, pessoa))
+        _PREPARO[chave] = (agora, executor.submit(ler))
+    return True
+
+
+def preparado(wid, modo: str = "card", pessoa=None):
+    """O detalhe que o mouse parado pediu, se ainda vale: espera a leitura em curso, em vez de pedir de novo, e entrega
+    UMA vez. None se não há, se venceu ou se deu erro: quem chama lê na hora, como sempre, e o erro aparece ali."""
+    chave = (pessoa or _quem(), int(wid), modo)
+    with _PREPARO_LOCK:
+        v = _PREPARO.pop(chave, None)
+    if not v or time.monotonic() - v[0] > PREPARO_S:
+        return None
+    try:
+        det = v[1].result(timeout=45)
+    except Exception:                   # noqa: BLE001 — sessão caída, 429, rede
+        return None
+    return det if det and det.get("folio") else None
+
+
+def _esquecer_preparo(wid) -> None:
+    with _PREPARO_LOCK:
+        for k in [k for k in _PREPARO if k[1] == int(wid)]:
+            _PREPARO.pop(k, None)
+
+
+@bp.after_app_request
+def _gravou_esquece_preparo(resp):
+    """Toda gravação numa OS (as rotas POST com o id dela: concluir, nota, responsável, etiquetas, tarefa, cancelar...)
+    tira o que foi lido antes dela: o card aberto depois mostra a OS como ficou."""
+    wid = (request.view_args or {}).get("wid") if request.method == "POST" else None
+    if wid:
+        _esquecer_preparo(wid)
+    return resp
+
+
+@bp.route("/api/os/<int:wid>/preparar")
+@exige_sessao
+def os_preparar(wid):
+    modo = "chamado" if request.args.get("modo") == "chamado" else "card"
+    return jsonify({"pedido": preparar(_quem(), wid, modo)}), 202
+
+
 @bp.route("/os/folio/<int:folio>")
 @exige_sessao
 def os_detalhe_por_folio(folio):
@@ -678,7 +772,7 @@ def os_detalhe(wid):
     # o Historico abre a OS num card sobreposto (Levi, 13/09): ?parcial=1 (ou fetch) devolve so o fragmento do detalhe,
     # sem o cabecalho/abas, para injetar no card. Sem isso, e a pagina cheia de sempre (fallback quando o JS nao roda).
     parcial = bool(request.args.get("parcial")) or request.headers.get("X-Requested-With") == "fetch"
-    det = api.get_os_detalhes(wid) or {}
+    det = preparado(wid) or api.get_os_detalhes(wid) or {}      # o que o mouse parado no cartão já pediu (09/10/2026)
     if not det.get("folio"):
         if parcial:
             return f'<p class="os-erro" style="padding:24px">Não achei a OS de id {wid} no Fracttal.</p>', 404

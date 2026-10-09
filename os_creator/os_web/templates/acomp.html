@@ -43,7 +43,7 @@
   <div class="ac-head">
     <div class="ac-tit"><a class="ac-volta" href="/os/chamados">← Chamados</a><h1>Acompanhamento <span>de chamados</span></h1></div>
     <div class="ac-acoes">
-      {% if quando %}<span class="ac-fonte">lido do Fracttal às {{ quando[11:] }} de {{ quando[:5] }}</span>{% endif %}
+      {% if quando %}<span class="ac-fonte"{% if renovando %} data-renovando title="A tela abriu com a leitura anterior e já está relendo o Fracttal: a nova aparece na próxima vez que abrir, ou agora no Atualizar."{% endif %}>lido do Fracttal às {{ quando[11:] }} de {{ quando[:5] }}{% if renovando %} · atualizando{% endif %}</span>{% endif %}
       <a class="btn btn-g" href="/os/chamados/acompanhamento?atualizar=1">Atualizar</a>
     </div>
   </div>

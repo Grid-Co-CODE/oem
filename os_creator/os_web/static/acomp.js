@@ -59,6 +59,25 @@
       campos.forEach(function (c) { c.value = ""; });
       aplicar();
     });
+    // o chamado começa a ser lido quando o mouse PARA em cima do cartão (Levi, 09/10/2026): o clique pega a leitura
+    // pronta (rotas_acomp.preparar_chamado, com o teto por pessoa do rotas.preparar). Uma vez por cartão; 250 ms parado,
+    // para o mouse que só atravessa o quadro não pedir nada
+    quadro.querySelectorAll("a.card[href]").forEach(function (card) {
+      let t = null, feito = false;
+      const preparar = function () {
+        t = null;
+        if (feito || !window.fetch) return;
+        feito = true;
+        fetch(card.getAttribute("href") + "/preparar", {credentials: "same-origin", cache: "no-store"}).catch(function () {});
+      };
+      const parar = function () { if (t) { clearTimeout(t); t = null; } };
+      const esperar = function () { parar(); t = setTimeout(preparar, 250); };
+      card.addEventListener("mouseenter", esperar);
+      card.addEventListener("focus", esperar);
+      card.addEventListener("mouseleave", parar);
+      card.addEventListener("blur", parar);
+      card.addEventListener("touchstart", preparar, {passive: true});
+    });
   }
 
   // ── a tela do chamado ──
