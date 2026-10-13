@@ -145,3 +145,48 @@
 .acoes-exec-reg{border-top:1px solid var(--f-border,#2a3550);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:8px}
 .acoes-exec-dt{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (max-width:520px){.acoes-exec-dt{grid-template-columns:1fr}}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css. Os diálogos do
+   card no claro: caixa clara sobre o véu, avisos no semáforo (laranja = pendente/irreversível, vermelho = sem data de fim),
+   o lima nos botões de ação com texto escuro. ── */
+:where(html[data-tema="claro"]) .det-mini:not(:disabled){border-color:var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .det-ghost:not(:disabled):hover{border-color:var(--osc-campo-hover);color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .det-ghost:disabled{color:var(--osc-fraco)}
+:where(html[data-tema="claro"]) .det-b.verde:hover{background:var(--osc-lima-hover)}
+:where(html[data-tema="claro"]) .det-b.ok:not(:disabled):hover{background:var(--osc-lima);color:var(--osc-sobre-lima);border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .det-b.perigo:not(:disabled):hover{background:var(--osc-critico);color:var(--osc-sobre-escuro);border-color:var(--osc-critico)}
+:where(html[data-tema="claro"]) .det-b.ambar:hover{background:var(--osc-alerta-cheio);border-color:var(--osc-alerta-cheio)}
+:where(html[data-tema="claro"]) .det-anexo.a[data-acao]:hover{border-color:var(--osc-info)}
+:where(html[data-tema="claro"]) .acoes-ta{color:var(--osc-texto);border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .acoes-fundo{background:var(--osc-veu)}
+:where(html[data-tema="claro"]) .acoes-dlg{box-shadow:0 26px 70px var(--osc-sombra-alta);color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .acoes-t,:where(html[data-tema="claro"]) .acoes-s b{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .acoes-anx-msg{background:var(--osc-lima-suave);border:1px solid var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .acoes-anx-msg.ruim{color:var(--osc-alerta);background:var(--osc-alerta-suave);border-color:var(--osc-alerta-borda)}
+:where(html[data-tema="claro"]) .acoes-busca{border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .acoes-busca input,:where(html[data-tema="claro"]) .acoes-etq{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .acoes-tile{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .acoes-prow b.parcial{color:var(--osc-severo)}
+:where(html[data-tema="claro"]) .acoes-bar{background:var(--osc-secao-2)}
+:where(html[data-tema="claro"]) .acoes-bar div{background:var(--osc-lima)}
+:where(html[data-tema="claro"]) .acoes-bar.parcial div{background:var(--osc-severo-cheio)}
+:where(html[data-tema="claro"]) .acoes-warn{background:var(--osc-severo-suave);border:1px solid var(--osc-severo-borda);color:var(--osc-severo)}
+:where(html[data-tema="claro"]) .acoes-dt{background:var(--osc-critico-suave);border:1px solid var(--osc-critico-borda);color:var(--osc-critico)}
+:where(html[data-tema="claro"]) .acoes-pend{background:var(--osc-severo-suave);border:1px solid var(--osc-severo-borda);color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .acoes-pend-t{color:var(--osc-severo)}
+/* o detalhe da pendência não esmaece no claro (daria 3:1): vai para o mudo */
+:where(html[data-tema="claro"]) .acoes-pend-k,:where(html[data-tema="claro"]) .acoes-pend-m{opacity:1;color:var(--osc-mudo)}
+:where(html[data-tema="claro"]) .acoes-no{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .acoes-atual{background:var(--osc-lima-suave)}
+/* o status de cada nó do Fluxo vem com a cor do dado no style (os_acoes.js): no claro, a mesma cor com a luminosidade
+   no teto (a regra do selo de status, no os.css) */
+:where(html[data-tema="claro"]) .acoes-no-base span[style]{-webkit-text-fill-color:color-mix(in oklab,currentColor 50%,#000);-webkit-text-fill-color:oklch(from currentColor min(l,.46) c h)}
+:where(html[data-tema="claro"]) .acoes-nota{background:var(--osc-lima-suave);border:1px solid var(--osc-musgo-borda);color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .acoes-nota[open]{border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .acoes-nota pre{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .acoes-ext{background:var(--osc-lima-suave);color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .acoes-exec-c .os-lbl{color:var(--osc-texto-2)}
+/* a foto ampliada (o visor) fica no ESCURO nos dois temas, como a do Nexus (--foto-*): foto se olha no escuro. Dentro dele
+   as variáveis voltam ao escuro, e as regras do claro (que só usam --osc-*) desenham de novo o escuro de sempre */
+:where(html[data-tema="claro"]) .visor{--f-muted:#8A93A8;--f-border:#2A3550;--f-green:#A6E22E;--f-input:#1A2337;--f-ink:#0B1020;
+  --osc-texto:#ffffff;--osc-texto-2:#c4cbdb;--osc-linha-forte:#2A3550;--osc-campo-hover:#43547a;--osc-musgo:#A6E22E;color-scheme:dark}

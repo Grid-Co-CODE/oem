@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block titulo %}Painel do PCM{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/solic_pcm.css">{% endblock %}
+{# O Painel do app (`steps/solic_pcm.py::_Painel`, Levi, 13/10/2026): o kanban de três colunas — Pendentes, Em andamento e
+   Finalizadas, na ordem do Fracttal —, até 40 cartões por coluna (a contagem diz o total), e a busca na própria tela. O
+   cartão inteiro abre a Fila nele: pendente para analisar, das outras colunas só para ler (quem não é da Área PCM — o
+   setor PCM ou administrador, no Nexus — abre a ficha da solicitação no Histórico). As devolvidas para refazer
+   ficam fora do quadro e só contam no alto: se sumissem de vez, os pedidos parados com o supervisor ficariam invisíveis. #}
+{% block conteudo %}
+<section class="spc spc-painel">
+  {% include "_solic_nav.html" %}
+  <div class="spc-cab">
+    <b class="spc-cab-t">Solicitações</b>
+    <span class="spc-cab-info" id="pn_info">{% if fora %}· {{ fora|length }} devolvidas para refazer, fora do quadro{% endif %}</span>
+    <span class="spc-flex"></span>
+    <input type="search" id="pn_busca" class="spc-busca" placeholder="Filtrar por usina, ativo ou texto…" autocomplete="off" aria-label="Filtrar as solicitações">
+    <a class="spc-btn-sec" href="/os/solicitacao/painel?atualizar=1" title="Busca as solicitações de novo no Fracttal">Atualizar</a>
+  </div>
+  <div class="spc-kanban">
+    {% for chave, rotulo, ajuda in colunas %}
+    <section class="spc-col spc-col--{{ chave }}" data-col="{{ chave }}" aria-label="{{ rotulo }}">
+      <header class="spc-col-cab" title="{{ ajuda }}"><i class="spc-col-barra"></i><b>{{ rotulo }}</b><span class="spc-col-n" data-n>{{ cartoes[chave]|length }}</span></header>
+      <div class="spc-col-lista">
+        {% for c in cartoes[chave] %}
+        <a class="spc-card{% if loop.index > por_coluna %} spc-escondido{% endif %}" href="{{ ('/os/solicitacao/fila?sel=%s' if pode_pcm else '/os/solicitacao/historico?ficha=%s') % c.id }}" data-busca="{{ c.busca }}">
+          <span class="spc-card-topo"><b class="spc-num">Nº {{ c.id }}</b><span class="spc-pill"{% if c.cor %} style="color:{{ c.cor }}"{% endif %}>{{ c.status }}</span></span>
+          <span class="spc-card-alvo">{{ c.alvo }}</span>
+          <span class="spc-card-desc">{{ c.descricao }}</span>
+          <span class="spc-card-tema{% if c.tem_tema %} sim{% endif %}">{{ c.tema }}</span>
+          <span class="spc-card-rod"><span class="spc-card-quem" title="{{ c.quem }}">{{ c.quem }}</span><span class="spc-card-dia">{{ c.dia }}</span><span class="spc-link">{{ "Analisar" if chave == "pendente" and pode_pcm else "Ver detalhes" }}</span></span>
+        </a>
+        {% endfor %}
+        <p class="spc-vazio" data-vazio{% if cartoes[chave] %} hidden{% endif %}>Nada nesta coluna.</p>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</section>
+<script type="application/json" id="pn_fora">{{ fora|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // a busca do Painel (`_Painel._pintar`): espera a pessoa parar de digitar (250 ms), mostra até {{ por_coluna }} cartões por
+  // coluna e conta os que batem; o número de cima conta as devolvidas que batem com ela
+  var POR = {{ por_coluna }}, busca = document.getElementById("pn_busca"), info = document.getElementById("pn_info"),
+      fora = JSON.parse(document.getElementById("pn_fora").textContent || "[]"), relogio = null;
+  function pintar() {
+    var q = (busca.value || "").trim().toLowerCase();
+    document.querySelectorAll(".spc-col").forEach(function (col) {
+      var n = 0;
+      col.querySelectorAll(".spc-card").forEach(function (c) {
+        var bate = !q || c.getAttribute("data-busca").indexOf(q) >= 0;
+        if (bate) n++;
+        c.classList.toggle("spc-escondido", !bate || n > POR);
+      });
+      col.querySelector("[data-n]").textContent = n.toLocaleString("pt-BR");
+      col.querySelector("[data-vazio]").hidden = n > 0;
+    });
+    var f = fora.filter(function (b) { return !q || b.indexOf(q) >= 0; }).length;
+    info.textContent = f ? "· " + f + " devolvidas para refazer, fora do quadro" : "";
+  }
+  busca.addEventListener("input", function () { clearTimeout(relogio); relogio = setTimeout(pintar, 250); });
+})();
+</script>
+{% endblock %}

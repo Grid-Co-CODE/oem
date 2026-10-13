@@ -1,0 +1,8 @@
+{# A barra da Área PCM (Levi, 13/10/2026: "referência é a fila do app desktop"): a mesma da `SolicPcmTab` do app — o
+   "‹ PCM" volta à página do setor (o hub do app) e as cinco páginas vêm na ordem dele. A da página aberta fica marcada. #}
+<nav class="spc-nav" aria-label="Solicitação / PCM">
+  <a class="spc-nav-volta" href="/os/setor/pcm">&lsaquo; PCM</a>
+  {%- for chave, rotulo, href in nav_pcm %}
+  <a href="{{ href }}"{% if chave == nav %} class="on" aria-current="page"{% endif %}>{{ rotulo }}</a>
+  {%- endfor %}
+</nav>

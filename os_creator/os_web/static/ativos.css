@@ -51,3 +51,18 @@
 .at-menu a:hover{background:rgba(166,226,46,.14)}
 .at-menu .sep{height:1px;background:var(--f-border);margin:4px 8px}
 @media (max-width:1100px){.at-corpo{grid-template-columns:1fr}.at-busca{width:100%}}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css ── */
+:where(html[data-tema="claro"]) .at-h1,:where(html[data-tema="claro"]) .at-cli,:where(html[data-tema="claro"]) .at-tbl,
+:where(html[data-tema="claro"]) .at-nome,:where(html[data-tema="claro"]) .at-campos b,
+:where(html[data-tema="claro"]) .at-os-item .folio,:where(html[data-tema="claro"]) .at-menu a{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .at-tbl td{border-bottom:1px solid var(--osc-linha)}
+:where(html[data-tema="claro"]) .at-tbl tbody tr:hover td{background:var(--osc-clarao)}
+:where(html[data-tema="claro"]) .at-tbl tbody tr.sel td,:where(html[data-tema="claro"]) .at-tbl tbody tr.recente td{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .at-tbl tbody tr.recente.sel td{background:var(--osc-lima-forte)}
+:where(html[data-tema="claro"]) .at-chip.on{background:var(--osc-lima);border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .at-menu{box-shadow:0 14px 34px var(--osc-sombra)}
+:where(html[data-tema="claro"]) .at-menu a:hover{background:var(--osc-lima-suave)}
+/* o status de cada OS do ativo vem com a cor do dado no style (ativos.js): no claro, a mesma cor com a
+   luminosidade no teto (a regra do selo de status, no os.css) */
+:where(html[data-tema="claro"]) .at-os-item .st[style]{-webkit-text-fill-color:color-mix(in oklab,currentColor 50%,#000);-webkit-text-fill-color:oklch(from currentColor min(l,.46) c h)}

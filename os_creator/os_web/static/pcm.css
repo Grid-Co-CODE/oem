@@ -49,3 +49,12 @@
 .pcm-fim{display:flex;justify-content:flex-end}
 .pcm-hint{text-align:right;min-height:16px}
 .pcm-abrir{font-weight:600}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css ── */
+/* o ícone do calendário escuro, para aparecer no campo claro */
+:where(html[data-tema="claro"]) #pcm input[type=date],:where(html[data-tema="claro"]) #pcm input[type=datetime-local]{color-scheme:light}
+:where(html[data-tema="claro"]) .pcm-chk{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .pcm-red,:where(html[data-tema="claro"]) .pcm-tbl tr.sem td,
+:where(html[data-tema="claro"]) .pcm-tbl tr.sem .pcm-chk{color:var(--osc-critico)}
+:where(html[data-tema="claro"]) .pcm-tempo .tp-b:hover{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .pcm-ospai-lista{box-shadow:0 14px 34px var(--osc-sombra)}

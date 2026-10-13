@@ -25,3 +25,11 @@
   </div>
 </section>
 {% endblock %}
+{% block scripts %}
+{% if chave == 'pcm' %}
+{# a lista das solicitações e os catálogos chegam à memória do servidor enquanto a pessoa escolhe a porta: o Painel, a
+   Fila e o Histórico abrem já com eles (Levi, 13/10/2026: "está demorando demais para carregar!"). Em segundo plano,
+   sem o círculo de carga; falhar aqui não muda nada (a página escolhida busca do mesmo jeito). #}
+<script>try { fetch("/os/api/solic/aquecer", {method: "POST", credentials: "same-origin", keepalive: true}).catch(function () {}); } catch (e) {}</script>
+{% endif %}
+{% endblock %}

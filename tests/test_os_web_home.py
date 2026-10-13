@@ -102,11 +102,13 @@ def test_a_porta_acende_sozinha_quando_a_tela_nasce():
 
 
 def test_o_setor_pcm_separado_em_tres(cli):
-    """Levi: "clonagem de Handover, MPS, MPA etc. - fila de PCM - histórico de solicitações"."""
+    """Levi: "clonagem de Handover, MPS, MPA etc. - fila de PCM - histórico de solicitações". Desde 13/10/2026 as portas
+    das solicitações são as quatro da Área PCM do app, na ordem dele, e a clonagem vem depois."""
     html = cli.get("/os/setor/pcm").get_data(as_text=True)
-    pos = [html.index(t) for t in ("Clonagem de planos", "Fila do PCM", "Histórico de solicitações")]
+    pos = [html.index(t) for t in ("Painel", "Fila do PCM", "Histórico de solicitações", "Temas", "Clonagem de planos")]
     assert pos == sorted(pos)
-    assert 'href="/os/solicitacao/fila"' in html and 'href="/os/solicitacao/historico"' in html
+    for href in ("/os/solicitacao/painel", "/os/solicitacao/fila", "/os/solicitacao/historico", "/os/solicitacao/temas"):
+        assert 'href="%s"' % href in html, href
     assert '<a class="porta" href="/os/pcm">' in html and "no app de mesa" not in html   # a clonagem nasceu na web (27/09)
     assert all(f in html for f in ("Handover", "MPA", "MPS"))
     assert cli.get("/os/setor/nada").status_code == 404

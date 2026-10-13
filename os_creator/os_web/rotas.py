@@ -441,6 +441,11 @@ def api_performance_criar():
         cheio = catalogo.get(it["asset"].get("id"))
         if cheio:
             it["asset"] = cheio
+    if perf_web.quer_agrupar(corpo):
+        # "Agrupar em UMA OS com várias tarefas" (Levi, 13/10/2026, como no app: `PerfCriar._criar`): o mesmo `itens`,
+        # com a OS pai e o título únicos, e a observação da OS inteira
+        res = api.create_performance_os_agrupada(itens, note_os=perf_web.obs_da_os(corpo), **kwargs)
+        return jsonify(perf_web.mensagem_agrupada(res, corpo.get("frase") or "", bool(corpo.get("gerar_ticket", True))))
     res = api.create_performance_os(itens, **kwargs)
     # a frase e a caixa vao junto: e delas que sai o "N tickets criados na aba X" (e o "sem ticket")
     return jsonify(perf_web.mensagem_resultado(res, corpo.get("frase") or "",

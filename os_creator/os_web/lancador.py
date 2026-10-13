@@ -52,8 +52,10 @@ SETORES = [
     {"chave": "pcm", "icone": "calendar", "titulo": "PCM", "href": "/os/setor/pcm",
      "sub": "As OS pelos planos do Fracttal e as solicitações que chegam ao PCM.",
      "portas": [{"rotulo": "Planos: Handover, MPS, MPA", "em_breve": "/os/pcm"},
+                {"rotulo": "Painel", "href": "/os/solicitacao/painel"},
                 {"rotulo": "Fila do PCM", "href": "/os/solicitacao/fila"},
-                {"rotulo": "Histórico de solicitações", "href": "/os/solicitacao/historico"}]},
+                {"rotulo": "Histórico de solicitações", "href": "/os/solicitacao/historico"},
+                {"rotulo": "Temas", "href": "/os/solicitacao/temas"}]},
     {"chave": "chamados", "icone": "headset", "titulo": "Chamados", "href": "/os/chamados", "sub": SUB_CHAMADOS,
      "portas": [{"rotulo": "Inspeção", "href": "/os/chamados/inspecao"},
                 {"rotulo": "Acompanhamento", "href": "/os/chamados/acompanhamento"},
@@ -81,21 +83,32 @@ DO_APP = {"Ativos": "ativos", "Performance": "perf", "COS": "cos", "PCM": "pcm",
           "Inspeção de chamados": "chamados", "Tradicional": "tradicional", "Clonar OS": "clonar", "Engenharia": "eng"}
 
 # As partes de cada setor que tem página própria (o molde é o do Chamados): o PCM separado como o Levi pediu —
-# "clonagem de Handover, MPS, MPA etc. - fila de PCM - histórico de solicitações".
+# "clonagem de Handover, MPS, MPA etc. - fila de PCM - histórico de solicitações". Desde 13/10/2026 as portas das
+# solicitações são as quatro da Área PCM do app (`_Hub.DESTINOS["pcm"]`, com os textos dele), na ordem dele: Painel, Fila
+# do PCM, Histórico e Temas (Levi: "referência é a fila do app desktop, nem painel do PCM nem histórico nem temas").
 PORTAS_SETOR = {
     "pcm": {"titulo": "PCM", "icone": "calendar",
-            "sub": "Planejamento e controle da manutenção: as OS pelos planos, a fila das solicitações e o histórico delas.",
+            "sub": "Planejamento e controle da manutenção: as solicitações que chegam ao PCM — o painel, a fila de "
+                   "aprovação, o histórico e os temas — e as OS pelos planos.",
             "portas": [
+                {"icone": "kanban", "titulo": "Painel", "href": "/os/solicitacao/painel",
+                 "sub": "O que está pendente, em andamento e finalizado: as três colunas, com a busca por usina, ativo ou "
+                        "texto. O cartão abre a solicitação na Fila.",
+                 "rodape": "Acompanhar"},
+                {"icone": "listchecks", "titulo": "Fila do PCM", "href": "/os/solicitacao/fila",
+                 "sub": "Aprovar uma a uma, com as subtarefas do tema: o pedido de um lado, a decisão do outro, e a OS "
+                        "nasce na aprovação.",
+                 "rodape": "Aprovar"},
+                {"icone": "history", "titulo": "Histórico de solicitações", "href": "/os/solicitacao/historico",
+                 "sub": "Tudo o que já passou por aqui, inclusive as devolvidas para refazer, com a OS que cada uma virou.",
+                 "rodape": "Consultar"},
+                {"icone": "tag", "titulo": "Temas", "href": "/os/solicitacao/temas",
+                 "sub": "Padronizar nome, subtarefas e tipo de equipamento: o que a OS vai levar quando o tema for escolhido.",
+                 "rodape": "Padronizar"},
                 {"icone": "calendar", "titulo": "Clonagem de planos", "em_breve": "/os/pcm",
                  "sub": "Handover, MPS, MPA e as outras famílias: uma OS com várias tarefas a partir dos planos do Fracttal. "
                         "Marque os ativos, escolha a família e cada ativo vira uma tarefa, com o plano e as subtarefas dele.",
                  "chips": ["Handover", "MPM", "MPA", "MPS", "MPQ", "MPW", "MPT"]},
-                {"icone": "listchecks", "titulo": "Fila do PCM", "href": "/os/solicitacao/fila",
-                 "sub": "As solicitações esperando o PCM: aprovar e virar OS, devolver para refazer ou pôr uma observação.",
-                 "rodape": "Pendentes, aprovadas e recusadas"},
-                {"icone": "history", "titulo": "Histórico de solicitações", "href": "/os/solicitacao/historico",
-                 "sub": "Todas as solicitações, inclusive as devolvidas para refazer, com a OS que cada uma virou.",
-                 "rodape": "Busca por nº, usina, ativo e status"},
             ]},
     "chamados": {"titulo": "Chamados", "icone": "headset",
                  "sub": "O chamado de garantia nasce de uma OS de teste: primeiro a inspeção em campo, com o que o fornecedor "
@@ -152,6 +165,7 @@ ABAS = [
 # link, como uma aba do navegador. Tela nova sem linha aqui vira o setor do 1º pedaço do caminho — nunca some.
 ABAS_SECOES = [
     ("/os/setor/pcm", "pcm"), ("/os/pcm", "pcm"), ("/os/solicitacao/fila", "pcm"), ("/os/solicitacao/historico", "pcm"),
+    ("/os/solicitacao/painel", "pcm"), ("/os/solicitacao/temas", "pcm"),
     ("/os/solicitacao", "solic"),
     ("/os/setor/chamados", "chamados"), ("/os/chamados", "chamados"), ("/os/inspecao", "chamados"),
     ("/os/performance", "perf"), ("/os/tickets", "tickets"), ("/os/historico", "hist"), ("/os/ativos", "ativos"),
@@ -208,6 +222,10 @@ ICONES = {
     # a aba Início (27/09/2026: a aba deixou de ser "Criar OS" — a tela inicial consulta, cria e pede)
     "home":     '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/>',
     "listchecks": '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+    # as duas portas novas do PCM (13/10/2026): o Painel (as três colunas do kanban) e os Temas (a etiqueta) — Lucide
+    "kanban":   '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+    "tag":      '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6'
+                'a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
 }
 ICONE_PADRAO = "doc"
 

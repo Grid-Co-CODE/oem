@@ -63,3 +63,17 @@ main.aba-painel{min-height:0}                                     /* o .os-main 
 .aba-erro-b:hover{border-color:var(--verde)}
 
 @media (max-width:640px){.aba{max-width:170px;padding-left:10px}}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css ── */
+:where(html[data-tema="claro"]) .aba-painel iframe,:where(html[data-tema="claro"]) .aba-carga{background:var(--osc-pagina)}
+/* o Início fixo tem o fundo da faixa (a página), e o esmaecer de quem passa por baixo dele também */
+:where(html[data-tema="claro"]) .abas-lista .aba-inicio{background:var(--osc-pagina)}
+:where(html[data-tema="claro"]) .abas-lista .aba-inicio::after{background:linear-gradient(to right,var(--osc-pagina),transparent)}
+:where(html[data-tema="claro"]) .abas-lista .aba-inicio:focus-visible{box-shadow:inset 0 0 0 2px var(--osc-musgo)}
+:where(html[data-tema="claro"]) .aba::before{background:var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .aba:hover{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .aba:focus-visible{box-shadow:inset 0 0 0 2px var(--osc-musgo)}
+:where(html[data-tema="claro"]) .aba-x:hover{background:var(--osc-clarao-2);color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .aba.carregando .aba-ic::after{border:2px solid var(--osc-lima-forte);border-top-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .aba-erro{background:var(--osc-pagina);color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .aba-erro-b{border:1px solid var(--osc-linha-forte);color:var(--osc-texto)}

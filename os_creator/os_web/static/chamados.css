@@ -325,3 +325,56 @@ body.cham #forn .ops .in{width:auto;min-width:220px;max-width:420px;height:28px;
 #forn .vazio{margin:8px 0 2px}
 /* a grade de perguntas tem 7 colunas: em tela estreita ela rola DENTRO do cartão, e a página não ganha rolagem lateral */
 @media (max-width:900px){#forn .sec{overflow-x:auto}#forn .rw{min-width:780px}#forn .campos{grid-template-columns:minmax(0,1fr)}}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css. O desenho é o
+   mesmo do escuro (superfícies chapadas, topo numa linha, a faixa de números baixa); só a paleta troca. Estado segue o
+   semáforo por matiz: a cor de TEXTO é a escura do matiz (--rd-t, --am-t, --ok-t) e a de ÁREA (faixa da coluna, fio do
+   cartão, bolinha) é o tom médio (--rd, --am, --ok). O --gr (foco, borda de escolha) é o musgo; o botão verde é o lima. ── */
+html[data-tema="claro"]{--bg:var(--osc-pagina);--sf:var(--osc-cartao);--sf2:var(--osc-secao);--sf3:var(--osc-secao-2);
+  --ln:var(--osc-linha);--ln2:var(--osc-linha-forte);--tx:var(--osc-texto);--mu:var(--osc-mudo);--fa:var(--osc-fraco);
+  --gr:var(--osc-musgo);--gr-h:var(--osc-lima-hover);--gr-t:var(--osc-musgo);--gr-tint:var(--osc-lima-suave);
+  --rd:var(--osc-critico-cheio);--rd-t:var(--osc-critico);--rd-tint:var(--osc-critico-suave);
+  --am:var(--osc-alerta-cheio);--am-t:var(--osc-alerta);--am-tint:var(--osc-alerta-suave);
+  --ok:var(--osc-ok-cheio);--ok-t:var(--osc-ok);--ok-tint:var(--osc-ok-suave)}
+:where(html[data-tema="claro"]) .ac-head h1,:where(html[data-tema="claro"]) .kpi .val,:where(html[data-tema="claro"]) .col-h h2,
+:where(html[data-tema="claro"]) .col-h b,:where(html[data-tema="claro"]) .k-tit,:where(html[data-tema="claro"]) .card .ct,
+:where(html[data-tema="claro"]) .bloco h2,:where(html[data-tema="claro"]) ol.cadeia a,:where(html[data-tema="claro"]) .outros a b,
+:where(html[data-tema="claro"]) #forn .li-n,:where(html[data-tema="claro"]) #forn .cf-t{color:var(--osc-texto)}
+/* botões: o verde de ação é o lima com texto escuro, nos dois temas */
+:where(html[data-tema="claro"]) .btn-g{background:var(--osc-lima);color:var(--osc-sobre-lima)}
+:where(html[data-tema="claro"]) .btn-i{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .btn-i:hover{background:var(--osc-secao-3)}
+:where(html[data-tema="claro"]) .btn-o:hover,:where(html[data-tema="claro"]) .limpar:hover{color:var(--osc-texto)}
+/* os campos sublinhados e as caixas de texto: borda de campo a 3:1 */
+:where(html[data-tema="claro"]) body.cham .filtros select,:where(html[data-tema="claro"]) body.cham .filtros input{border-bottom-color:var(--osc-campo)}
+/* o quadro */
+:where(html[data-tema="claro"]) .k-av{color:var(--osc-sobre-cheio)}
+:where(html[data-tema="claro"]) .u-m{background:var(--osc-clarao-2)}
+/* o finalizado não esmaece no claro: o fio verde do cartão já diz que fechou */
+:where(html[data-tema="claro"]) .card.fim{opacity:1}
+/* a tela do chamado */
+:where(html[data-tema="claro"]) .conf{border:1px solid var(--osc-alerta-borda)}
+:where(html[data-tema="claro"]) .recolher:hover{color:var(--osc-texto);background:var(--osc-clarao-2)}
+:where(html[data-tema="claro"]) body.cham .ac .campo-tk{color:var(--osc-texto);border-bottom-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) ol.cadeia .i{background:var(--osc-clarao-2)}
+:where(html[data-tema="claro"]) ol.cadeia li.aqui .i{background:var(--osc-lima);color:var(--osc-sobre-lima)}
+:where(html[data-tema="claro"]) table.t tbody tr:hover td{background:var(--osc-clarao)}
+:where(html[data-tema="claro"]) body.cham .ac textarea.obs{border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .tl-b::before{background:var(--osc-campo)}
+/* Controle de fornecedores (na ordem do escuro: o .on e o .novo vêm depois do hover) */
+:where(html[data-tema="claro"]) #forn .aba:hover,:where(html[data-tema="claro"]) #forn .aba.on{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) #forn .cf-lh button:hover,:where(html[data-tema="claro"]) #forn .sec-t button:hover,
+:where(html[data-tema="claro"]) #forn .add:hover{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) #forn .li:hover{background:var(--osc-clarao)}
+:where(html[data-tema="claro"]) #forn .li.on,:where(html[data-tema="claro"]) #forn .li.novo{background:var(--sf2)}
+:where(html[data-tema="claro"]) body.cham #forn .in,:where(html[data-tema="claro"]) body.cham #forn .sel,
+:where(html[data-tema="claro"]) body.cham #forn .atende select{border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) body.cham #forn .in:hover,:where(html[data-tema="claro"]) body.cham #forn .sel:hover,
+:where(html[data-tema="claro"]) body.cham #forn .atende select:hover{border-color:var(--osc-campo-hover)}
+:where(html[data-tema="claro"]) body.cham #forn .in:focus,:where(html[data-tema="claro"]) body.cham #forn .sel:focus,
+:where(html[data-tema="claro"]) body.cham #forn .atende select:focus{border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) #forn .rw .mv button:hover{color:var(--osc-texto);background:var(--osc-clarao-2)}
+/* a pergunta de fora não esmaece no claro: fica no cinza de seção, com o texto mudo */
+:where(html[data-tema="claro"]) #forn .rw.fora{opacity:1;background:var(--osc-secao)}
+:where(html[data-tema="claro"]) #forn .rw.fora .ro,:where(html[data-tema="claro"]) #forn .rw.fora .t,
+:where(html[data-tema="claro"]) #forn .rw.fora .n{color:var(--osc-mudo)}

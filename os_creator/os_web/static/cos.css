@@ -144,3 +144,27 @@ body.os-form .cos-data input[type=datetime-local]{min-width:155px}
 .cos-hint{min-height:16px}
 .cos-hint.erro{color:var(--cos-vermelho)}
 @media (prefers-reduced-motion:reduce){.cos-sw,.cos-sw::after{transition:none}}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css. Cor só como
+   sinal, como no escuro: o musgo é o que está marcado (e o interruptor ligado, com o botão branco a 6:1), o âmbar escuro é o
+   ativo genérico, o vermelho é o que barra ── */
+:where(html[data-tema="claro"]) .os-cos{--cos-faixa:var(--osc-secao);--cos-ambar:var(--osc-alerta);--cos-vermelho:var(--osc-critico);
+  --cos-meta-bg:var(--osc-secao);--cos-meta-b:var(--osc-linha-forte);--cos-fin-bg:var(--osc-secao);--cos-fin-b:var(--osc-linha-forte);
+  --cos-txt1:var(--osc-texto);--cos-txt2:var(--osc-texto-2);--cos-sw-off:var(--osc-campo)}
+:where(html[data-tema="claro"]) .cos-barra{background:var(--osc-secao)}
+:where(html[data-tema="claro"]) .cos-rot{color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .cos-res-x:hover{color:var(--osc-texto);border-color:var(--osc-campo-hover)}
+:where(html[data-tema="claro"]) .cos-terc{border:1px solid var(--osc-linha)}
+:where(html[data-tema="claro"]) .cos-sw::after{background:var(--osc-sobre-escuro)}
+:where(html[data-tema="claro"]) .cos-tbl tr.on td{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .cos-gen{border:1px dashed var(--osc-alerta-borda)}
+:where(html[data-tema="claro"]) .cos-gen-pin{background:var(--osc-alerta-suave)}
+/* na ordem do escuro: o marcado vem depois do hover (marcado com o mouse em cima continua com a borda de marcado) */
+:where(html[data-tema="claro"]) .cos-chip:hover{border-color:var(--osc-campo-hover)}
+:where(html[data-tema="claro"]) .cos-chip[aria-pressed="true"]{background:var(--osc-lima-suave);border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .cos-info{background:var(--osc-lima-suave);border:1px solid var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .cos-info-tip{box-shadow:0 14px 34px var(--osc-sombra)}
+/* a tabela ANSI do tooltip vem do cos_spec.py com o verde no style da 1ª coluna */
+:where(html[data-tema="claro"]) .cos-info-tip td:first-child{color:var(--osc-musgo)!important}
+:where(html[data-tema="claro"]) .cos-menu{box-shadow:0 14px 34px var(--osc-sombra)}
+:where(html[data-tema="claro"]) .cos-menu button:hover,:where(html[data-tema="claro"]) .cos-menu button:focus{background:var(--osc-lima-suave);color:var(--osc-texto)}

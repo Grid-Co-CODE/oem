@@ -8,8 +8,9 @@ O que a tela cria é uma OS (não uma solicitação), no molde da OS de análise
 têm — e aqui vale qualquer ativo. O resto, pedido por ele:
   - tipo de tarefa 'Administrativa' e SÓ a Classificação 1, 'Programada' (06/10: "o tipo de tarefa seria administrativa
     e class1 é programada!"); a 2 fica vazia — a tela vale para qualquer ativo, e 'Elétrica' não serve a uma cerca;
-  - as etiquetas Remoto e ENGENHARIA, sempre, e só elas (06/10: "Etiqueta de remoto e engenharia fixas sempre! só essas
-    etiquetas viu, sem performance"): nem PERFORMANCE nem "Dar prioridade" no urgente;
+  - as etiquetas Backoffice e ENGENHARIA, sempre, e só elas (06/10: "Etiqueta de remoto e engenharia fixas sempre! só
+    essas etiquetas viu, sem performance"; 13/10: "invés de remoto é Backoffice"): nem PERFORMANCE nem "Dar prioridade"
+    no urgente, nem mais a Remoto;
   - a data do EVENTO vem da tela, editável e com padrão agora, como na ETM (06/10: "tem que ter data do evento"); não
     pode estar no futuro;
   - data programada 7 dias depois da criação; "Urgente" (em vermelho) põe em 2 dias. NÃO se edita (Levi, 06/10:
@@ -36,7 +37,9 @@ DIAS_PADRAO = 7
 DIAS_URGENTE = 2
 TIPO_TAREFA = "Administrativa"
 CLASSIF_1 = "Programada"
-ETIQUETAS = ("Remoto", "ENGENHARIA")         # os nomes como estão no catálogo do Fracttal (Levi, 06/10: "é Remoto")
+# os nomes do catálogo do Fracttal. Levi, 13/10/2026: "SOLICITAÇÃO ENGENHARIA INVÉS DE REMOTO É Backoffice" (até
+# 13/10 era a Remoto; 06/10: "é Remoto")
+ETIQUETAS = ("Backoffice", "ENGENHARIA")
 ENV_RESPONSAVEIS = "OS_WEB_ENGENHARIA_RESPONSAVEIS"
 SUB_DESCRICAO = "Atividade a ser realizada (de forma direta)"
 ROTULO_PROBLEMA = "Descreva o problema"
@@ -124,11 +127,14 @@ def responsaveis(pessoas, nomes) -> tuple[list, list]:
 
 # ── as etiquetas ───────────────────────────────────────────────────────────────────────────────────────
 def _nome_etq(t) -> str:
-    return " ".join(_sem_acento(t).split())
+    """O nome inteiro, sem acento, sem caixa e sem espaço, hífen, ponto ou sublinhado: "BACKOFFICE", "Back Office" e
+    "Back-office" são a mesma etiqueta (o catálogo do Fracttal não foi lido para a troca de 13/10: sem login válido na
+    máquina); e o nome continua INTEIRO — "religamentoremoto" nunca vira "remoto"."""
+    return re.sub(r"[\s\-_.]+", "", _sem_acento(t))
 
 
 def etiquetas(catalogo) -> tuple[list, list]:
-    """(ids das ETIQUETAS no catálogo do Fracttal, os nomes que faltam). Pelo nome EXATO, sem acento e sem caixa: a busca
+    """(ids das ETIQUETAS no catálogo do Fracttal, os nomes que faltam). Pelo nome INTEIRO (`_nome_etq`): a busca
     por trecho do `api.label_id_por_nome` tomaria a 'Religamento Remoto' pela 'Remoto'. Faltou uma: quem chama não cria
     nada — OS da Engenharia sem as duas etiquetas não sai."""
     por_nome = {}

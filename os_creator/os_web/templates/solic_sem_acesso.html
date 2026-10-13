@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/solic_pcm.css">{% endblock %}
+{# A Área PCM (a Fila do PCM e os Temas) fechada para quem não pode — quem decide é quem serve esta web (no Nexus: o
+   setor PCM ou administrador, Levi, 13/10/2026: "Quem não é nenhum dos dois recebe a notificação!"). O aviso vem no
+   lugar da tela, com a barra de sempre: o Painel, o Histórico e a Nova solicitação continuam ao alcance. #}
+{% block conteudo %}
+<section class="spc spc-sem-acesso">
+  {% include "_solic_nav.html" %}
+  <div class="spc-negado" role="alert">
+    <h1 class="spc-negado-t">{{ titulo }}: só para a área do PCM</h1>
+    <p class="spc-negado-txt">{{ aviso }}</p>
+    <p class="spc-dica">Você continua com o <a href="/os/solicitacao/painel">Painel</a> e o
+      <a href="/os/solicitacao/historico">Histórico</a>, e pode fazer uma <a href="/os/solicitacao">Nova solicitação</a>.</p>
+  </div>
+</section>
+{% endblock %}

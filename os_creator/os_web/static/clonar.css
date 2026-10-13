@@ -25,3 +25,10 @@
 #resultado.erro{border-color:rgba(245,118,107,.6);color:#f5a49c}
 #clonar textarea{background:var(--f-input);border:1px solid var(--f-border);border-radius:10px;color:#fff;padding:8px 10px;font:inherit;font-size:13px;width:100%;resize:vertical;min-height:104px}
 #clonar textarea:focus{outline:none;border-color:var(--f-green)}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css ── */
+:where(html[data-tema="claro"]) .cl-tbl tr.sel td{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .cl-tbl .sem{color:var(--osc-critico)}
+:where(html[data-tema="claro"]) #resultado.ok{border-color:var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) #resultado.erro{border-color:var(--osc-critico-borda);color:var(--osc-critico)}
+:where(html[data-tema="claro"]) #clonar textarea{color:var(--osc-texto);border-color:var(--osc-campo)}

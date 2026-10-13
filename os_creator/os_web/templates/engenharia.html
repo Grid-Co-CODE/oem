@@ -9,22 +9,24 @@
     <span class="os-head-ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#A6E22E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ icone_svg|safe }}</svg></span>
     <span class="os-head-titulo">{{ titulo }}</span>
   </div>
+  {# eng-sup-nome, eng-sup-quadro e eng-titulo: os ganchos do tema claro do Nexus (o fim do os.css); o style continua o
+     mesmo, e o escuro não muda (09/10/2026) #}
   {% if supervisorio %}
   {# o supervisório da Engenharia (27/09): outro serviço, do repositório dela — aqui só a ligação (engenharia_web.py).
      Site que não aceita ser mostrado dentro de outra página deixa o quadro em branco: por isso o "abrir em outra aba". #}
   <div class="os-cardf" id="supervisorio" style="padding:14px 16px">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-      <div style="font-size:16px;font-weight:600;color:#fff">{{ supervisorio.nome }}</div>
+      <div class="eng-sup-nome" style="font-size:16px;font-weight:600;color:#fff">{{ supervisorio.nome }}</div>
       <span class="os-cresce"></span>
       <a class="os-btn secondary" href="{{ supervisorio.url }}" target="_blank" rel="noopener noreferrer">Abrir em outra aba</a>
     </div>
-    <iframe src="{{ supervisorio.url }}" title="{{ supervisorio.nome }}" loading="lazy" referrerpolicy="no-referrer"
+    <iframe src="{{ supervisorio.url }}" class="eng-sup-quadro" title="{{ supervisorio.nome }}" loading="lazy" referrerpolicy="no-referrer"
             style="width:100%;height:calc(100vh - 250px);min-height:480px;border:0;border-radius:10px;background:#0b1020"></iframe>
     <div style="font-size:12px;color:var(--f-muted);margin-top:8px">Se o quadro ficar em branco, o supervisório não aceita ser mostrado dentro de outra página: use "Abrir em outra aba".</div>
   </div>
   {% else %}
   <div class="os-cardf" style="padding:22px 26px">
-    <div style="font-size:20px;font-weight:600;color:#fff">{{ titulo }}</div>
+    <div class="eng-titulo" style="font-size:20px;font-weight:600;color:#fff">{{ titulo }}</div>
     <div style="font-size:13px;color:var(--f-muted);margin-top:8px;max-width:640px">{{ aviso }}</div>
     <div style="font-size:12px;color:var(--f-muted);margin-top:18px">{{ descricao }}</div>
     <div style="font-size:12px;color:var(--f-muted);margin-top:6px">O supervisório da Engenharia entra aqui assim que tiver o endereço.</div>

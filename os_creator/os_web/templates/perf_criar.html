@@ -56,6 +56,13 @@
   <div class="os-cardf"><div class="os-cardf-h"><span class="os-badge">3</span><span class="os-cardf-t">Nome da OS</span></div>
     <span class="os-lbl" id="lb_nome">Nome da tarefa <i>*</i> <small id="lb_nome_extra">(editável; o prefixo [Ativo] entra automático por OS)</small></span>
     <div class="os-prefix"><span class="os-chip" id="chip_prefixo">[Ativo]&nbsp;&nbsp;-</span><input id="ed_nome" type="text" value="{{ plano.titulo }}"></div>
+    {# no modo agrupado (o "Agrupar" do app, steps/performance.py): a OS pai e a observação são UMA para a OS inteira #}
+    <div class="os-linha2" id="w_agrupada" hidden>
+      <label class="os-campo"><span class="os-lbl">OS pai <small>(opcional; uma só para a OS inteira)</small></span>
+        <input id="ed_pai_os" type="text" placeholder="nº"></label>
+      <label class="os-campo"><span class="os-lbl">Observação da OS <small>(opcional; a de cada ativo continua na tabela)</small></span>
+        <textarea id="ed_obs_os" rows="2"></textarea></label>
+    </div>
     <div class="os-ajuda" id="preview">A observação de cada OS vem da tabela de ativos acima.</div>
     <div class="os-resumo" id="resumo">Selecione a usina para carregar o plano.</div>
   </div>
@@ -73,6 +80,10 @@
     <div class="os-rodape">
       {# MARCADA por padrão, como no app: a ocorrência é a razão de a tela existir para trackers e
          strings. Desmarcar é a exceção, e ela é dita em voz alta na confirmação. #}
+      {# AGRUPAR (o "Volume de OS" do app; Levi, 21/08 e 26/08): mais de um ativo marcado já vem agrupado, enquanto a
+         pessoa não mexer na caixa — a partir do clique dela, a escolha é dela. Aparece só com 2+ ativos. #}
+      <label class="os-tk" id="w_agrupar" hidden title="Em vez de uma OS por ativo, cria uma OS só em que cada ativo vira uma tarefa. A OS só fecha quando TODAS forem concluídas.">
+        <input type="checkbox" id="ck_agrupar"><span>Agrupar em UMA OS com várias tarefas <small>— a OS só fecha quando todas as tarefas forem concluídas</small></span></label>
       {% if aba_ticket %}
       <label class="os-tk"><input type="checkbox" id="ck_ticket" checked>
         <span>Gerar ticket automaticamente <small>— uma ocorrência por OS na aba {{ aba_ticket }}</small></span></label>

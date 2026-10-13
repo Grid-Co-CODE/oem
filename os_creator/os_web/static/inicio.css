@@ -130,3 +130,27 @@ a.porta:hover,a.porta:focus-visible{border-color:var(--gr-bd);background:var(--s
   body.hub-pg .os-n2,body.hub-pg .os-cargo,body.hub-pg .os-nome,body.hub-pg .os-sair{display:none}
   body.hub-pg .os-header{padding:10px 16px}body.hub-pg .os-tabs{overflow-x:auto}body.hub-pg .os-tab{white-space:nowrap;padding:10px 12px}}
 @media (prefers-reduced-motion:reduce){.grande,.setor,.trad,.linha,.porta{transition-duration:.06s}}
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css. Os mesmos degraus
+   de peso do escuro; o verde dos ícones e das setas vira o musgo (os.css, svg[stroke]) ── */
+html[data-tema="claro"]{--bg:var(--osc-pagina);--sf:var(--osc-cartao);--sf2:var(--osc-secao);--ln:var(--osc-linha);
+  --ln2:var(--osc-linha-forte);--tx:var(--osc-texto);--mu:var(--osc-mudo);--fa:var(--osc-fraco);--gr:var(--osc-musgo);
+  --gr-t:var(--osc-musgo);--gr-tint:var(--osc-lima-suave);--gr-bd:var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .pill{background:var(--osc-secao)}
+:where(html[data-tema="claro"]) a.pill:hover{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .tag.m{background:var(--osc-clarao-2)}
+:where(html[data-tema="claro"]) .ola h1,:where(html[data-tema="claro"]) .grande h3,:where(html[data-tema="claro"]) .setor h3,
+:where(html[data-tema="claro"]) .trad b,:where(html[data-tema="claro"]) .linha b,:where(html[data-tema="claro"]) .migalha b,
+:where(html[data-tema="claro"]) .st-h h1,:where(html[data-tema="claro"]) .porta h3{color:var(--osc-texto)}
+/* a busca é um campo: borda a 3:1 */
+:where(html[data-tema="claro"]) .busca{border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) body.hub-pg .busca input{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) body.hub-pg .busca input::-webkit-search-cancel-button{filter:none}
+:where(html[data-tema="claro"]) .portas a,:where(html[data-tema="claro"]) .portas span{background:var(--osc-secao)}
+:where(html[data-tema="claro"]) .portas a:hover{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .setor.fora .ic,:where(html[data-tema="claro"]) .porta.fora .ic{background:var(--osc-secao)}
+/* o setor que ainda não chegou à web não esmaece no claro (o mudo esmaecido daria 3,5:1): o título vai para o mudo */
+:where(html[data-tema="claro"]) .setor.fora h3,:where(html[data-tema="claro"]) .setor.fora p{opacity:1}
+:where(html[data-tema="claro"]) .setor.fora h3{color:var(--osc-mudo)}
+:where(html[data-tema="claro"]) .trad:hover,:where(html[data-tema="claro"]) .trad:focus-visible{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .migalha a:hover{color:var(--osc-texto)}

@@ -1,0 +1,309 @@
+/* os_creator/os_web/static/solic_pcm.css — as quatro páginas do PCM (Painel, Fila do PCM, Histórico, Temas) na forma da
+   aba "Solicitação / PCM" do app (Levi, 13/10/2026: "referência é a fila do app desktop"). As cores são as que o Levi
+   definiu para a tela do app em 03/09 (steps/solic_pcm.py: SUPERFICIE #161d30, RISCO #222c43, a ficha #121A2B, o verde
+   #8fce3f, o Nº #6FA8DC, o botão de aprovar #A6E22E), todas em variável: no tema claro do Nexus cada uma vira o token
+   --osc-* correspondente (tests/test_oscreator_tema_claro.py confere o par e o contraste). */
+:root{
+  --spc-sup:#161d30; --spc-risco:#222c43; --spc-caixa:#121A2B; --spc-caixa-b:#232c45; --spc-cabcol:#0b1020;
+  --spc-hover:#18203a; --spc-campo:#1A2337; --spc-tinta:#e6e8ef; --spc-forte:#ffffff; --spc-obs:#dfe3ee;
+  --spc-mudo:#8a90a2; --spc-verde:#8fce3f; --spc-verde-txt:#a9d96a; --spc-verde-suave:rgba(143,206,63,.14);
+  --spc-verde-forte:rgba(143,206,63,.30); --spc-lima:#A6E22E; --spc-lima-txt:#A6E22E; --spc-lima-hover:#b8f03f;
+  --spc-lima-base:#6d9c14; --spc-sobre-lima:#0B1020; --spc-azul:#6FA8DC; --spc-ambar:#e8a33d;
+  --spc-tracejado:#39405a; --spc-perigo:#e05555; --spc-perigo-suave:rgba(224,85,85,.12); --spc-sobre-perigo:#ffffff;
+  --spc-cinza-suave:rgba(138,144,162,.12); --spc-alerta:#f3d99b; --spc-alerta-fundo:rgba(240,180,41,.10);
+  --spc-alerta-b:rgba(240,180,41,.35); --spc-veu:rgba(5,8,16,.62); --spc-sombra:rgba(0,0,0,.45);
+}
+html[data-tema="claro"]{
+  --spc-sup:var(--osc-secao); --spc-risco:var(--osc-linha); --spc-caixa:var(--osc-cartao); --spc-caixa-b:var(--osc-linha-forte);
+  --spc-cabcol:var(--osc-secao-2); --spc-hover:var(--osc-secao-2); --spc-campo:var(--osc-secao); --spc-tinta:var(--osc-texto);
+  --spc-forte:var(--osc-texto); --spc-obs:var(--osc-texto); --spc-mudo:var(--osc-mudo); --spc-verde:var(--osc-musgo);
+  --spc-verde-txt:var(--osc-musgo); --spc-verde-suave:var(--osc-lima-suave); --spc-verde-forte:var(--osc-lima-forte);
+  --spc-lima:var(--osc-lima); --spc-lima-txt:var(--osc-musgo); --spc-lima-hover:var(--osc-lima-hover);
+  --spc-lima-base:var(--osc-musgo-borda); --spc-sobre-lima:var(--osc-sobre-lima); --spc-azul:var(--osc-info);
+  --spc-ambar:var(--osc-alerta); --spc-tracejado:var(--osc-campo); --spc-perigo:var(--osc-critico);
+  --spc-perigo-suave:var(--osc-critico-suave); --spc-sobre-perigo:var(--osc-sobre-escuro); --spc-cinza-suave:var(--osc-secao-2);
+  --spc-alerta:var(--osc-alerta); --spc-alerta-fundo:var(--osc-alerta-suave); --spc-alerta-b:var(--osc-alerta-borda);
+  --spc-veu:var(--osc-veu); --spc-sombra:var(--osc-sombra-alta);
+}
+
+/* ── a página e a barra da Área PCM (os navPag do app: texto, risco verde embaixo do que está aberto) ── */
+.spc{display:flex;flex-direction:column;color:var(--spc-tinta);min-height:calc(100vh - 120px)}
+html.os-embutido .spc{min-height:100vh}
+.spc-fila,.spc-painel,.spc-temas{height:calc(100vh - 120px);min-height:560px}
+html.os-embutido .spc-fila,html.os-embutido .spc-painel,html.os-embutido .spc-temas{height:100vh}
+.spc-flex{flex:1}
+.spc-nav{display:flex;align-items:flex-end;gap:8px;padding:10px 16px 0;flex-wrap:wrap}
+.spc-nav a{color:var(--spc-mudo);text-decoration:none;border-bottom:2px solid transparent;padding:7px 14px;font-size:13.5px;font-weight:600}
+.spc-nav a:hover{color:var(--spc-tinta)}
+.spc-nav a.on{color:var(--spc-tinta);border-bottom-color:var(--spc-verde)}
+.spc-nav .spc-nav-volta{padding-left:4px}
+.spc-cab{display:flex;align-items:center;gap:12px;padding:9px 16px 9px 14px;background:var(--spc-sup);border-bottom:1px solid var(--spc-risco);flex-wrap:wrap}
+.spc-cab-t{font-size:15px;font-weight:600;color:var(--spc-forte)}
+.spc-cab-info{color:var(--spc-mudo);font-size:12.5px}
+.spc-cab-info b{color:var(--spc-tinta)}
+.spc-verde{color:var(--spc-verde)}
+.spc-volta{color:var(--spc-mudo);text-decoration:none;font-size:13px;font-weight:600;padding:2px 4px}
+.spc-volta:hover{color:var(--spc-tinta)}
+.spc-busca{width:260px;max-width:100%}
+.spc-btn-sec{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:transparent;
+  border:1px solid var(--spc-caixa-b);color:var(--spc-tinta);font:600 12.5px/1 inherit;text-decoration:none;cursor:pointer}
+.spc-btn-sec:hover{border-color:var(--spc-verde);background:var(--spc-hover)}
+.spc-btn-sec:disabled{opacity:.5;cursor:not-allowed}
+.spc-btn-ico{width:36px;padding:0;font-size:16px}
+.spc-dica{color:var(--spc-mudo);font-size:12px;margin:4px 0 0}
+.spc-mudo{color:var(--spc-mudo)}
+.spc-rot{display:block;color:var(--spc-mudo);font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin:0 0 4px}
+.spc-rot--verde{color:var(--spc-verde)}
+.spc-val{color:var(--spc-tinta);font-size:13px;word-break:break-word}
+.spc-vazio{color:var(--spc-mudo);font-size:12.5px;padding:14px}
+.spc-escondido{display:none!important}
+/* o hidden manda: a regra que põe display (flex, grid) não pode reabrir o que a tela escondeu */
+.spc [hidden],.spc-modal [hidden]{display:none!important}
+.spc-alerta{color:var(--spc-alerta);background:var(--spc-alerta-fundo);border:1px solid var(--spc-alerta-b);border-radius:8px;padding:8px 10px;font-size:12px;margin:8px 0}
+.spc-alerta a{color:inherit;font-weight:700}
+.spc-alerta--faixa{margin:8px 16px}
+
+/* o selo de status: a cor é a do Fracttal (o dado), a borda é a mesma cor recuada — o `_clarear` do app */
+.spc-pill{display:inline-block;color:var(--spc-mudo);font-size:10.5px;font-weight:600;line-height:1.3;border-radius:9px;padding:1px 8px;white-space:nowrap;
+  border:1px solid color-mix(in srgb,currentColor 55%,transparent);background:color-mix(in srgb,currentColor 10%,transparent)}
+.spc-num{color:var(--spc-azul);font-size:12px;font-weight:700}
+
+/* ── Painel: o kanban (cada coluna rola sozinha; a barrinha colorida distingue as três de relance) ── */
+.spc-kanban{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:10px 14px 12px}
+.spc-col{display:flex;flex-direction:column;min-height:0;padding:0 12px;border-right:1px solid var(--spc-risco)}
+.spc-col:first-child{padding-left:0}
+.spc-col:last-child{border-right:none;padding-right:0}
+.spc-col-cab{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.spc-col-cab b{color:var(--spc-tinta);font-size:14px;font-weight:600;flex:1}
+.spc-col-barra{width:3px;height:15px;border-radius:1px;background:var(--spc-verde)}
+.spc-col-n{color:var(--spc-verde);font-size:13px;font-weight:600}
+.spc-col--andamento .spc-col-barra{background:var(--spc-ambar)}
+.spc-col--andamento .spc-col-n{color:var(--spc-ambar)}
+.spc-col--finalizada .spc-col-barra{background:var(--spc-azul)}
+.spc-col--finalizada .spc-col-n{color:var(--spc-azul)}
+.spc-col-lista{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:9px;padding-right:6px}
+.spc-card{display:flex;flex-direction:column;gap:5px;padding:11px 13px;background:var(--spc-sup);border:1px solid var(--spc-risco);border-radius:7px;
+  color:var(--spc-tinta);text-decoration:none;cursor:pointer}
+.spc-card:hover,.spc-card:focus-visible{border-color:var(--spc-verde)}
+.spc-card-topo{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.spc-card-alvo{color:var(--spc-mudo);font-size:12px}
+.spc-card-desc{color:var(--spc-tinta);font-size:13px;word-break:break-word}
+.spc-card-tema{color:var(--spc-mudo);font-size:11px}
+.spc-card-tema.sim{color:var(--spc-verde-txt);font-weight:600}
+.spc-card-rod{display:flex;align-items:center;gap:8px;border-top:1px solid var(--spc-risco);padding-top:7px;margin-top:3px;font-size:11px;color:var(--spc-mudo)}
+.spc-card-quem{max-width:168px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spc-card-dia{flex:1}
+.spc-link{color:var(--spc-verde);font-size:12px;font-weight:600}
+.spc-card:hover .spc-link{text-decoration:underline}
+
+/* ── Fila e Temas: a lista (células, não cartões: uma linha separa cada uma, a barra verde marca a escolhida) e a ficha ── */
+.spc-corpo{flex:1;min-height:0;display:flex}
+.spc-lista{width:clamp(300px,32vw,460px);flex:none;display:flex;flex-direction:column;border-right:1px solid var(--spc-risco);min-height:0}
+.spc-lista--temas{width:340px}
+.spc-cabcol{color:var(--spc-mudo);font-size:10.5px;font-weight:700;letter-spacing:.8px;background:var(--spc-cabcol);border-bottom:1px solid var(--spc-risco);padding:10px 14px 9px}
+.spc-cabcol--acao{display:flex;align-items:center;justify-content:space-between}
+.spc-link-btn{background:none;border:none;color:var(--spc-verde);font-size:12px;font-weight:600;cursor:pointer;padding:0 2px}
+.spc-link-btn:hover{text-decoration:underline}
+.spc-lista-busca{padding:9px 12px}
+.spc-lista-busca input{width:100%}
+.spc-lista-itens{flex:1;min-height:0;overflow:auto}
+.spc-cel{display:flex;flex-direction:column;gap:3px;padding:11px 12px 12px 11px;border-bottom:1px solid var(--spc-risco);border-left:3px solid transparent;cursor:pointer;outline:none}
+.spc-cel:hover{background:var(--spc-sup)}
+.spc-cel.on{background:var(--spc-sup);border-left-color:var(--spc-verde)}
+.spc-cel:focus-visible{box-shadow:inset 0 0 0 1px var(--spc-verde)}
+.spc-cel.leitura{opacity:.85}
+.spc-cel-topo{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.spc-cel-usina{color:var(--spc-tinta);font-size:13.5px;font-weight:600}
+.spc-cel-ativo,.spc-cel-quem{color:var(--spc-mudo);font-size:11.5px;word-break:break-word}
+.spc-cel-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.spc-chip{align-self:flex-start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;border-radius:5px;padding:2px 8px;
+  background:var(--spc-cinza-suave);color:var(--spc-mudo)}
+.spc-chip.sim{background:var(--spc-verde-suave);color:var(--spc-verde-txt);font-weight:600}
+.spc-det{flex:1;min-width:0;overflow:auto;padding:16px 20px 18px}
+.spc-det-nada{color:var(--spc-mudo);font-size:15px;margin:24px 0}
+.spc-titulo{color:var(--spc-forte);font-size:26px;font-weight:600;line-height:1.25;margin:0 0 4px;cursor:text;word-break:break-word}
+.spc-titulo.travado{cursor:default}
+.spc-titulo--tema{font-size:22px;cursor:default}
+.spc-titulo-ed{width:100%;font-size:26px!important;font-weight:600;height:auto!important;padding:2px 4px!important;border-radius:6px}
+.spc-orig{color:var(--spc-mudo);font-size:12px;margin:0 0 6px;min-height:0}
+.spc-uso{font-size:12.5px;margin-bottom:12px}
+.spc-lado{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:14px;align-items:start}
+.spc-box{background:var(--spc-caixa);border:1px solid var(--spc-caixa-b);border-radius:12px;padding:13px 17px 14px 16px}
+.spc-box h2{margin:0 0 9px}
+.spc-box--subs{margin-top:14px}
+.spc-ficha-grade{display:grid;grid-template-columns:1fr 1fr;gap:3px 20px;margin-bottom:10px}
+.spc-ficha-grade .spc-larga{grid-column:1/-1;margin-top:6px}
+.spc-obs-cab{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.spc-ver{background:none;border:none;color:var(--spc-verde-txt);font-size:12px;font-weight:600;cursor:pointer;padding:0 2px}
+.spc-ver:hover{text-decoration:underline}
+body.os-form textarea.spc-obs{width:100%;min-height:92px;height:180px;max-height:none;resize:vertical;background:var(--spc-sup);border:1px solid var(--spc-caixa-b);
+  border-radius:10px;color:var(--spc-obs);font-size:13px;line-height:1.45;padding:8px 11px;cursor:text}
+body.os-form textarea.spc-obs:hover{border-color:var(--spc-tracejado)}
+body.os-form textarea.spc-obs:focus{border-color:var(--spc-verde);outline:none}
+.spc-linhas{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 12px;align-items:center}
+.spc-fixo{color:var(--spc-forte);font-size:13px;font-weight:600}
+.spc-topo{align-self:start;padding-top:3px}
+.spc-data{border-bottom:1px dashed var(--spc-tracejado);padding:1px 2px;justify-self:start}
+/* o valor que vira campo: sublinhado tracejado é o convite, sem virar caixa (o `valorEditavel` / `etqInline` do app) */
+body.os-form .spc-inline select,body.os-form .spc-inline .osb-in{width:100%;height:26px;background:transparent;border:none;border-bottom:1px dashed var(--spc-tracejado);
+  border-radius:0;color:var(--spc-tinta);font-size:13px;padding:0 2px}
+body.os-form .spc-inline select:hover,body.os-form .spc-inline .osb-in:hover{border-bottom-color:var(--spc-verde)}
+body.os-form .spc-inline select:focus,body.os-form .spc-inline .osb-in:focus{border-bottom:1px solid var(--spc-verde);outline:none}
+body.os-form .spc-inline select:disabled,body.os-form .spc-inline .osb-in:disabled{opacity:.55}
+.spc-inline--larga{max-width:360px;margin:6px 0 4px}
+.spc-etqs{display:flex;flex-direction:column;gap:6px;min-width:0}
+.spc-chips{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.spc-chips--linha{flex-direction:row;flex-wrap:wrap;margin:2px 0 6px}
+.spc-etq{background:var(--spc-cinza-suave);color:var(--spc-tinta);border:1px solid var(--spc-tracejado);border-radius:9px;padding:2px 9px;font-size:10.5px;font-weight:600;
+  cursor:pointer;white-space:nowrap}
+.spc-etq:hover{border-color:var(--spc-perigo)}
+.spc-etq.tema{background:var(--spc-verde-suave);color:var(--spc-lima-txt);border-color:var(--spc-verde);font-weight:700}
+.spc-etq:disabled{cursor:default;opacity:.7}
+.spc-tema-pai{display:grid;grid-template-columns:4fr minmax(130px,1fr);gap:3px 14px;margin-top:12px;align-items:end}
+.spc-sugerido{color:var(--spc-forte);font-size:10.5px;font-weight:700;letter-spacing:.8px;padding-left:4px}
+.spc-tema .osb,.spc-tema .osb-in,.spc-tema select{width:100%}
+.spc-inline .osb{width:100%}
+.spc-pai{position:relative}
+.spc-pai input{width:100%}
+.spc-pai-lista{position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:240px;overflow:auto;background:var(--spc-caixa);border:1px solid var(--spc-caixa-b);
+  border-radius:10px;padding:5px;box-shadow:0 14px 34px var(--spc-sombra);min-width:260px}
+.spc-pai-op{padding:6px 9px;border-radius:7px;font-size:12.5px;color:var(--spc-tinta);cursor:pointer}
+.spc-pai-op.on,.spc-pai-op:hover{background:var(--spc-verde-suave)}
+.spc-pai-vazio{padding:6px 9px;font-size:12.5px;color:var(--spc-mudo)}
+
+/* ── o editor de subtarefas (subtarefas_edit.py): o texto parece texto, o tipo também, o anexo é caixa de marcar ── */
+.spc-subs-cab{color:var(--spc-mudo);font-size:11.5px;margin:0 0 6px}
+.spc-subs-cab b{color:var(--spc-tinta)}
+.spc-subs-lista{list-style:none;margin:0;padding:0}
+.spc-sub{display:flex;align-items:center;gap:10px;padding:5px 2px 5px 4px;border-bottom:1px solid var(--spc-risco)}
+.spc-sub:last-child{border-bottom:none}
+.spc-sub-n{width:22px;flex:none;color:var(--spc-verde);font-size:11.5px;font-weight:700}
+body.os-form input.spc-sub-txt{flex:1;min-width:0;height:26px;background:transparent;border:none;border-bottom:1px solid transparent;border-radius:0;color:var(--spc-tinta);
+  font-size:12.5px;padding:0 2px}
+body.os-form input.spc-sub-txt:hover{border-bottom:1px dashed var(--spc-tracejado)}
+body.os-form input.spc-sub-txt:focus{border-bottom:1px solid var(--spc-verde);outline:none}
+body.os-form select.spc-sub-tipo{width:104px;flex:none;height:26px;background:transparent;border:none;border-bottom:1px solid transparent;border-radius:0;color:var(--spc-mudo);
+  font-size:11.5px;padding:0 2px}
+body.os-form select.spc-sub-tipo:hover{color:var(--spc-tinta);border-bottom:1px dashed var(--spc-tracejado)}
+.spc-sub-anexo{flex:none;width:136px;display:flex;align-items:center;gap:6px;color:var(--spc-mudo);font-size:11px;cursor:pointer}
+.spc-sub-anexo:has(input:checked){color:var(--spc-verde)}
+.spc-sub-anexo input{accent-color:var(--spc-verde);margin:0}
+.spc-sub-x{flex:none;width:26px;height:22px;padding:0;border-radius:5px;background:transparent;border:1px solid transparent;color:var(--spc-mudo);font-size:16px;font-weight:700;
+  line-height:1;cursor:pointer}
+.spc-sub-x:hover{background:var(--spc-perigo);border-color:var(--spc-perigo);color:var(--spc-sobre-perigo)}
+.spc-sub-x:disabled{visibility:hidden}
+.spc-subs-add{background:none;border:none;color:var(--spc-verde);font-size:12px;font-weight:600;cursor:pointer;padding:8px 4px 2px}
+.spc-subs-add:hover{text-decoration:underline}
+.spc-subs-add:disabled{display:none}
+
+/* ── os botões: aprovar é a decisão (alto, preenchido, assentado); devolver é a exceção (contorno discreto) ── */
+.spc-acoes{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}
+.spc-btn-aprovar{min-height:44px;padding:0 22px;border:none;border-bottom:2px solid var(--spc-lima-base);border-radius:11px;background:var(--spc-lima);color:var(--spc-sobre-lima);
+  font:700 13.5px/1 inherit;cursor:pointer}
+.spc-btn-aprovar:hover{background:var(--spc-lima-hover)}
+.spc-btn-aprovar:disabled{opacity:.45;cursor:not-allowed}
+.spc-btn-aprovar--baixo{min-height:36px;padding:0 16px;font-size:13px}
+.spc-btn-devolver{min-height:44px;padding:0 18px;background:transparent;border:1px solid var(--spc-risco);border-radius:11px;color:var(--spc-mudo);font:600 13px/1 inherit;cursor:pointer}
+.spc-btn-devolver:hover{color:var(--spc-tinta);border-color:var(--spc-tracejado);background:var(--spc-sup)}
+.spc-btn-devolver:disabled{opacity:.5;cursor:not-allowed}
+.spc-acoes .spc-btn-sec{min-height:44px;border-radius:11px}
+.spc-btn-perigo{min-height:36px;padding:0 16px;background:transparent;border:1px solid var(--spc-perigo);border-radius:9px;color:var(--spc-perigo);font:600 13px/1 inherit;cursor:pointer}
+.spc-btn-perigo:hover{background:var(--spc-perigo-suave)}
+
+/* ── a janela (mudar status, a ficha do Histórico) e o aviso de canto ── */
+.spc-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.spc-modal[hidden]{display:none}
+.spc-modal-fundo{position:absolute;inset:0;background:var(--spc-veu)}
+.spc-modal-card{position:relative;width:min(480px,100%);max-height:calc(100vh - 32px);overflow:auto;background:var(--spc-caixa);border:1px solid var(--spc-caixa-b);
+  border-radius:14px;padding:18px 20px 16px;box-shadow:0 24px 60px var(--spc-sombra);display:flex;flex-direction:column;gap:8px}
+.spc-modal-card--larga{width:min(760px,100%);padding:0;gap:0}
+.spc-modal-card select,.spc-modal-card textarea{width:100%}
+.spc-modal-t{margin:0 0 4px;color:var(--spc-forte);font-size:16px;font-weight:600}
+.spc-modal-acoes{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px}
+.spc-x{background:none;border:none;color:var(--spc-mudo);font-size:24px;line-height:1;cursor:pointer;padding:0 4px}
+.spc-x:hover{color:var(--spc-tinta)}
+.spc-flutua{position:fixed;right:18px;bottom:18px;z-index:300;max-width:min(460px,calc(100vw - 36px));background:var(--spc-sup);color:var(--spc-tinta);
+  border:1px solid var(--spc-verde);border-radius:10px;padding:11px 14px;font-size:13px;line-height:1.4;box-shadow:0 14px 34px var(--spc-sombra);white-space:pre-line;cursor:pointer}
+.spc-flutua.ruim{border-color:var(--spc-perigo)}
+.spc-flutua[hidden]{display:none}
+
+/* ── Histórico ── */
+.spc-hist-topo,.spc-hist-filtros{display:flex;align-items:flex-end;gap:10px 14px;flex-wrap:wrap;padding:10px 16px 0}
+.spc-hist-filtros{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr)) minmax(250px,1.4fr);padding-bottom:10px}
+.spc-hist-c{display:flex;flex-direction:column;min-width:0}
+.spc-hist-c select,.spc-hist-c input[type=search]{min-width:180px}
+.spc-hist-num input{min-width:250px}
+.spc-hist-periodo{display:flex;align-items:center;gap:6px;color:var(--spc-mudo)}
+.spc-hist-periodo input{flex:1;min-width:0}
+.spc-tbl-wrap{flex:1;overflow:auto;margin:0 16px;border:1px solid var(--spc-risco);border-radius:10px}
+.spc-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.spc-tbl th{position:sticky;top:0;z-index:1;text-align:left;background:var(--spc-sup);color:var(--spc-mudo);font-size:11px;font-weight:700;letter-spacing:.4px;
+  padding:8px 10px;border-bottom:1px solid var(--spc-risco);white-space:nowrap}
+.spc-tbl td{padding:7px 10px;border-bottom:1px solid var(--spc-risco);color:var(--spc-tinta);vertical-align:middle}
+.spc-tbl tr:hover td{background:var(--spc-sup)}
+.spc-tbl tr.vazio td{color:var(--spc-mudo);text-align:center;padding:18px}
+.spc-hist-ativo,.spc-hist-desc{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spc-hist-desc{max-width:420px}
+.spc-hist-data{white-space:nowrap;color:var(--spc-mudo)}
+.spc-hist-osc{text-align:center}
+.spc-hist-n,.spc-hist-os{background:none;border:none;padding:0;color:var(--spc-verde);font:700 12.5px/1.2 inherit;cursor:pointer}
+.spc-hist-n:hover,.spc-hist-os:hover{text-decoration:underline}
+.spc-hist #hs_rodape{padding:6px 16px 12px}
+.spc-ficha-cab{display:flex;align-items:center;gap:11px;padding:15px 14px 13px 18px;border-bottom:1px solid var(--spc-risco)}
+.spc-ficha-corpo{padding:16px 18px 14px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.spc-ficha-ativo{background:var(--spc-sup);border:1px solid var(--spc-risco);border-radius:10px;padding:12px 15px;color:var(--spc-forte);font-size:16px;font-weight:600}
+.spc-ficha-meta{display:grid;grid-template-columns:3fr 2fr;gap:14px}
+.spc-ficha-dl{margin:0;background:var(--spc-sup);border:1px solid var(--spc-risco);border-radius:10px;padding:2px 16px}
+.spc-ficha-dl div{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--spc-risco)}
+.spc-ficha-dl div:last-child{border-bottom:none}
+.spc-ficha-dl dt{color:var(--spc-mudo);font-size:13px}
+.spc-ficha-dl dd{margin:0;color:var(--spc-tinta);font-size:13px;font-weight:600;text-align:right}
+.spc-ficha-os{display:flex;flex-direction:column;align-items:flex-start;gap:5px;background:var(--spc-sup);border:1px solid var(--spc-risco);border-radius:10px;padding:14px 16px;
+  color:var(--spc-azul);cursor:pointer;text-align:left;font:inherit}
+.spc-ficha-os:hover{border-color:var(--spc-azul)}
+.spc-ficha-os:disabled{cursor:default;color:var(--spc-mudo)}
+.spc-ficha-os b{font-size:22px}
+.spc-ficha-txt{margin:0;color:var(--spc-tinta);font-size:13px;white-space:pre-wrap;word-break:break-word;background:var(--spc-sup);border:1px solid var(--spc-risco);
+  border-radius:10px;padding:10px 12px}
+.spc-ficha-txt--forte{font-weight:600}
+.spc-ficha-rod{padding:10px 18px 13px;border-top:1px solid var(--spc-risco);margin:0}
+.spc-anexos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.spc-anexo{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--spc-sup);border:1px solid var(--spc-risco);border-radius:10px;padding:11px 14px;
+  color:var(--spc-tinta);cursor:pointer;text-align:left;font:inherit}
+.spc-anexo:hover{border-color:var(--spc-verde)}
+.spc-anexo-n{color:var(--spc-verde);font-size:20px;font-weight:700}
+.spc-anexo-lista{display:flex;flex-wrap:wrap;gap:8px}
+.spc-anexo-img img{width:120px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--spc-risco);display:block}
+.spc-anexo-doc{color:var(--spc-verde);font-size:12.5px;word-break:break-all}
+.spc-cancelar{background:var(--spc-perigo-suave);border:1px solid var(--spc-perigo);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.spc-cancelar p{margin:0;font-size:12.5px;color:var(--spc-tinta)}
+.spc-cancelar textarea{width:100%}
+.spc-carregando{padding:24px}
+
+/* ── Temas: o cadastro ── */
+.spc-grade3{display:grid;grid-template-columns:14fr 10fr 10fr;gap:5px 14px}
+.spc-grade2{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;margin-top:10px}
+.spc-grade3 label,.spc-grade2 label{display:flex;flex-direction:column;min-width:0}
+.spc-grade3 input,.spc-grade3 select,.spc-grade2 input,.spc-grade2 select{width:100%}
+.spc-temas .spc-rot{margin-top:6px}
+
+/* ── o aviso da Área PCM para quem não pode (o setor PCM ou administrador, no Nexus) ── */
+.spc-negado{margin:28px 16px;max-width:760px;background:var(--spc-alerta-fundo);border:1px solid var(--spc-alerta-b);border-radius:12px;padding:18px 20px}
+.spc-negado-t{margin:0 0 8px;color:var(--spc-alerta);font-size:17px;font-weight:700}
+.spc-negado-txt{margin:0 0 10px;color:var(--spc-tinta);font-size:13.5px;line-height:1.5}
+.spc-negado a{color:var(--spc-verde);font-weight:600}
+
+/* ── telas estreitas: a lista vai para cima e a ficha embaixo; o kanban vira uma coluna ── */
+@media (max-width:900px){
+  .spc-fila,.spc-painel,.spc-temas{height:auto}
+  .spc-corpo{flex-direction:column}
+  .spc-lista,.spc-lista--temas{width:auto;max-height:40vh;border-right:none;border-bottom:1px solid var(--spc-risco)}
+  .spc-kanban{grid-template-columns:1fr;gap:16px}
+  .spc-col{padding:0;border-right:none}
+  .spc-col-lista{max-height:60vh}
+  .spc-lado,.spc-ficha-meta,.spc-grade3,.spc-grade2,.spc-hist-filtros{grid-template-columns:1fr}
+  .spc-sub{flex-wrap:wrap}
+}
+
+/* o selo com a cor do Fracttal no tema claro: a cor do dado com a luminosidade no teto (a mesma regra do .os-status) */
+:where(html[data-tema="claro"]) .spc-pill[style]{-webkit-text-fill-color:color-mix(in oklab,currentColor 50%,#000);-webkit-text-fill-color:oklch(from currentColor min(l,.46) c h)}

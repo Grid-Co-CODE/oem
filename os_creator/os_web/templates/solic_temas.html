@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Temas{% endblock %}
+{% block body_class %}os-form{% endblock %}
+{% block head %}<link rel="stylesheet" href="/os/static/solic_pcm.css">{% endblock %}
+{# Os Temas do app (`steps/temas.py::TemasTab`, Levi, 13/10/2026): o lugar onde o PCM padroniza sem depender de release —
+   nome, tipo de equipamento (que FILTRA os ativos na Solicitação), tipo de OS (a Classificação 2 sugerida na Fila),
+   motivo (o título da OS), Classificação 1, as etiquetas e as subtarefas. Lista à esquerda, cadastro à direita, salvar
+   por tema; arquivar em vez de excluir (um tema usado em centenas de solicitações não pode sumir). Grava no banco da
+   Gridco pelo temas_store, o mesmo do app: o que se salva aqui vale para o app e para a web. #}
+{% block conteudo %}
+<section class="spc spc-temas">
+  {% include "_solic_nav.html" %}
+  <div class="spc-cab">
+    <a class="spc-volta" href="/os/setor/pcm">&larr; Voltar</a>
+    <b class="spc-cab-t">Temas</b>
+    <span class="spc-flex"></span>
+    <span class="spc-cab-info" id="tm_cont"></span>
+  </div>
+  {% if erro %}<p class="spc-alerta spc-alerta--faixa">{{ erro }}</p>{% endif %}
+  <div class="spc-corpo">
+    <aside class="spc-lista spc-lista--temas" aria-label="Temas">
+      <div class="spc-cabcol spc-cabcol--acao"><span>TEMAS</span><button type="button" class="spc-link-btn" id="tm_novo">+ novo tema</button></div>
+      <div class="spc-lista-busca"><input type="search" id="tm_busca" placeholder="Buscar tema…" autocomplete="off" aria-label="Buscar tema"></div>
+      <div class="spc-lista-itens" id="tm_lista" role="listbox" aria-label="Temas"></div>
+    </aside>
+    <div class="spc-det">
+      <h1 class="spc-titulo spc-titulo--tema" id="tm_tit">Escolha um tema à esquerda.</h1>
+      <p class="spc-dica spc-uso" id="tm_uso"></p>
+      <div id="tm_form" hidden>
+        <div class="spc-grade3">
+          <label><span class="spc-rot">Nome do tema</span><input id="tm_nome" type="text" autocomplete="off"></label>
+          <label><span class="spc-rot">Tipo de equipamento</span><select id="tm_equip" data-busca="1"></select></label>
+          <label><span class="spc-rot">Tipo de OS</span><select id="tm_tipo_os"></select></label>
+        </div>
+        <p class="spc-dica" id="tm_filtro"></p>
+        <div class="spc-grade2">
+          <label><span class="spc-rot">Motivo (vira o título da OS)</span><input id="tm_motivo" type="text" autocomplete="off"></label>
+          <label><span class="spc-rot">Classificação 1</span><select id="tm_c1"></select></label>
+        </div>
+        <span class="spc-rot">Etiquetas que a OS vai levar</span>
+        <div class="spc-chips spc-chips--linha" id="tm_chips"></div>
+        <div class="spc-inline spc-inline--larga"><select id="tm_etq_add" aria-label="Adicionar etiqueta"></select></div>
+        <div class="spc-box spc-box--subs"><div id="tm_subs"></div></div>
+        <div class="spc-acoes">
+          <button type="button" class="spc-btn-aprovar" id="tm_salvar">Salvar tema</button>
+          <button type="button" class="spc-btn-devolver" id="tm_desc">Descartar alterações</button>
+          <button type="button" class="spc-btn-devolver" id="tm_arq">Arquivar</button>
+          <span class="spc-dica" id="tm_hint"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<script type="application/json" id="tm_dados">{{ {
+  "temas": temas, "etiquetas": etiquetas, "tipos": tipos, "tipos_os": tipos_os, "classif1": classif1,
+  "tipos_sub": tipos_sub, "pode_gravar": pode_gravar}|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/os/static/solic_pcm.js"></script>
+<script src="/os/static/solic_temas.js"></script>
+{% endblock %}

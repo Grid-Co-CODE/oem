@@ -274,6 +274,253 @@ def mensagem_bulk(res: list) -> dict:
             "detalhes": [str(r.get("code")) + ": " + str(r.get("erro")) for r in fail]}
 
 
+def subs_para_api(subs: list) -> list:
+    """As subtarefas que a OS vai levar, como ficaram na tela — COM o anexo obrigatório.
+
+    O `sp.para_api` sozinho põe attachments_required=False em todas: a foto obrigatória que o tema (ou o supervisor)
+    marcou sumia na aprovação pela web, sem aviso. É o mesmo conserto do `EditorSubtarefas.para_api` do app."""
+    out = []
+    for x in subs or []:
+        if not str((x or {}).get("desc") or "").strip():
+            continue
+        d = sp.para_api([x])[0]
+        d["attachments_required"] = bool(x.get("anexo"))
+        out.append(d)
+    return out
+
+
+# ── as quatro páginas do PCM, como no app (Levi, 13/10/2026) ─────────────────────────────────────────────────────────
+# "Fila do PCM não está levando para a fila do PCM, referência é a fila do app desktop, nem painel do PCM nem histórico
+# nem temas." A web juntava o Painel e a Fila numa tabela com um painel de aprovação menor que a ficha do app, o Histórico
+# era uma tabela sem filtros e os Temas não existiam. Agora são as páginas da `SolicPcmTab` (steps/solic_pcm.py), com os
+# nomes e a ordem dela; daqui para baixo é o pedaço de decisão de cada uma, sem rede.
+NAV_PCM = [("nova", "Nova solicitação", "/os/solicitacao"), ("painel", "Painel", "/os/solicitacao/painel"),
+           ("fila", "Fila do PCM", "/os/solicitacao/fila"), ("hist", "Histórico", "/os/solicitacao/historico"),
+           ("temas", "Temas", "/os/solicitacao/temas")]
+POR_COLUNA = 40      # `_Painel._pintar`: no máximo 40 cartões por coluna; a contagem diz o total
+TIPOS_SUB = [("texto", "Texto"), ("simnao", "Sim/Não"), ("verif", "Verificação"), ("num", "Numérico")]   # subtarefas_edit
+
+
+def _utc(iso):
+    """'2026-10-13T11:20:03' (UTC, como o Fracttal devolve a data da solicitação) → datetime com fuso, ou None."""
+    s = str(iso or "").strip().replace(" ", "T")[:19]
+    try:
+        return dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc)
+    except ValueError:
+        return None
+
+
+def data_br(iso, com_hora: bool = True) -> str:
+    """A data em horário de BRASÍLIA (a conta do `api.fmt_data_br`). O app mostra a data crua do Fracttal no Painel e na
+    Fila (UTC: três horas adiantada) e a convertida nos Históricos; aqui as quatro páginas mostram a convertida."""
+    d = _utc(iso)
+    if d is None:
+        return "—"
+    return d.astimezone(BRT).strftime("%d/%m/%Y %H:%M" if com_hora else "%d/%m/%Y")
+
+
+def dia_brt(iso) -> str:
+    """'AAAA-MM-DD' em Brasília — o que o filtro de período do Histórico compara."""
+    d = _utc(iso)
+    return d.astimezone(BRT).strftime("%Y-%m-%d") if d else ""
+
+
+def ha_quanto(iso, agora=None) -> str:
+    """`_ha_quanto` do app: 'agora', 'há 2 h', 'ontem', 'há 3 dias', '12/08'. Relativo perto e absoluto longe — o que
+    importa na fila é a solicitação estar parada, e 86 dias de mediana não cabem em 'há 2064 h'."""
+    d = _utc(iso)
+    if d is None:
+        return ""
+    seg = ((agora or dt.datetime.now(dt.timezone.utc)) - d).total_seconds()
+    if seg < 3600:
+        return "agora"
+    if seg < 86400:
+        return "há %d h" % int(seg // 3600)
+    if seg < 172800:
+        return "ontem"
+    if seg < 86400 * 7:
+        return "há %d dias" % int(seg // 86400)
+    return d.astimezone(BRT).strftime("%d/%m")
+
+
+def de_hoje(iso, agora=None) -> bool:
+    """Chegou hoje (em Brasília)? É o "M chegaram hoje" do cabeçalho da Fila."""
+    d = _utc(iso)
+    agora = agora or dt.datetime.now(dt.timezone.utc)
+    return bool(d) and d.astimezone(BRT).date() == agora.astimezone(BRT).date()
+
+
+def _busca(s: dict) -> str:
+    return " ".join(str(s.get(k) or "") for k in ("id_code", "usina", "ativo", "descricao", "criado_por")).lower()
+
+
+def cartao(s: dict) -> dict:
+    """Um cartão do Painel (`_Cartao`): nº, status, 'ativo · usina', o título, a linha do tema (o nome do tema; sem tema,
+    a OS que ele virou; sem as duas, "sem tema") e o rodapé com quem pediu e o dia. `s` é a `linha()`."""
+    tema = s.get("_tema") or ""
+    if tema:
+        linha_tema, tem_tema = (sp.TEMAS.get(tema) or {}).get("nome") or tema, True
+    elif s.get("os_folio"):
+        linha_tema, tem_tema = "OS %s" % s["os_folio"], False
+    else:
+        linha_tema, tem_tema = "sem tema", False
+    alvo = " · ".join(x for x in (s.get("_ativo") or "", str(s.get("usina") or "")) if x and x != "—")
+    return {"id": s.get("id_code"), "status": s.get("status") or "—", "cor": s.get("cor_status") or "",
+            "alvo": alvo or "—", "descricao": s.get("descricao") or "—", "tema": linha_tema, "tem_tema": tem_tema,
+            "quem": s.get("criado_por") or "—", "dia": data_br(s.get("data"), False), "coluna": s.get("_coluna"),
+            "busca": _busca(s)}
+
+
+def _data_sugerida_iso(texto) -> str:
+    """'15/10/2026 08:00' ou só '15/10/2026' (as solicitações antigas: o dia vira 08:00, como no app) → o valor do
+    <input type=datetime-local>. '' se não der para ler."""
+    t = str(texto or "").strip()
+    for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y"):
+        try:
+            d = dt.datetime.strptime(t, fmt)
+        except ValueError:
+            continue
+        if fmt == "%d/%m/%Y":
+            d = d.replace(hour=8)
+        return d.strftime("%Y-%m-%dT%H:%M")
+    return ""
+
+
+def ficha(s: dict, asset=None, agora=None) -> dict:
+    """O que a ficha da Fila (`_Fila._selecionar`) mostra de UMA solicitação, já lido: o título no padrão do tema (e o que
+    o supervisor escreveu, riscado), o pedido, o relato SEM o bloco [PCM] (o bloco volta intacto ao gravar), o técnico e
+    a data sugeridos, as subtarefas (as do bloco têm precedência: o supervisor pode tê-las editado) e o ativo do catálogo
+    — só por id ou código (`asset_da`), nunca pelo nome."""
+    tema = s.get("_tema") or ""
+    tipo_ativo = (asset or {}).get("tipo") or (s.get("tipo") if s.get("tipo") != "—" else "") or ""
+    subs = list(s.get("_subs") or [])
+    if not subs:                       # sem a edição do supervisor: a lista do tema; sem tema, a base — nunca vazia
+        subs = sp.de_api(subtarefas_do_tema(tema, tipo_ativo))
+    orig = str(s.get("descricao_full") or s.get("descricao") or "")
+    novo = sp.titulo(s.get("usina") or "", s.get("ativo") or "", tema) if tema and tema in sp.TEMAS else ""
+    return {"id": s.get("id_code"), "status": s.get("status") or "", "cor": s.get("cor_status") or "",
+            "usina": s.get("usina") or "—", "cliente": s.get("cliente") or "—", "ativo": s.get("ativo") or "—",
+            "ativo_limpo": sp._limpa_ativo(s.get("ativo") or ""), "solicitante": s.get("criado_por") or "—",
+            "quando": ha_quanto(s.get("data"), agora), "aberta": data_br(s.get("data")),
+            "hoje": de_hoje(s.get("data"), agora),
+            "titulo_orig": orig, "titulo": novo or orig,
+            "relato": s.get("_relato") or "", "bloco": sp.so_bloco(s.get("observacao") or ""),
+            "tema": tema, "tecnico": s.get("_tecnico") or "", "data_sug": s.get("_data_sug") or "",
+            "data_sug_iso": _data_sugerida_iso(s.get("_data_sug")),
+            "subs": subs, "subs_do_bloco": bool(s.get("_subs")), "ativo_ok": bool(asset), "tipo_ativo": tipo_ativo,
+            "perf_ativo": sp.exige_performance("", s.get("ativo") or "", []),
+            "os_folio": s.get("os_folio"), "id_work_order": s.get("id_work_order"), "coluna": s.get("_coluna")}
+
+
+def temas_da_fila() -> list:
+    """O combo de tema da Fila (`_encher_temas`: '— sem tema —' + os temas do maior volume para o menor), com o que cada
+    um sugere: o motivo (o título), a disciplina (a Classificação 2 da OS) e as etiquetas. `etiquetas` None = o tema
+    nunca foi salvo pela tela de Temas; aí vale a regra antiga (`sp.exige_performance`), como no `_CardEtiquetas`."""
+    out = []
+    for chave, nome in sp.temas():
+        t = sp.TEMAS.get(chave) or {}
+        out.append({"chave": chave, "nome": nome, "motivo": t.get("motivo") or "",
+                    "disciplina": (sp.classificacao(chave) or {}).get("tipo") or "",
+                    "etiquetas": ([str(x).strip() for x in (t.get("etiquetas") or []) if str(x).strip()]
+                                  if "etiquetas" in t else None),
+                    "perf_tema": str(chave).startswith("tracker")})
+    return out
+
+
+# o selo de status no Histórico (historico_solic.py: `_ST_VIVO` na tabela, `_ST_DARK` na ficha) — sem lilás
+ST_VIVO = {"Aberta": "#F5A623", "Aprovada": "#4A9EF5", "OS em processo": "#4A9EF5", "OS em verificação": "#35C1B8",
+           "Concluída": "#48D07A", "OS concluída": "#48D07A", "Resolvida com OS": "#48D07A",
+           "Resolvida sem OS": "#48D07A", "Cancelada": "#F5766B", "Rejeitada": "#F5766B"}
+NAO_CANCELAVEL = {"Cancelada", "Rejeitada", "Concluída", "OS concluída", "Resolvida com OS", "Resolvida sem OS"}
+
+
+def linha_hist(s: dict) -> dict:
+    """Uma linha do Histórico (`HistoricoSolic._aplica`) e a ficha dela (`SolicitacaoDialog`)."""
+    st = s.get("status") or ""
+    return {"id": s.get("id_code"), "cliente": s.get("cliente") or "—", "usina": s.get("usina") or "—",
+            "ativo": s.get("ativo") or "", "ativo_curto": s.get("_ativo") or "", "tipo": s.get("tipo") or "—",
+            "descricao": s.get("descricao") or "—", "descricao_full": s.get("descricao_full") or "",
+            "observacao": s.get("observacao") or "", "criado_por": s.get("criado_por") or "",
+            "data": data_br(s.get("data")), "dia": dia_brt(s.get("data")), "status": st,
+            "cor": ST_VIVO.get(st) or s.get("cor_status") or "", "os_folio": s.get("os_folio") or "",
+            "id_work_order": s.get("id_work_order") or "", "cancelavel": bool(st) and st not in NAO_CANCELAVEL,
+            "tema": s.get("_tema_nome") or ""}
+
+
+# ── Temas (steps/temas.py) ─────────────────────────────────────────────────────────────────────────────────────────
+TIPOS_OS = ["", "Elétrica", "Mecânica", "Civil", "Preditiva", "Outros"]
+CLASSIF1_TEMA = ["", "Não Para o Ativo", "Leve (Não Parou o Ativo, mas Afetou a Eficiência)",
+                 "Moderado (Impacto Parcial no Ativo)", "Grave (Parou o Ativo)"]
+
+
+def chave_de(nome) -> str:
+    """`TemasTab._chave_de`: a chave nasce do NOME, sem acento e sem espaço — é ela que a observação da solicitação
+    carrega, então precisa ser estável e legível (`inversor_inspecao`, não um número)."""
+    t = unicodedata.normalize("NFKD", str(nome or "")).encode("ascii", "ignore").decode()
+    t = "".join(c if c.isalnum() else "_" for c in t.lower())
+    while "__" in t:
+        t = t.replace("__", "_")
+    return t.strip("_")[:48]
+
+
+def tipos_de_ativo(assets) -> list:
+    """[(tipo, n)] do CADASTRO, do mais comum ao menos (`set_tipos_de_ativo`): "Estrutura Trackers" e "Inversor" ficam no
+    topo em vez de perdidos numa lista alfabética de mais de trinta tipos. É o mesmo campo `tipo` que o filtro de ativos
+    da Solicitação compara, então os dois nunca divergem."""
+    import collections
+    return collections.Counter(a.get("tipo") for a in (assets or []) if a.get("tipo")).most_common()
+
+
+def tema_para_tela(t: dict) -> dict:
+    """Um tema como a tela de Temas o edita. As etiquetas são as EFETIVAS (`ts.etiquetas_efetivas`, a mesma regra da
+    Fila): o tema que nunca foi salvo pela tela nova mostra a PERFORMANCE que a regra antiga põe, e quem salvar a leva."""
+    import temas_store as ts
+    return {"chave": t.get("chave") or "", "nome": t.get("nome") or "", "motivo": t.get("motivo") or "",
+            "classif1": t.get("classif1") or "", "tipo_os": t.get("tipo_os") or "",
+            "tipo_equipamento": t.get("tipo_equipamento") or "", "solicitacoes": t.get("solicitacoes") or 0,
+            "arquivado": bool(t.get("arquivado")),
+            "subtarefas": [{"desc": str(x.get("desc") or ""), "tipo": x.get("tipo") or "texto", "anexo": bool(x.get("anexo"))}
+                           for x in (t.get("subtarefas") or [])],
+            "etiquetas": ts.etiquetas_efetivas(dict(t, chave=t.get("chave") or ""))}
+
+
+def tema_para_salvar(corpo: dict, atuais: list):
+    """(tema pronto para o `temas_store.salvar`, '') ou (None, a frase do erro) — as validações do `TemasTab._salvar`.
+
+    A chave de um tema que já existe NUNCA muda (renomear mantém a chave: as solicitações antigas a carregam no bloco);
+    as `solicitacoes` e o `arquivado` vêm do banco, não da tela."""
+    c = corpo or {}
+    nome = str(c.get("nome") or "").strip()
+    if not nome:
+        return None, "O tema precisa de um nome."
+    chave = str(c.get("chave") or "").strip()
+    novo_tema = not chave
+    if novo_tema:
+        chave = chave_de(nome)
+        if not chave:
+            return None, "Não consegui gerar a chave a partir desse nome."
+    base = next((t for t in (atuais or []) if t.get("chave") == chave), None)
+    if novo_tema and base is not None:
+        return None, "Já existe um tema com esse nome."
+    if not novo_tema and base is None:
+        return None, "Esse tema não está mais no banco. Recarregue a tela de Temas."
+    tipos = {k for k, _r in TIPOS_SUB}
+    subs = [{"desc": str(x.get("desc") or "").strip(),
+             "tipo": x.get("tipo") if x.get("tipo") in tipos else "texto", "anexo": bool(x.get("anexo"))}
+            for x in (c.get("subtarefas") or []) if isinstance(x, dict) and str(x.get("desc") or "").strip()]
+    etq = []
+    for e in c.get("etiquetas") or []:
+        e = str(e or "").strip()
+        if e and e.upper() not in {x.upper() for x in etq}:
+            etq.append(e)
+    base = dict(base or {"solicitacoes": 0, "arquivado": False})
+    for k in ("_linha",):
+        base.pop(k, None)
+    return dict(base, chave=chave, nome=nome, motivo=str(c.get("motivo") or "").strip(),
+                classif1=str(c.get("classif1") or "").strip(), tipo_os=str(c.get("tipo_os") or "").strip(),
+                tipo_equipamento=str(c.get("tipo_equipamento") or "").strip(), subtarefas=subs, etiquetas=etq), ""
+
+
 def mensagem_aprovacao(res: dict, id_code) -> dict:
     """O resultado do `api.aprovar_solicitacao` em uma frase.
 

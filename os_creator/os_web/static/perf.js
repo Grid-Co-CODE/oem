@@ -1,5 +1,6 @@
 // os_creator/os_web/static/perf.js — a tela PerfCriar do app, no navegador. Mesma lógica: cascata Cliente → Usina,
 // ativos com o plano, uma OS por ativo, título '[Ativo] - base' (literal em ETM/Usina), confirmação antes de criar.
+// E o AGRUPAR do app (13/10/2026): com 2+ ativos, UMA OS com uma tarefa por ativo (`create_performance_os_agrupada`).
 (function () {
   const root = document.getElementById('perf');
   if (!root) return;
@@ -14,6 +15,12 @@
   const edNome = $('ed_nome'), preview = $('preview'), resumo = $('resumo'), cbResp = $('cb_resp'), btn = $('btn_criar');
   let alvos = [], base = TITULO, modo = 'geracao', checked = new Set(), obs = {}, ospai = {}, imgs = {}, isTracker = TRACKER;
   let qtd = {};                  // quantidade da OCORRENCIA por ativo (a aba de tickets do plano)
+  // AGRUPAR (PerfCriar._agrupar / _auto_agrupar): mais de um ativo já vem agrupado ENQUANTO a pessoa não clicar na caixa;
+  // o `click` (só do humano) separa "a pessoa decidiu" de "a tela sugeriu" — sem isso, o auto-ligar remarcaria a caixa
+  // que ela acabou de desmarcar, e ela não conseguiria sair do modo
+  const ckAgrupar = document.getElementById('ck_agrupar'), wAgrupar = document.getElementById('w_agrupar');
+  let agrupTocado = false;
+  const agrupar = () => !!(ckAgrupar && ckAgrupar.checked && modo === 'geracao' && checked.size > 1);
   // A TABELA ABRE DE 10 EM 10 (Levi, 22/09). A Timon 1 tem 50 inversores e a tela virava uma
   // rolagem de duas telas antes de o primeiro campo aparecer. O limite e so de EXIBICAO: a
   // selecao, a busca e a criacao continuam valendo sobre a lista inteira.
@@ -25,7 +32,25 @@
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   const apiErro = (j, r) => (j && j.erro) ? (j.login ? j.erro + ' Entre de novo em /os/login.' : j.erro) : ('HTTP ' + r.status);
 
-  function tituloDe(a) { return modo === 'etm' ? ETM_TITULO : modo === 'usina' ? USINA_TITULO : '[' + a.label + '] - ' + (edNome.value.trim() || base); }
+  function tituloDe(a) {
+    if (modo === 'etm') return ETM_TITULO;
+    if (modo === 'usina') return USINA_TITULO;
+    // agrupado: o nome digitado vale para a OS e para TODAS as tarefas, sem o prefixo (o ativo de cada tarefa é quem distingue)
+    return agrupar() ? (edNome.value.trim() || base) : '[' + a.label + '] - ' + (edNome.value.trim() || base);
+  }
+
+  // o que MUDA de forma no agrupado (PerfCriar._on_agrupar): OS pai e observação da OS inteira, sem a coluna OS Pai e
+  // sem o prefixo [Ativo], e os textos dos rótulos
+  function rotulosAgrupar() {
+    const ag = agrupar();
+    root.classList.toggle('agrupada', ag);
+    $('w_agrupada').hidden = !ag;
+    // a observação da linha passa a ser a da TAREFA daquele ativo (a da OS inteira é o campo Observação da OS)
+    tbody.querySelectorAll('input.obs').forEach(i => { i.placeholder = ag ? 'observação desta tarefa' : 'observação desta OS'; });
+    if (modo !== 'geracao') return;
+    $('lb_ativos').innerHTML = 'Ativos <i>*</i> <small>' + (ag ? '(marque um ou vários — todos numa OS só)' : '(marque um ou vários — cada um vira uma OS)') + '</small>';
+    $('lb_nome').innerHTML = 'Nome da tarefa <i>*</i> <small>' + (ag ? '(vale para a OS e para TODAS as tarefas)' : '(editável; o prefixo [Ativo] entra automático por OS)') + '</small>';
+  }
 
   function setModo(m) {
     modo = TEM_MODOS ? m : 'geracao';
@@ -202,11 +227,25 @@
       + '</div></td></tr>';
   }
 
-  function updCount() { selLbl.textContent = checked.size + ' marcado(s)'; updPreview(); }
+  function updCount() {
+    // _auto_agrupar: mais de um ativo → agrupa por padrão (Levi, 26/08), até a pessoa mexer na caixa; não desmarca ao
+    // voltar para 1 ativo (quem tirou um ativo da lista não pediu para mudar de modo)
+    if (ckAgrupar && !agrupTocado && modo === 'geracao' && checked.size > 1 && !ckAgrupar.checked) ckAgrupar.checked = true;
+    if (wAgrupar) wAgrupar.hidden = !(modo === 'geracao' && checked.size > 1);
+    const n = checked.size;
+    selLbl.textContent = n + ' marcado(s)' + (!n ? '' : agrupar() ? '  ·  1 OS com ' + n + ' tarefas' : '  ·  ' + n + ' OS a criar');
+    rotulosAgrupar(); updPreview();
+  }
   function updPreview() {
     const al = alvos.find(a => checked.has(a.id)) || alvos.find(visivel);
-    preview.innerHTML = al ? 'Fica, por ex.: <b>' + esc(tituloDe(al)) + '</b>  ·  a observação de cada OS vem da tabela de ativos acima.'
+    const deOnde = agrupar() ? 'a observação de cada tarefa vem da tabela de ativos acima; a da OS, do campo Observação da OS.'
+                             : 'a observação de cada OS vem da tabela de ativos acima.';
+    preview.innerHTML = al ? 'Fica, por ex.: <b>' + esc(tituloDe(al)) + '</b>  ·  ' + deOnde
                            : 'A observação de cada OS vem da tabela de ativos acima.';
+  }
+  if (ckAgrupar) {
+    ckAgrupar.addEventListener('click', () => { agrupTocado = true; });
+    ckAgrupar.addEventListener('change', updCount);
   }
   function marcarUnico() {                                 // ETM e Usina: o ativo já vem marcado (é sempre ele)
     if (!(modo === 'etm' || modo === 'usina')) return;
@@ -336,8 +375,10 @@
     const opt = cbResp.selectedOptions[0];
     if (!opt || !opt.value) { alert('Escolha o responsável.'); return; }
     const b = edNome.value.trim() || base;
+    const ag = agrupar();
     const itens = ids.map(a => ({asset: {id: a.id, code: a.code, label: a.label, tipo: a.tipo, usina: cbUsi.value, cliente: cbCli.value},
-      plano_id_task: a.plano_id_task, plano_id_item: a.plano_id_item, linkar: a.linkar, note: (obs[a.id] || '').trim(), os_pai: (ospai[a.id] || '').trim(),
+      plano_id_task: a.plano_id_task, plano_id_item: a.plano_id_item, linkar: a.linkar, note: (obs[a.id] || '').trim(),
+      os_pai: ag ? '' : (ospai[a.id] || '').trim(),          // agrupado: a OS pai é a da OS inteira (o servidor põe)
       imagens: (imgs[a.id] || []).map(x => ({nome: x.nome, b64: x.b64})), qtd_ticket: qtd[a.id] || null}));
     let aviso = '';
     if (isTracker) aviso += "\nTrackers individuais: as OS usam o plano da 'Estrutura Trackers' (subtarefas copiadas).";
@@ -353,20 +394,32 @@
         : '\nSEM ocorrencia na planilha de Tickets.';
     }
     const nImg = itens.reduce((t, i) => t + (i.imagens || []).length, 0);
-    if (nImg) aviso += '\n' + nImg + ' imagem(ns) serao anexadas.';
     const prog = $('dt_exec').value; if (prog) aviso += '\nProgramada para ' + prog.replace('T', ' ') + '.';
-    if (!confirm('Vou criar ' + itens.length + ' OS — uma por ativo — com o plano \'' + TITULO + '\'.' + aviso + '\n\nContinuar?')) return;
-    btn.disabled = true; $('hint_criar').textContent = 'criando ' + itens.length + ' OS… (pode levar alguns segundos)';
+    if (ag) {
+      // o que MUDA no modo agrupado, dito ANTES de criar (as duas perdas medidas em 21/08, como no app)
+      aviso += '\nUMA OS com ' + itens.length + ' tarefas, uma por ativo, no lugar de ' + itens.length + ' OS.'
+        + '\nA OS só fecha quando TODAS as tarefas forem concluídas.'
+        + '\nA OS pai por ativo não vai (a OS é uma só), e as tarefas nascem sem data de início/fim — quem preenche é o cronômetro.';
+    }
+    if (nImg) aviso += '\n' + nImg + ' imagem(ns) serao anexadas.';
+    const cabecalho = ag ? 'Vou criar 1 OS com ' + itens.length + ' tarefas — uma por ativo — com o plano \'' + TITULO + '\'.'
+                         : 'Vou criar ' + itens.length + ' OS — uma por ativo — com o plano \'' + TITULO + '\'.';
+    if (!confirm(cabecalho + aviso + '\n\nContinuar?')) return;
+    btn.disabled = true;
+    $('hint_criar').textContent = ag ? 'criando 1 OS com ' + itens.length + ' tarefas… (pode levar alguns segundos)'
+                                     : 'criando ' + itens.length + ' OS… (pode levar alguns segundos)';
     const res = $('resultado'); res.hidden = true;
     try {
       const r = await OsCarga.buscar('/os/api/performance/criar', {method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({frase: FRASE, base: b, modo, evento: $('dt_prog').value, programada: prog, itens,
-                              gerar_ticket: ger,
+                              gerar_ticket: ger, agrupar: ag,
+                              os_pai_os: ag ? $('ed_pai_os').value.trim() : '', obs_os: ag ? $('ed_obs_os').value.trim() : '',
                               responsavel: {id_personnel: Number(opt.value), name: opt.dataset.name}})}, 'Criando as OS no Fracttal…');
       const j = await r.json();
-      res.hidden = false; res.classList.toggle('ruim', !r.ok || !j.ok);
-      res.textContent = r.ok ? j.mensagem : ('⚠ ' + apiErro(j, r));
-      if (r.ok && j.ok) { checked = new Set(); obs = {}; ospai = {}; imgs = {}; qtd = {}; repop(); }
+      res.hidden = false; res.classList.toggle('ruim', !r.ok || !j.ok || !!j.alerta);
+      res.textContent = r.ok ? j.mensagem + ((j.detalhes || []).length ? '\n\n' + j.detalhes.join('\n') : '') : ('⚠ ' + apiErro(j, r));
+      // criou (mesmo a agrupada SEM número): limpa, senão a pessoa cria tudo de novo e duplica no Fracttal
+      if (r.ok && j.ok) { checked = new Set(); obs = {}; ospai = {}; imgs = {}; qtd = {}; $('ed_pai_os').value = ''; $('ed_obs_os').value = ''; repop(); }
     } catch (e) { res.hidden = false; res.classList.add('ruim'); res.textContent = '⚠ ' + e; }
     btn.disabled = false; $('hint_criar').textContent = '';
   };

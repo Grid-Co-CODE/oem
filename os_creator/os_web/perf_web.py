@@ -212,10 +212,26 @@ def _qtd_ou_none(v):
     return n if n > 0 else None
 
 
+def quer_agrupar(corpo: dict) -> bool:
+    """O "Agrupar em UMA OS com várias tarefas" do app (`PerfCriar._agrupar`): só com 2+ ativos — com 1 marcado o
+    resultado é idêntico ao normal, e prometer "agrupada" para uma tarefa só confunde."""
+    corpo = corpo or {}
+    itens = [it for it in (corpo.get("itens") or []) if isinstance(it, dict) and isinstance(it.get("asset"), dict)]
+    return bool(corpo.get("agrupar")) and len(itens) > 1
+
+
+def obs_da_os(corpo: dict) -> str:
+    """A observação da OS INTEIRA no modo agrupado (o `ed_obs_os` do app); a de cada ativo continua no item."""
+    return str((corpo or {}).get("obs_os") or "").strip()
+
+
 def montar_itens(corpo: dict) -> tuple[list, dict, str]:
-    """Do JSON da tela → (itens, kwargs do create_performance_os, erro). Mesma validação e mesmo payload do app;
-    o que a web ainda não faz (tickets, agrupar) entra desligado, explicitamente. As IMAGENS a web
-    já manda desde 21/09."""
+    """Do JSON da tela → (itens, kwargs do create_performance_os, erro). Mesma validação e mesmo payload do app; as
+    IMAGENS a web manda desde 21/09, o ticket desde 21/09 e o AGRUPAR desde 13/10/2026 (Levi: "No OS Creator Web não
+    tem o mecanismo de quando é selecionado vários ativos, agrupar em uma só tarefa ... que nem no OS Creator
+    Desktop!"). No agrupado, como no `PerfCriar._criar`: o título de TODAS as tarefas é o nome digitado, literal, sem o
+    prefixo [Ativo] (o Fracttal ignora o título da OS e copia o da 1ª tarefa: é o único jeito de a OS se chamar assim),
+    e a OS pai é UMA para a OS inteira (a da linha de cada ativo não vai). A observação da OS vai à parte (`obs_da_os`)."""
     corpo = corpo or {}
     itens_in = [it for it in (corpo.get("itens") or []) if isinstance(it, dict) and isinstance(it.get("asset"), dict)]
     if not itens_in:
@@ -231,6 +247,9 @@ def montar_itens(corpo: dict) -> tuple[list, dict, str]:
     except ValueError:
         return [], {}, "Data inválida."
     literal = ETM_TITULO if modo == "etm" else (USINA_TITULO if modo == "usina" else "")
+    agrupar = quer_agrupar(corpo)
+    ag_tit = base if agrupar else ""
+    ag_pai = str(corpo.get("os_pai_os") or "").strip() if agrupar else ""
     itens = []
     for it in itens_in:
         imgs, err = imagens_do_item(it)
@@ -242,7 +261,10 @@ def montar_itens(corpo: dict) -> tuple[list, dict, str]:
                       # `nascer_ticket` conta sozinho quando `qtd_ticket` vem vazio (Levi, 21/09)
                       "gerar_ticket": bool(corpo.get("gerar_ticket", True)),
                       "qtd_ticket": _qtd_ou_none(it.get("qtd_ticket")),
-                      "titulo": literal, "os_pai": (str(it.get("os_pai") or "")).strip(), "imagens": imgs})
+                      # ETM e Usina usam o título LITERAL; o agrupado, o nome digitado (sem o prefixo [Ativo])
+                      "titulo": literal or ag_tit,
+                      # agrupado: a OS pai é UMA para a OS inteira; senão, a da linha do ativo
+                      "os_pai": ag_pai if agrupar else (str(it.get("os_pai") or "")).strip(), "imagens": imgs})
     kwargs = {"id_responsible": resp.get("id_personnel"), "responsible_name": resp.get("name") or "",
               "event_date": evt, "prog_date": prog,
               "etiquetas_extra": list(ETM_ETIQUETAS) if modo == "etm" else None}
@@ -299,6 +321,29 @@ def mensagem_resultado(res: list, frase: str = "", gerar_ticket: bool = True) ->
     tk_txt, tk_erros = frase_tickets(res, frase, gerar_ticket)
     return {"ok": len(ok), "falhas": len(fail), "mensagem": msg + tk_txt,
             "folios": [r.get("folio") for r in ok], "detalhes": erros_img + tk_erros}
+
+
+def mensagem_agrupada(res: dict, frase: str = "", gerar_ticket: bool = True) -> dict:
+    """O resultado do modo agrupado (`api.create_performance_os_agrupada`, um dict de UMA OS) → o formato do
+    `mensagem_resultado`. Porte de `PerfCriar._criou_agrupada`: as linhas são TAREFAS da mesma OS; e, se a OS numerada não
+    saiu, a mensagem diz que as tarefas existem SEM número — é o que evita a pessoa criar tudo de novo e duplicar o
+    trabalho no Fracttal. `ok` = as tarefas criadas (a tela limpa a seleção); `alerta` = sem número ou com detalhe."""
+    res = res or {}
+    if not res.get("ok"):
+        return {"ok": 0, "falhas": 1, "mensagem": str(res.get("erro") or "Nenhuma OS criada."), "folios": [],
+                "detalhes": [str(e) for e in res.get("erros") or []], "alerta": True}
+    folio, n = res.get("folio"), res.get("n_criadas") or 0
+    msg = ("OS %s criada com %d tarefa(s)." % (folio, n)) if folio else ("%d tarefa(s) criadas, mas SEM número de OS." % n)
+    if res.get("n_img_ok"):
+        msg += "  %d imagem(ns) anexada(s)." % res["n_img_ok"]
+    tk_txt, tk_erros = frase_tickets([{"ticket": t} for t in res.get("tickets") or [] if isinstance(t, dict)],
+                                     frase, gerar_ticket)
+    msg += tk_txt
+    if res.get("aviso"):
+        msg += "\n\n" + str(res["aviso"])
+    det = [str(x) for x in list(res.get("erros") or []) + list(res.get("img_erro") or []) + list(tk_erros)]
+    return {"ok": n, "falhas": len(res.get("erros") or []), "mensagem": msg, "folios": [folio] if folio else [],
+            "detalhes": det, "alerta": bool(det or not folio)}
 
 
 def contar_subtarefas(assets: list) -> dict:

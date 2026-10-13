@@ -47,3 +47,12 @@ body.os-form textarea:focus{outline:none;border-color:var(--f-green)}
 .trad-ospai-lista[hidden]{display:none}
 .trad-ospai-item{padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--txt);font-size:13px}.trad-ospai-item:hover{background:var(--f-input)}
 /* imagens: botões, grade de 3 miniaturas (150px), nome editável e Remover */
+
+/* ── tema claro (Nexus, 09/10/2026): a regra e a paleta --osc-* estão no bloco TEMA CLARO do fim do os.css ── */
+:where(html[data-tema="claro"]) body.os-form textarea{color:var(--osc-texto);border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .trad-chk{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .trad-pessoa.on{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .trad-ospai-lista{box-shadow:0 14px 34px var(--osc-sombra)}
+/* a barra do passo: o trilho cinza e o avanço em lima */
+:where(html[data-tema="claro"]) .trad-prog{background:var(--osc-secao-2)}
+:where(html[data-tema="claro"]) .trad-prog-f{background:var(--osc-lima)}

@@ -130,8 +130,14 @@ def test_a_tela_da_nova_solicitacao(cli):
     assert 'href="/os/"' in h                                                                            # a volta ao Início
 
 
-@pytest.mark.parametrize("arq", ["solic_fila.html", "solic_hist.html"])
+@pytest.mark.parametrize("arq", ["solic_painel.html", "solic_fila.html", "solic_hist.html", "solic_temas.html"])
 def test_a_fila_e_o_historico_sao_do_setor_pcm(arq):
+    """Desde 13/10/2026 as quatro páginas do PCM levam a barra da `SolicPcmTab` do app (_solic_nav.html): a volta ao
+    setor PCM e as cinco páginas na ordem do app — a Nova solicitação entre elas, como no app."""
     s = open(os.path.join(_WEB, "templates", arq), encoding="utf-8").read()
-    assert 'href="/os/setor/pcm"' in s and 'href="/os/solicitacao"' not in s
-    assert 'href="/os/solicitacao/fila"' in s and 'href="/os/solicitacao/historico"' in s
+    assert '{% include "_solic_nav.html" %}' in s
+    nav = open(os.path.join(_WEB, "templates", "_solic_nav.html"), encoding="utf-8").read()
+    assert 'href="/os/setor/pcm"' in nav
+    from os_web import solic_web
+    assert [h for _c, _r, h in solic_web.NAV_PCM] == ["/os/solicitacao", "/os/solicitacao/painel", "/os/solicitacao/fila",
+                                                      "/os/solicitacao/historico", "/os/solicitacao/temas"]

@@ -1,51 +1,98 @@
 {% extends "base.html" %}
 {% block titulo %}Histórico de solicitações{% endblock %}
 {% block body_class %}os-form{% endblock %}
-{# `steps/historico_solic.py` na web: TUDO, inclusive as devolvidas para refazer, que o painel
-   esconde de propósito. É a única tela onde elas aparecem — some-las em todo lugar seria perder
-   sessenta pedidos de vista. Sem paginação e sem recarga viva: uma tabela e uma busca. #}
+{% block head %}<link rel="stylesheet" href="/os/static/solic_pcm.css">{% endblock %}
+{# O Histórico do app (`steps/historico_solic.py::HistoricoSolic`, Levi, 13/10/2026): Criado por, a busca direta pelo nº
+   (ignora os filtros), a busca por qualquer campo, Exportar, Limpar filtros e ↻ (que também roda sozinho de 15 em 15
+   minutos); os filtros de marcar (Cliente, Usina em cascata, Tipo de ativo, Status) e o Período, que abre nos últimos 30
+   dias; a tabela com o Nº que abre a ficha (`SolicitacaoDialog`: anexos, abrir a OS ligada, cancelar) e a OS ligada que
+   abre o card da OS. É a única tela onde as devolvidas para refazer aparecem. Tudo roda na tela, sobre a lista que o
+   servidor já tem na memória (rotas_solic._lista). #}
 {% block conteudo %}
-<section class="os-pagina">
-  {# 27/09: a fila e o histórico são do setor PCM (a Nova solicitação saiu daqui: mora nas Solicitações da tela inicial) #}
-  <div class="os-topo-linha">
-    <a class="os-btn secondary os-voltar" href="/os/setor/pcm">&larr; PCM</a>
-    <nav class="os-seg os-subnav" aria-label="PCM" style="margin:0">
-      <a href="/os/solicitacao/fila">Fila do PCM</a>
-      <a class="on" href="/os/solicitacao/historico">Histórico de solicitações</a>
-    </nav>
+<section class="spc spc-hist">
+  {% include "_solic_nav.html" %}
+  <div class="spc-hist-topo">
+    <label class="spc-hist-c"><span class="spc-rot">Criado por</span><select id="hs_pessoa" data-busca="1"></select></label>
+    <label class="spc-hist-c spc-hist-num"><span class="spc-rot">Buscar solicitação pelo nº — ignora filtros</span>
+      <input id="hs_num" type="search" inputmode="numeric" placeholder="nº e Enter" title="Digite o número da solicitação e tecle Enter — abre direto."></label>
+    <span class="spc-flex"></span>
+    <span class="spc-dica" title="Com a página aberta, atualiza sozinho a cada 15 minutos.">&#8635; Atualiza a cada 15 min</span>
+    <label class="spc-hist-c"><span class="spc-rot">Buscar</span>
+      <input id="hs_busca" type="search" placeholder="nº, ativo, descrição, status…" title="Filtra as solicitações já carregadas por qualquer campo.  [Ctrl+F]" value="{{ busca }}"></label>
+    <button type="button" class="spc-btn-sec" id="hs_exportar" title="Exporta as solicitações exibidas para CSV (abre no Excel).  [Ctrl+E]">Exportar</button>
+    <button type="button" class="spc-btn-sec" id="hs_limpar" title="Desmarca Cliente/Usina/Tipo/Status e limpa a busca">Limpar filtros</button>
+    <button type="button" class="spc-btn-sec spc-btn-ico" id="hs_recarregar" title="Atualizar  [F5]" aria-label="Atualizar">&#8635;</button>
   </div>
-
-  <form class="os-hist-topo" method="get" action="/os/solicitacao/historico">
-    <div class="os-hist-dir">
-      <label class="os-hist-buscar"><span class="os-lbl">Buscar</span>
-        <input type="search" name="busca" value="{{ busca }}" placeholder="nº, usina, ativo, status, OS…"></label>
-      <button type="submit" class="os-btn secondary">Filtrar</button>
-    </div>
-  </form>
-
-  <div class="os-hist-hint">{{ itens|length }} solicitação(ões){% if busca %} com “{{ busca }}”{% endif %}.</div>
-  <div class="os-tbl-wrap">
-    <table class="os-tbl os-hist">
-      <thead><tr><th class="k-folio">Nº</th><th class="k-cliente">Cliente</th><th class="k-usina">Usina</th>
-        <th>Ativo</th><th>Título</th><th class="k-etiqueta">Tema</th><th class="k-status">Status</th>
-        <th class="k-folio">OS</th><th>Quem pediu</th><th class="c-data">Data</th></tr></thead>
-      <tbody>
-      {% for s in itens %}
-      <tr>
-        <td class="k-folio">{{ s.id_code }}</td>
-        <td class="k-cliente">{{ s.cliente }}</td><td class="k-usina">{{ s.usina }}</td>
-        <td>{{ s._ativo }}</td><td class="c-desc" title="{{ s.descricao_full }}">{{ s.descricao }}</td>
-        <td class="k-etiqueta">{{ s._tema_nome or '—' }}</td>
-        <td class="k-status"><span class="os-status" {% if s.cor_status %}style="color:{{ s.cor_status }};background:{{ s.cor_status }}29;border-color:{{ s.cor_status }}6b"{% endif %}>{{ s.status }}</span></td>
-        <td class="k-folio">{% if s.id_work_order %}<a class="os-link" href="/os/os/{{ s.id_work_order }}">{{ s.os_folio }}</a>{% else %}—{% endif %}</td>
-        <td>{{ s.criado_por or '—' }}</td>
-        <td class="c-data">{{ fmt(s.data) if s.data else '—' }}</td>
-      </tr>
-      {% else %}
-      <tr class="vazio"><td colspan="10">Nenhuma solicitação{% if busca %} com esse texto{% endif %}.</td></tr>
-      {% endfor %}
-      </tbody>
+  <div class="spc-hist-filtros">
+    {% for nome, rotulo, todos in [("cliente", "Cliente", "Todos os clientes"), ("usina", "Usina", "Todas as usinas"),
+                                     ("tipo", "Tipo de ativo", "Todos os tipos"), ("status", "Status", "Todos os status")] %}
+    <div class="spc-hist-c"><span class="spc-rot">{{ rotulo }}</span>
+      <details class="os-multi" data-nome="{{ nome }}"{% if nome == 'usina' %} data-busca="1"{% endif %}>
+        <summary><span class="os-multi-txt" data-todos="{{ todos }}">{{ todos }}</span></summary>
+        <div class="os-multi-lista"></div>
+      </details></div>
+    {% endfor %}
+    <div class="spc-hist-c"><span class="spc-rot">Período</span>
+      <span class="spc-hist-periodo"><input id="hs_de" type="date" value="{{ de }}" aria-label="De"><span>até</span><input id="hs_ate" type="date" value="{{ ate }}" aria-label="Até"></span></div>
+  </div>
+  <div class="spc-tbl-wrap">
+    <table class="spc-tbl">
+      <thead><tr><th>Nº</th><th>Cliente</th><th>Usina</th><th>Ativo</th><th>Descrição</th><th>Criada em</th><th>Status</th><th>OS ligada</th></tr></thead>
+      <tbody id="hs_corpo"></tbody>
     </table>
   </div>
+  <p class="spc-dica" id="hs_rodape"></p>
 </section>
+
+{# a ficha da solicitação (SolicitacaoDialog) #}
+<div class="spc-modal" id="hs_ficha" hidden>
+  <div class="spc-modal-fundo" data-fechar></div>
+  <div class="spc-modal-card spc-modal-card--larga" role="dialog" aria-modal="true" aria-labelledby="hs_f_t">
+    <div class="spc-ficha-cab"><div><h2 class="spc-modal-t" id="hs_f_t"></h2><span class="spc-dica">Requisição de serviço</span></div>
+      <span id="hs_f_st"></span><span class="spc-flex"></span><button type="button" class="spc-x" data-fechar aria-label="Fechar">&times;</button></div>
+    <div class="spc-ficha-corpo">
+      <div class="spc-ficha-ativo" id="hs_f_ativo"></div>
+      <div class="spc-ficha-meta">
+        <dl class="spc-ficha-dl" id="hs_f_meta"></dl>
+        <button type="button" class="spc-ficha-os" id="hs_f_os"><span class="spc-rot">OS LIGADA</span><b id="hs_f_os_n"></b><span class="spc-dica" id="hs_f_os_d"></span></button>
+      </div>
+      <h3 class="spc-rot">TÍTULO</h3>
+      <p class="spc-ficha-txt spc-ficha-txt--forte" id="hs_f_tit"></p>
+      <div id="hs_f_obs_box"><h3 class="spc-rot">OBSERVAÇÃO</h3><p class="spc-ficha-txt" id="hs_f_obs"></p></div>
+      <h3 class="spc-rot">ANEXOS DA SOLICITAÇÃO</h3>
+      <div class="spc-anexos"><button type="button" class="spc-anexo" id="hs_f_img"><b>Imagens</b><span class="spc-dica">prints e fotos</span><span class="spc-anexo-n">—</span></button>
+        <button type="button" class="spc-anexo" id="hs_f_doc"><b>Documentos</b><span class="spc-dica">PDF, planilhas</span><span class="spc-anexo-n">—</span></button></div>
+      <div class="spc-anexo-lista" id="hs_f_lista" hidden></div>
+      <div class="spc-cancelar" id="hs_f_cancelar" hidden>
+        <p><b>Cancelar a solicitação</b> — o status vai para <b>Cancelada</b>; a autorização é a do seu usuário no Fracttal.</p>
+        <label class="spc-rot" for="hs_f_nota">Nota (opcional)</label>
+        <textarea id="hs_f_nota" rows="3"></textarea>
+        <div class="spc-modal-acoes"><button type="button" class="spc-btn-sec" id="hs_f_voltar">Voltar</button>
+          <button type="button" class="spc-btn-perigo" id="hs_f_confirmar">Confirmar cancelamento</button></div>
+      </div>
+    </div>
+    <div class="spc-modal-acoes spc-ficha-rod">
+      <button type="button" class="spc-btn-aprovar spc-btn-aprovar--baixo" id="hs_f_abrir_os">Abrir OS ligada</button>
+      <span class="spc-flex"></span>
+      <button type="button" class="spc-btn-perigo" id="hs_f_cancelar_b">Cancelar solicitação</button>
+      <button type="button" class="spc-btn-sec" data-fechar>Fechar</button>
+    </div>
+  </div>
+</div>
+
+{# o card da OS ligada: o MESMO do Histórico de OS (o fragmento /os/os/<id>?parcial=1 e as ações do os_acoes.js) #}
+<div class="os-modal" id="os_card" hidden>
+  <div class="os-modal-fundo" data-fechar></div>
+  <div class="os-modal-card os-form" role="dialog" aria-modal="true" aria-label="Detalhe da OS">
+    <button type="button" class="os-modal-x" data-fechar aria-label="Fechar">&times;</button>
+    <div class="os-modal-corpo" id="os_card_corpo"></div>
+  </div>
+</div>
+<script type="application/json" id="hs_dados">{{ {"linhas": linhas}|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/os/static/os_acoes.js"></script>
+<script src="/os/static/solic_pcm.js"></script>
+<script src="/os/static/solic_hist.js"></script>
 {% endblock %}

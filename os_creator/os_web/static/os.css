@@ -335,6 +335,8 @@ body.os-modal-aberto{overflow:hidden}
 /* caixa "Gerar ticket automaticamente" e a quantidade por ativo (Levi, 21/09) */
 .os-tk{display:flex;align-items:center;gap:8px;color:#cfd6e4;font-size:13px;cursor:pointer}
 .os-tk small{color:var(--muted);font-size:11.5px}
+/* Performance agrupado (13/10/2026): sem a OS pai por ativo (é uma só, no campo da OS) e sem o prefixo [Ativo] no nome */
+.os-pagina.agrupada .os-tbl .c-pai,.os-pagina.agrupada #chip_prefixo{display:none}
 .os-tbl .qtd{width:62px;text-align:center;background:var(--f-input);border:1px solid var(--f-border);
   border-radius:7px;color:var(--txt);padding:4px 6px;font-size:13px}
 .os-tbl .qtd:disabled{opacity:.4}
@@ -539,6 +541,230 @@ body.os-sem-topo .os-recolher svg{transform:rotate(180deg)}
 .carga-pct{position:absolute;top:60px;left:0;right:0;text-align:center;font:700 19px/1 'Segoe UI',Arial,sans-serif;color:#fff}
 .carga-txt{margin-top:8px;font-size:13px;color:#e6e8ef}
 .carga-sub{font-size:11.5px;color:#8a90a2;min-height:15px}
+/* a espera contada e a saída no limite (carga.js, 13/10/2026): as cores são as da .carga-sub e dos .os-btn */
+.carga-espera{max-width:300px;margin:6px auto 0;line-height:1.45}.carga-espera:empty{display:none}
+.carga-acoes{display:flex;gap:8px;justify-content:center;margin-top:14px}
 /* Windows sem animação: o giro fica, mais lento (é ele que diz "está trabalhando"); a barra só não desliza */
 @media (prefers-reduced-motion:reduce){.carga-anel.ind{animation-duration:2.4s}.carga-arco{transition:none}}
+
+/* ══ TEMA CLARO (Levi, 09/10/2026: "faltou o tema claro do OS Creator Web, não está sincronizando com o botão do Nexus") ══
+   Só vale com <html data-tema="claro">, e só o Nexus põe o atributo: a ponte (nexus/torres/oscreator/ponte.py) o desenha
+   pelo cookie nexus_tema, e o botão do tema troca ao vivo as molduras abertas. Sozinho (o 5090 do supervisório) o OS Creator
+   nunca recebe o atributo: nada daqui vale lá, e o escuro acima fica exatamente como era.
+   A paleta é a do tema claro do Nexus (nexus/static/nexus.css, :root[data-tema="claro"]), com o nome --osc-*; as outras folhas
+   do OS Creator usam estas mesmas. REGRA: cor nova no escuro ganha o par do claro no fim da folha dela, sempre por --osc-*
+   (o tests/test_oscreator_tema_claro.py do Nexus cobra a cobertura, o contraste e a paleta). Verde Grid (lima) só como
+   SUPERFÍCIE (botão, barra, marcação cheia) com texto escuro; verde em TEXTO, foco e borda de escolha é o musgo (o lima dá
+   1,6:1 no branco). Borda de campo a 3:1 (--osc-campo). No claro o CONTEÚDO não esmaece por opacidade (o texto cairia
+   abaixo de 4,5:1): a linha de fora, o cartão finalizado e a nota viram cinza de seção ou texto mudo; o controle DESLIGADO
+   (:disabled) segue com a opacidade do escuro, o sinal de sempre de desligado.
+   O par do claro repete o seletor do escuro dentro de :where(html[data-tema="claro"]), que não soma especificidade: vence a
+   regra do escuro só por vir depois, e o estado mais específico do escuro (.on, .sel, :hover, :focus) continua vencendo como
+   antes. Com html[data-tema="claro"] solto, o ".x" do claro passaria por cima do ".x.on" e do ":focus" do escuro. As
+   variáveis ficam em html[data-tema="claro"] (sem :where), para vencer o :root. */
+html[data-tema="claro"]{
+  --osc-pagina:#fcfcfc; --osc-cartao:#ffffff; --osc-secao:#f5f6f8; --osc-secao-2:#eceef2; --osc-secao-3:#e2e5ea;
+  --osc-texto:#1f2937; --osc-texto-2:#475569; --osc-mudo:#5a6475; --osc-fraco:#606978;
+  --osc-linha:rgba(15,23,42,.10); --osc-linha-forte:rgba(15,23,42,.18);
+  --osc-campo:rgba(15,23,42,.5); --osc-campo-hover:rgba(15,23,42,.65);
+  --osc-lima:#a9db21; --osc-lima-hover:#9bcb1a; --osc-lima-suave:rgba(169,219,33,.18); --osc-lima-forte:rgba(169,219,33,.32);
+  --osc-musgo:#566610; --osc-musgo-borda:rgba(107,138,0,.5); --osc-sobre-lima:#0d1526;
+  --osc-ok:#166b36; --osc-ok-suave:rgba(31,136,61,.12);
+  --osc-alerta:#7a5200; --osc-alerta-suave:rgba(230,175,46,.18); --osc-alerta-borda:rgba(176,124,0,.45);
+  --osc-severo:#a33d00; --osc-severo-suave:rgba(247,140,60,.16); --osc-severo-borda:rgba(163,61,0,.35);
+  --osc-critico:#b42230; --osc-critico-suave:rgba(220,53,69,.09); --osc-critico-forte:rgba(220,53,69,.18); --osc-critico-borda:rgba(180,34,48,.40);
+  --osc-info:#0a5fc4; --osc-info-suave:rgba(9,105,218,.08); --osc-info-borda:rgba(10,95,196,.38);
+  --osc-ok-cheio:#3dbb68; --osc-alerta-cheio:#f0b429; --osc-severo-cheio:#f59342; --osc-critico-cheio:#ef5d6e; --osc-info-cheio:#5c9cf5;
+  --osc-sobre-cheio:#0b1220; --osc-sobre-escuro:#ffffff;
+  --osc-clarao:rgba(15,23,42,.04); --osc-clarao-2:rgba(15,23,42,.06);
+  --osc-sombra:rgba(15,23,42,.16); --osc-sombra-alta:rgba(15,23,42,.22); --osc-veu:rgba(15,23,42,.32);
+  --osc-rolagem:#c3c9d3; --osc-rolagem-hover:#a3abb8; --osc-marca-fundo:#0d1526;
+  /* as variáveis do os.css (o DARK_QSS e o QSS_FORM do app) no claro */
+  --bg:var(--osc-pagina); --txt:var(--osc-texto); --muted:var(--osc-mudo); --muted2:var(--osc-texto-2); --sep:var(--osc-linha);
+  --card:var(--osc-cartao); --card-b:var(--osc-linha-forte); --verde:var(--osc-musgo); --btn:var(--osc-lima); --btn-txt:var(--osc-sobre-lima);
+  --sec:var(--osc-secao-2); --sec-txt:var(--osc-texto); --input:var(--osc-cartao); --input-b:var(--osc-campo);
+  --f-bg:var(--osc-pagina); --f-card:var(--osc-cartao); --f-input:var(--osc-secao); --f-border:var(--osc-linha-forte);
+  --f-green:var(--osc-musgo); --f-ink:var(--osc-sobre-lima); --f-muted:var(--osc-mudo);
+  scrollbar-color:var(--osc-rolagem) transparent;
+}
+/* cabeçalho, abas e lançador */
+:where(html[data-tema="claro"]) .os-n1,:where(html[data-tema="claro"]) .os-nome,:where(html[data-tema="claro"]) .os-card-titulo{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-avatar{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .os-tab:hover{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-card{border-bottom-color:var(--osc-lima)}
+:where(html[data-tema="claro"]) .os-tile{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .os-selo{background:var(--osc-lima-suave);border:1px solid var(--osc-musgo-borda)}
+/* login, avisos e botões */
+/* o logo do login tem o "Grid Co." em branco (grid-logo.png): no claro ele vai numa faixa navy, como o logo do Nexus no
+   claro (o topo navy e o cartão de entrar) */
+:where(html[data-tema="claro"]) .os-logo{box-sizing:content-box;padding:12px 18px;background:var(--osc-marca-fundo);border-radius:12px}
+:where(html[data-tema="claro"]) .os-ou,:where(html[data-tema="claro"]) .os-nota{color:var(--osc-mudo)}
+:where(html[data-tema="claro"]) .os-aviso{background:var(--osc-alerta-suave);border:1px solid var(--osc-alerta-borda);color:var(--osc-alerta)}
+:where(html[data-tema="claro"]) .os-erro{color:var(--osc-critico)}
+:where(html[data-tema="claro"]) .os-btn:hover{background:var(--osc-lima-hover)}
+:where(html[data-tema="claro"]) .os-btn:disabled{background:var(--osc-secao-2);color:var(--osc-fraco)}
+:where(html[data-tema="claro"]) .os-btn.secondary:hover{background:var(--osc-secao-3)}
+:where(html[data-tema="claro"]) .os-btn.secondary:disabled{background:var(--osc-secao);color:var(--osc-fraco)}
+:where(html[data-tema="claro"]) body.os-form .os-btn.primaria{background:var(--osc-lima);color:var(--osc-sobre-lima)}
+/* páginas internas, cards de plano e formulário */
+:where(html[data-tema="claro"]) .os-head-titulo,:where(html[data-tema="claro"]) .os-plano-titulo,:where(html[data-tema="claro"]) .os-cardf-t{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-plano-tile,:where(html[data-tema="claro"]) .os-plano-badge,:where(html[data-tema="claro"]) .os-badge{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .os-lbl{color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) body.os-form input,:where(html[data-tema="claro"]) body.os-form select,
+:where(html[data-tema="claro"]) body.os-form textarea{color:var(--osc-texto);border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) body.os-form input:hover,:where(html[data-tema="claro"]) body.os-form select:hover,
+:where(html[data-tema="claro"]) body.os-form textarea:hover{border-color:var(--osc-campo-hover)}
+/* o foco vem DEPOIS do hover, como no escuro: campo com o mouse em cima e o foco dentro fica com a borda do foco */
+:where(html[data-tema="claro"]) body.os-form input:focus,:where(html[data-tema="claro"]) body.os-form select:focus,
+:where(html[data-tema="claro"]) body.os-form textarea:focus{border-color:var(--osc-musgo)}
+/* o texto de exemplo do campo que não tem regra própria (o login) usa o mudo, como no Nexus: o cinza padrão do navegador
+   (#757575) fica abaixo de 4,5:1 no #f5f6f8 */
+:where(html[data-tema="claro"]) ::placeholder{color:var(--osc-mudo);opacity:1}
+:where(html[data-tema="claro"]) .os-seg-btn.on{background:var(--osc-lima-forte)}
+:where(html[data-tema="claro"]) .os-tbl{background:var(--osc-cartao);color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-tbl th{background:var(--osc-secao)}
+:where(html[data-tema="claro"]) .os-tbl td{border-bottom-color:var(--osc-linha)}
+:where(html[data-tema="claro"]) .os-prefix{border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .os-chip{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .os-resumo{color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .os-resumo b{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-resultado{background:var(--osc-lima-suave);border:1px solid var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .os-resultado.ruim{background:var(--osc-critico-suave);border-color:var(--osc-critico-borda)}
+/* histórico e o selo de status. A cor que vem do dado (o status do Fracttal, a etiqueta, o placar) chega no style="color:…" e
+   foi escolhida para o navy (o verde #48D07A dá 2:1 no branco). No claro o TEXTO dela é pintado com a mesma cor, com a
+   luminosidade do oklch no teto de 0,46 (-webkit-text-fill-color, que lê a cor do próprio elemento no currentColor): a
+   matiz e a saturação do dado ficam (vermelho segue vermelho), só a cor clara demais escurece. Medido no Chrome com as
+   cores do Fracttal e do OS Creator: de 5,5:1 a 7,7:1 no fundo do selo; o pior caso inventado (vermelho puro) dá 4,9:1.
+   Navegador sem a cor relativa (from) fica na 1ª linha: a cor misturada meio a meio com o preto (a luminância por 8,
+   sempre acima de 6:1). A borda e o fundo do selo seguem os do dado. */
+:where(html[data-tema="claro"]) .os-hist{border-color:var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .os-hist th{background:var(--osc-secao)}
+:where(html[data-tema="claro"]) .os-hist td{border-color:var(--osc-linha)}
+:where(html[data-tema="claro"]) .c-data{color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .os-status{color:var(--osc-texto-2);background:var(--osc-secao);border:1px solid var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .os-status[style],:where(html[data-tema="claro"]) .det-chip[style],
+:where(html[data-tema="claro"]) .os-painel-n[style]{-webkit-text-fill-color:color-mix(in oklab,currentColor 50%,#000);-webkit-text-fill-color:oklch(from currentColor min(l,.46) c h)}
+:where(html[data-tema="claro"]) .os-sso{background:var(--osc-secao);border-color:var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .os-fav:hover{background:var(--osc-secao-3)}
+:where(html[data-tema="claro"]) .os-topo-voltar{border:1px solid var(--osc-linha-forte)}
+/* o card da OS sobreposto (Histórico e o card do Nexus) */
+:where(html[data-tema="claro"]) .os-modal-fundo{background:var(--osc-veu)}
+:where(html[data-tema="claro"]) .os-modal-card{box-shadow:0 26px 70px var(--osc-sombra-alta)}
+:where(html[data-tema="claro"]) .det,:where(html[data-tema="claro"]) .det-os,:where(html[data-tema="claro"]) .det-banner-t,:where(html[data-tema="claro"]) .det-v,
+:where(html[data-tema="claro"]) .det-pessoa,:where(html[data-tema="claro"]) .det-dur-v,:where(html[data-tema="claro"]) .det-box-t,
+:where(html[data-tema="claro"]) .det-sub summary,:where(html[data-tema="claro"]) .det-tarefa>summary,:where(html[data-tema="claro"]) .det-tarefa-t b,
+:where(html[data-tema="claro"]) .det-anexo-t b{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .det-top{border-bottom:1px solid var(--osc-linha)}
+:where(html[data-tema="claro"]) .det-ico-round{background:var(--osc-lima-suave);border:1px solid var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .det-badge{border:1px solid var(--osc-musgo-borda);background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .det-pill,:where(html[data-tema="claro"]) .det-k,:where(html[data-tema="claro"]) .det-mini,:where(html[data-tema="claro"]) .det-box,
+:where(html[data-tema="claro"]) .det-ghost,:where(html[data-tema="claro"]) .det-tarefa-n,:where(html[data-tema="claro"]) .det-tarefa-c,
+:where(html[data-tema="claro"]) .det-tarefa-info,:where(html[data-tema="claro"]) .det-reg{color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .det-card{border:1px solid var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .det-ico-sq.v{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .det-ico-sq.a{background:var(--osc-info-suave)}
+:where(html[data-tema="claro"]) .det-row{border-bottom:1px solid var(--osc-linha)}
+:where(html[data-tema="claro"]) .det-av,:where(html[data-tema="claro"]) .det-pill-ok{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .det-prog{background:var(--osc-secao-2);border:1px solid var(--osc-linha)}
+:where(html[data-tema="claro"]) .det-prog-f{background:var(--osc-lima)}
+:where(html[data-tema="claro"]) .det-prog-f.parcial{background:var(--osc-severo-cheio)}
+:where(html[data-tema="claro"]) .det-sub{border:1px solid var(--osc-linha-forte)}
+/* o "Ordem de serviço" do cabeçalho do card tem a classe .det-sub, a mesma da subtarefa: no escuro a caixa dela some no navy
+   (#121A2B sobre #0B1020); no claro ela apareceria em volta do subtítulo */
+:where(html[data-tema="claro"]) .det-num .det-sub{border-color:transparent;background:transparent}
+:where(html[data-tema="claro"]) .det-sub[open]{border-color:var(--osc-musgo-borda);background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .det-chk{background:var(--osc-cartao);border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .det-sub.feito .det-chk{background:var(--osc-lima);border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .det-ans{border:1px solid var(--osc-linha);color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .det-ans.vazia{color:var(--osc-mudo)}
+:where(html[data-tema="claro"]) .det-tarefa{border:1px solid var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .det-tarefa[open]{border-color:var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .det-tarefa[open]>summary{border-bottom:1px solid var(--osc-linha)}
+:where(html[data-tema="claro"]) .det-tarefa.feito .det-tarefa-n{background:var(--osc-lima);border-color:var(--osc-musgo);color:var(--osc-sobre-lima)}
+:where(html[data-tema="claro"]) .det-situ.ok{border-color:var(--osc-musgo-borda);background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .det-situ.and{color:var(--osc-severo);border-color:var(--osc-severo-borda);background:var(--osc-severo-suave)}
+:where(html[data-tema="claro"]) .det-tarefa-c.parcial{color:var(--osc-severo)}
+:where(html[data-tema="claro"]) .det-anexo.v{border-color:var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .det-n.a{color:var(--osc-info)}
+:where(html[data-tema="claro"]) .det-foot{border-top:1px solid var(--osc-linha)}
+:where(html[data-tema="claro"]) .det-b.verde{background:var(--osc-lima);color:var(--osc-sobre-lima)}
+:where(html[data-tema="claro"]) .det-b.ambar{background:var(--osc-alerta-suave);color:var(--osc-alerta);border-color:var(--osc-alerta-borda)}
+:where(html[data-tema="claro"]) .det-b.ok{border-color:var(--osc-musgo-borda)}
+:where(html[data-tema="claro"]) .det-b.perigo{color:var(--osc-critico);border-color:var(--osc-critico-borda)}
+:where(html[data-tema="claro"]) .det-b.ghost{color:var(--osc-texto-2);border-color:var(--osc-linha-forte)}
+:where(html[data-tema="claro"]) .det-b.ghost:hover{border-color:var(--osc-campo-hover);color:var(--osc-texto)}
+/* os filtros do Histórico */
+:where(html[data-tema="claro"]) .os-hist-topo .os-seg button.on{background:var(--osc-lima);color:var(--osc-sobre-lima)}
+:where(html[data-tema="claro"]) .os-busca-os{border:1px solid var(--osc-musgo)}
+:where(html[data-tema="claro"]) .os-busca-os input,:where(html[data-tema="claro"]) .os-hist-buscar input,
+:where(html[data-tema="claro"]) .os-cell select,:where(html[data-tema="claro"]) .os-cell input[type=date],
+:where(html[data-tema="claro"]) .os-multi summary{color:var(--osc-texto);border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .os-multi[open] summary{border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .os-multi-lista{box-shadow:0 14px 34px var(--osc-sombra)}
+:where(html[data-tema="claro"]) .os-multi-lista label{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .img-b:hover:not(:disabled){color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .img-b.tem{color:var(--osc-musgo)}
+/* a busca dentro do <select> (os_busca.js) */
+:where(html[data-tema="claro"]) .osb-lista{box-shadow:0 10px 28px var(--osc-sombra)}
+:where(html[data-tema="claro"]) .osb-op:hover,:where(html[data-tema="claro"]) .osb-op.on{background:var(--osc-lima-forte);color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .osb-aviso{color:var(--osc-alerta)}
+:where(html[data-tema="claro"]) .os-multi-lista .osm-busca{color:var(--osc-texto);border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .os-multi-lista label.on{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .os-tk{color:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) .os-tbl .qtd{border-color:var(--osc-campo)}
+/* Solicitação / PCM */
+:where(html[data-tema="claro"]) .os-subnav a.on{background:var(--osc-lima);color:var(--osc-sobre-lima)}
+:where(html[data-tema="claro"]) .os-subnav a:hover:not(.on){color:var(--osc-texto);background:var(--osc-secao-3)}
+:where(html[data-tema="claro"]) .os-h2,:where(html[data-tema="claro"]) .os-check,:where(html[data-tema="claro"]) .os-subs-lista,
+:where(html[data-tema="claro"]) .os-painel-n,:where(html[data-tema="claro"]) .os-analise-topo,:where(html[data-tema="claro"]) .os-analise-lin,
+:where(html[data-tema="claro"]) .os-recusar[open] summary{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-painel-card.on{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .os-hist tr.sol-l.on td{background:var(--osc-lima-suave)}
+/* Tickets */
+:where(html[data-tema="claro"]) .os-hist td.tk-alarme,:where(html[data-tema="claro"]) .tk-sem-os,:where(html[data-tema="claro"]) .tk-g-qtd{color:var(--osc-critico)}
+:where(html[data-tema="claro"]) .os-hist tr.tk-l.on td,:where(html[data-tema="claro"]) .os-hist tr.tk-g.on td{background:var(--osc-lima-suave)}
+:where(html[data-tema="claro"]) .os-hist tr.tk-l:hover td{background:var(--osc-clarao)}
+:where(html[data-tema="claro"]) .os-aviso-leitura{background:var(--osc-severo-suave);border:1px solid var(--osc-severo-borda);color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-hist tr.tk-g td{background:var(--osc-secao)}
+:where(html[data-tema="claro"]) .os-hist tr.tk-g:hover td{background:var(--osc-secao-2)}
+:where(html[data-tema="claro"]) .tk-g-usina{color:var(--osc-texto)}
+/* a barra de rolagem: a mesma do Nexus no claro */
+:where(html[data-tema="claro"]) .osb-lista,:where(html[data-tema="claro"]) .os-multi-lista,:where(html[data-tema="claro"]) .os-tbl-wrap,
+:where(html[data-tema="claro"]) .os-analise,:where(html[data-tema="claro"]) .acoes-dlg,:where(html[data-tema="claro"]) .acoes-exec,
+:where(html[data-tema="claro"]) .os-modal-corpo,:where(html[data-tema="claro"]) textarea{scrollbar-color:var(--osc-rolagem) transparent}
+:where(html[data-tema="claro"])::-webkit-scrollbar-thumb,:where(html[data-tema="claro"]) ::-webkit-scrollbar-thumb{background:var(--osc-rolagem);background-clip:padding-box}
+:where(html[data-tema="claro"])::-webkit-scrollbar-thumb:hover,:where(html[data-tema="claro"]) ::-webkit-scrollbar-thumb:hover{background:var(--osc-rolagem-hover);background-clip:padding-box}
+/* Tickets: o painel (vincular OS, trocar usina, excluir) */
+:where(html[data-tema="claro"]) .os-btn.tk-excluir{background:var(--osc-critico-suave);color:var(--osc-critico);border:1px solid var(--osc-critico-borda)}
+:where(html[data-tema="claro"]) .os-btn.tk-excluir:hover{background:var(--osc-critico);color:var(--osc-sobre-escuro)}
+:where(html[data-tema="claro"]) .tk-confirma{background:var(--osc-critico-suave);border:1px solid var(--osc-critico-borda)}
+:where(html[data-tema="claro"]) .tk-confirma p,:where(html[data-tema="claro"]) .tk-vinc-op,:where(html[data-tema="claro"]) .tk-usi-op{color:var(--osc-texto)}
+/* Histórico: o teto e a busca colada na tabela */
+:where(html[data-tema="claro"]) .hf-teto{background:var(--osc-alerta-suave);border:1px solid var(--osc-alerta-borda);color:var(--osc-alerta)}
+:where(html[data-tema="claro"]) .hf-filtro{border-color:var(--osc-campo)}
+:where(html[data-tema="claro"]) .hf-filtro:focus-within{border-color:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .hf-filtro input{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .os-recolher:hover{color:var(--osc-texto)}
+/* o círculo de carga */
+:where(html[data-tema="claro"]) .carga{background:var(--osc-veu)}
+:where(html[data-tema="claro"]) .carga-caixa{background:var(--osc-cartao);border:1px solid var(--osc-linha-forte);box-shadow:0 22px 60px var(--osc-sombra-alta)}
+:where(html[data-tema="claro"]) .carga-trilho{stroke:var(--osc-linha)}
+:where(html[data-tema="claro"]) .carga-arco{stroke:var(--osc-musgo)}
+:where(html[data-tema="claro"]) .carga-pct,:where(html[data-tema="claro"]) .carga-txt{color:var(--osc-texto)}
+:where(html[data-tema="claro"]) .carga-sub{color:var(--osc-mudo)}
+/* os ícones: o traço vem no stroke="#…" do <svg> (lancador.icone e os <svg> dos templates). No claro o verde-claro vira o
+   musgo, o cinza-claro vira o cinza do texto, o branco vira a tinta; o escuro sobre o botão verde continua escuro. */
+:where(html[data-tema="claro"]) svg[stroke="#A6E22E" i],:where(html[data-tema="claro"]) svg[stroke="#b8e84a" i],
+:where(html[data-tema="claro"]) svg[stroke="#8fce3f" i]{stroke:var(--osc-musgo)}
+:where(html[data-tema="claro"]) svg[stroke="#8A93A8" i],:where(html[data-tema="claro"]) svg[stroke="#94a3b8" i]{stroke:var(--osc-mudo)}
+:where(html[data-tema="claro"]) svg[stroke="#c9cfe0" i]{stroke:var(--osc-texto-2)}
+:where(html[data-tema="claro"]) svg[stroke="#FFFFFF" i]{stroke:var(--osc-texto)}
+:where(html[data-tema="claro"]) svg[stroke="#0B1020" i]{stroke:var(--osc-sobre-lima)}
+:where(html[data-tema="claro"]) svg[stroke="#57B6F5" i]{stroke:var(--osc-info)}
+:where(html[data-tema="claro"]) svg[stroke="#eb8b57" i]{stroke:var(--osc-severo)}
+:where(html[data-tema="claro"]) svg[stroke="#e05454" i]{stroke:var(--osc-critico)}
+/* as cores escritas nos templates: o style="…" com cor ganha uma classe, e a classe ganha o claro aqui (!important para
+   vencer o style; o escuro segue com o style de sempre) */
+:where(html[data-tema="claro"]) .eng-sup-nome,:where(html[data-tema="claro"]) .eng-titulo{color:var(--osc-texto)!important}
+:where(html[data-tema="claro"]) .eng-sup-quadro{background:var(--osc-secao)!important}
 
